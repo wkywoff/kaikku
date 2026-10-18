@@ -1,0 +1,43 @@
+# Dependency updates as pull requests, checked by the Tests workflow.
+# Weekly, one grouped pull request per ecosystem for minor and patch
+# versions; major versions and security fixes come one by one.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Base images in the Dockerfile (Go, Node, Debian, nginx, Deno).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # postgres in compose.yaml.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
