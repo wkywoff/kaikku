@@ -12,8 +12,12 @@
 // «Назад». Жест «назад» на телефоне закрывает окно, а не уводит со страницы
 // (backCloses, stores/nav.js). Параметр — функция закрытия окна.
 //
+// Фокус. Tab ходит по кругу внутри окна, после закрытия фокус возвращается
+// туда, где был (focusTrap.js).
+//
 //   <div class="backdrop" use:modal={() => dispatch('close')}>…</div>
 import { backCloses } from './stores/nav.js';
+import { focusTrap } from './focusTrap.js';
 
 let open = 0;
 
@@ -21,11 +25,13 @@ export function modal(node, close) {
   let onBack = close;
   if (open++ === 0) document.body.classList.add('modal-open');
   const closed = backCloses(() => onBack?.());
+  const trap = focusTrap(node);
   return {
     update(next) {
       onBack = next;
     },
     destroy() {
+      trap.destroy();
       closed();
       if (--open === 0) document.body.classList.remove('modal-open');
     },

@@ -9,6 +9,7 @@
   import X from '@lucide/svelte/icons/x';
   import Copy from '@lucide/svelte/icons/copy';
   import Check from '@lucide/svelte/icons/check';
+  import { focusTrap } from '../focusTrap.js';
 
   export let me = null;
 
@@ -59,7 +60,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="backdrop" transition:fade={{ duration: 120 }} on:click|self={() => dispatch('close')} role="dialog" tabindex="-1" aria-modal="true" aria-label={$t('reset.title')}>
+<div class="backdrop" use:focusTrap transition:fade={{ duration: 120 }} on:click|self={() => dispatch('close')} role="dialog" tabindex="-1" aria-modal="true" aria-label={$t('reset.title')}>
   <div class="dialog" transition:scale={{ start: 0.96, duration: 150 }}>
     <div class="head">
       <h2>{$t('reset.title')}</h2>

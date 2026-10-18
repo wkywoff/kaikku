@@ -151,6 +151,10 @@ input {
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* Окно с фокусом на себе (focusTrap, modal.js) — без рамки вокруг всего экрана. */
+[role='dialog'][tabindex='-1']:focus-visible {
+  outline: none;
+}
 
 /* Длительность, номера треков — табличные цифры. */
 .num {

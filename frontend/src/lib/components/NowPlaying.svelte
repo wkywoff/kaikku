@@ -37,6 +37,7 @@
   import { get } from 'svelte/store';
   import { trackMenuItems } from '../trackMenu.js';
   import { rowFromEntry } from '../library.js';
+  import { focusTrap } from '../focusTrap.js';
 
   export let browserFullscreen = false;
 
@@ -267,7 +268,7 @@
 
 <!-- Фон — снаружи прокручиваемой части: внутри неё Safari на iPhone
      растягивал его только до отступов под «чёлкой» и полосой жестов. -->
-<div class="np-shell" use:swipeDown in:fly={{ y: 40, duration: 220 }} out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
+<div class="np-shell" use:swipeDown use:focusTrap in:fly={{ y: 40, duration: 220 }} out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
   <MeshBackground cover={track?.coverUrl || null} animated={$settings.animatedBg && !dragging && s.isPlaying} />
   <div class="now-playing" class:dock-hidden={dockHidden}>
     <!-- На компьютере — «свернуть» слева, на телефоне — «ручка» шторки по центру. -->
