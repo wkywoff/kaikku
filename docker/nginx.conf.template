@@ -33,6 +33,11 @@ server {
   add_header X-Frame-Options        "SAMEORIGIN"                      always;
   add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
 
+  # Сайт только для своих: поисковики страницы не индексируют. Превью ссылок
+  # в мессенджерах (og-теги) от этого не пропадают. robots.txt страницы не
+  # закрывает — иначе поисковик не увидит этот заголовок.
+  add_header X-Robots-Tag           "noindex"                         always;
+
   # Политика содержимого: всё только со своего домена (картинки Deezer идут через /api/img).
   add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
 
