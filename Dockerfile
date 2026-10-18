@@ -6,7 +6,7 @@
 # поэтому собирается целиком под QEMU — дольше, но только на релиз.
 
 # --- фронтенд: в образы попадает только dist ---
-FROM node:24-trixie-slim AS frontend
+FROM node:26-trixie-slim AS frontend
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 # --ignore-scripts: install-скрипты пакетов npm сборке не нужны.
