@@ -122,6 +122,15 @@ server {
   location ~ ^/(index\.html|sw\.js)$ {
     expires -1;
   }
+  # Файлы в корне (favicon.ico, robots.txt, …) и /.well-known/: нет файла —
+  # 404, а не страница плеера с кодом 200 (поисковики и боты приняли бы её
+  # за сам файл).
+  location ~ ^/[^/]+\.[A-Za-z0-9]+$ {
+    try_files $uri =404;
+  }
+  location /.well-known/ {
+    try_files $uri =404;
+  }
 
   # SPA: всё неизвестное → index.html.
   location / {
