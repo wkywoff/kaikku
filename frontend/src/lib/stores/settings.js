@@ -7,7 +7,8 @@ const STORAGE_KEY = 'kaikku_settings';
 
 export const DEFAULT_SETTINGS = {
   lang: typeof navigator !== 'undefined' && navigator.language?.startsWith('ru') ? 'ru' : 'en',
-  crossfade: true,
+  // Выключено по умолчанию: треки идут встык, без наложения (gapless).
+  crossfade: false,
   crossfadeSeconds: 4, // 1–12
   // Выключено по умолчанию: треки звучат с той громкостью, что в оригинале.
   normalize: false,
