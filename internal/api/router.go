@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"kaikku/internal/auth"
 	"kaikku/internal/deezer"
@@ -277,6 +278,14 @@ func (s *Server) authed(next http.HandlerFunc) http.Handler {
 		if changed.Valid && claims.Iat <= changed.Time.Unix() {
 			writeError(w, http.StatusUnauthorized, "password was changed, log in again")
 			return
+		}
+		// Скользящий вход: токену больше суток — ответ несёт новый, клиент
+		// его сохраняет (api.js). Не вышло выдать — не страшно, старый ещё
+		// действует.
+		if time.Since(time.Unix(claims.Iat, 0)) > tokenRenewAfter {
+			if fresh, err := auth.IssueToken(claims.UserID, tokenTTL, s.JWTSecret); err == nil {
+				w.Header().Set("X-Auth-Token", fresh)
+			}
 		}
 		ctx := context.WithValue(r.Context(), userIDCtxKey, claims.UserID)
 		ctx = context.WithValue(ctx, isAdminCtxKey, isAdmin)

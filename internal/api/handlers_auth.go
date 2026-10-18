@@ -26,6 +26,10 @@ const (
 	minPasswordLen = 8
 )
 
+// Токен старше этого продлевается сам (authed, X-Auth-Token): вход
+// кончается только после tokenTTL без единого захода.
+const tokenRenewAfter = 24 * time.Hour
+
 // validUsername: 3–32 letters, digits, "_", "-", ".". The name is shown to
 // other users (public playlists), so no spaces, control or invisible
 // characters and no kilometre-long strings.

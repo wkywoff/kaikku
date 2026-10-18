@@ -68,7 +68,7 @@ Object.defineProperty(global, 'navigator', {
 global.MediaMetadata = function (data) {
   return data;
 };
-global.fetch = async (url) => ({ ok: true, status: 200, json: async () => ({ url: 'https://fake/' + url, gain_db: -6 }) });
+global.fetch = async (url) => ({ headers: new Headers(), ok: true, status: 200, json: async () => ({ url: 'https://fake/' + url, gain_db: -6 }) });
 
 const { player, directAudio } = await import('../src/lib/stores/player.js');
 const { settings } = await import('../src/lib/stores/settings.js');

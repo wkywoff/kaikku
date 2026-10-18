@@ -29,11 +29,15 @@ type jwtHeader struct {
 // lib/pq the only dependency; the header is never parsed on verify, so
 // alg-confusion attacks don't apply.
 func IssueToken(userID string, ttl time.Duration, secret []byte) (string, error) {
+	return IssueTokenAt(userID, time.Now(), ttl, secret)
+}
+
+// IssueTokenAt — то же, выданный в момент now (тесты продления входа).
+func IssueTokenAt(userID string, now time.Time, ttl time.Duration, secret []byte) (string, error) {
 	header, err := json.Marshal(jwtHeader{Alg: "HS256", Typ: "JWT"})
 	if err != nil {
 		return "", err
 	}
-	now := time.Now()
 	claims, err := json.Marshal(Claims{UserID: userID, Exp: now.Add(ttl).Unix(), Iat: now.Unix()})
 	if err != nil {
 		return "", err

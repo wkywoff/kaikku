@@ -125,7 +125,7 @@ const held = new Map();
 const failingLinks = new Set();
 // Deezer ID, которых нет на YouTube (404 с reason not_found).
 const notFoundLinks = new Set();
-global.fetch = async (url) => {
+const fakeFetch = async (url) => {
   for (const [part, gate] of held) if (url.includes(part)) await gate;
   const json = (data) => ({ ok: true, status: 200, json: async () => data });
   const deezer = url.match(/\/stream\/deezer\/(\w+)\/url$/);
@@ -154,6 +154,8 @@ global.fetch = async (url) => {
   }
   return { ok: false, status: 404, json: async () => ({ error: 'not found' }) };
 };
+// Заголовки — как у настоящего ответа (api.js читает X-Auth-Token).
+global.fetch = async (url) => ({ headers: new Headers(), ...(await fakeFetch(url)) });
 
 const { player } = await import('../src/lib/stores/player.js');
 const { settings } = await import('../src/lib/stores/settings.js');

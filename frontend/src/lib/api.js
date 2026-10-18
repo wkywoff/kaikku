@@ -5,6 +5,12 @@ import { proxyImages } from './imageproxy.js';
 
 const BASE = '/api';
 
+// Сервер продлевает вход: токену больше суток — присылает новый
+// (X-Auth-Token). Сохраняем, если за время запроса не вошли заново и не вышли.
+function renew(token, fresh) {
+  if (fresh && token && get(auth) === token) auth.login(fresh);
+}
+
 async function request(path, options = {}) {
   const token = get(auth);
   const headers = { ...(options.headers || {}) };
@@ -21,6 +27,7 @@ async function request(path, options = {}) {
   }
 
   const res = await fetch(BASE + path, { ...options, headers, body });
+  renew(token, res.headers.get('X-Auth-Token'));
 
   if (res.status === 401 && token && get(auth) === token) {
     // Токен истёк/невалиден — не пытаемся угадать, просто разлогиниваем,
@@ -71,6 +78,7 @@ function sendFile(method, path, file, { onProgress, signal } = {}) {
         // nginx отвечает на слишком большой файл HTML-страницей
       }
       if (xhr.status >= 200 && xhr.status < 300) return resolve(proxyImages(data));
+      renew(token, xhr.getResponseHeader('X-Auth-Token'));
       if (xhr.status === 401 && token && get(auth) === token) auth.logout();
       const err = new Error(data?.error || `HTTP ${xhr.status}`);
       err.status = xhr.status;

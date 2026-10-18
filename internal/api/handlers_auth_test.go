@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"kaikku/internal/auth"
 )
 
 func newAuthTestServer(t *testing.T) (*Server, http.Handler) {
@@ -308,5 +310,44 @@ func TestHealthVersion(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 	if rec.Code != http.StatusOK || resp["status"] != "ok" || resp["version"] != "1.2.0" {
 		t.Errorf("health: %d %v", rec.Code, resp)
+	}
+}
+
+func TestTokenRenewal(t *testing.T) {
+	_, router, token, srv := newTestServer(t)
+	claims, err := auth.VerifyToken(token, srv.JWTSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Свежий токен не продлевается.
+	rec := request(router, "GET", "/api/me", token)
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Auth-Token") != "" {
+		t.Fatalf("fresh token: %d, renewed %q", rec.Code, rec.Header().Get("X-Auth-Token"))
+	}
+
+	// Двухдневный — ответ несёт новый, выданный сейчас, на тот же срок.
+	old, err := auth.IssueTokenAt(claims.UserID, time.Now().Add(-48*time.Hour), tokenTTL, srv.JWTSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = request(router, "GET", "/api/me", old)
+	fresh := rec.Header().Get("X-Auth-Token")
+	if rec.Code != http.StatusOK || fresh == "" {
+		t.Fatalf("old token: %d, renewed %q", rec.Code, fresh)
+	}
+	got, err := auth.VerifyToken(fresh, srv.JWTSecret)
+	if err != nil || got.UserID != claims.UserID || time.Since(time.Unix(got.Iat, 0)) > time.Minute ||
+		time.Until(time.Unix(got.Exp, 0)) < tokenTTL-time.Minute {
+		t.Fatalf("renewed token: %+v, %v", got, err)
+	}
+
+	// После смены пароля старый токен не продлевается, а не действует.
+	if _, err := srv.DB.Exec(`UPDATE users SET password_changed_at = now() WHERE id = $1`, claims.UserID); err != nil {
+		t.Fatal(err)
+	}
+	rec = request(router, "GET", "/api/me", old)
+	if rec.Code != http.StatusUnauthorized || rec.Header().Get("X-Auth-Token") != "" {
+		t.Fatalf("after password change: %d, renewed %q", rec.Code, rec.Header().Get("X-Auth-Token"))
 	}
 }
