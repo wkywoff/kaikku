@@ -171,6 +171,17 @@
         : APP_NAME;
   $: playingNow = $isPlaying ? $nowPlaying : null;
   $: document.title = playingNow ? `${playingNow.title} • ${playingNow.artist}` : screenTitle;
+  // Chrome помнит заголовок у каждой записи истории и на «назад» (так же
+  // закрывается плеер) показывает тот, что был у записи: открыли плеер на
+  // одном треке, переключили, закрыли — во вкладке снова первый трек. Тот
+  // же document.title заново браузер не замечает — ставим его через пустой.
+  function refreshTitle() {
+    setTimeout(() => {
+      const title = document.title;
+      document.title = '';
+      document.title = title;
+    });
+  }
 
   // Пробел — пауза/играть, где бы ни был фокус (как в Spotify): и на
   // ползунке громкости, и на кнопке, на которую только что нажали мышкой.
@@ -206,7 +217,7 @@
   $: fullTint = $settings.pageTint === 'full' && ['album', 'artist'].includes(view);
 </script>
 
-<svelte:window on:keydown={onGlobalKey} on:keyup={onGlobalKeyUp} />
+<svelte:window on:keydown={onGlobalKey} on:keyup={onGlobalKeyUp} on:popstate={refreshTitle} />
 
 {#if !authed}
   <Login />
