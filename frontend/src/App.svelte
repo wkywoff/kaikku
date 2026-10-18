@@ -175,12 +175,11 @@
   // закрывается плеер) показывает тот, что был у записи: открыли плеер на
   // одном треке, переключили, закрыли — во вкладке снова первый трек. Тот
   // же document.title заново браузер не замечает — ставим его через пустой.
+  // Сразу в popstate: с таймером старое название успевало мелькнуть.
   function refreshTitle() {
-    setTimeout(() => {
-      const title = document.title;
-      document.title = '';
-      document.title = title;
-    });
+    const title = document.title;
+    document.title = '';
+    document.title = title;
   }
 
   // Пробел — пауза/играть, где бы ни был фокус (как в Spotify): и на
