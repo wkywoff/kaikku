@@ -1,0 +1,120 @@
+# kaikku in one command: cp .env.example .env, fill in the secrets, then
+#   docker compose up -d
+# Images come from ghcr.io (KAIKKU_VERSION in .env); if they can't be pulled,
+# Compose builds them from this checkout. Build from source on purpose:
+#   docker compose up -d --build
+# The site is at http://127.0.0.1:8080 (HTTP_BIND and HTTP_PORT in .env).
+# HTTPS: your own reverse proxy in front (README, "Open it to your phone and
+# the internet").
+
+name: kaikku
+
+x-app: &app
+  image: ghcr.io/wkywoff/kaikku-app:${KAIKKU_VERSION:-latest}
+  build:
+    context: .
+    target: app
+    args:
+      # Shown in Settings when you build from source, e.g.
+      # KAIKKU_BUILD_VERSION=$(git describe --tags --always) docker compose up -d --build
+      VERSION: ${KAIKKU_BUILD_VERSION:-dev}
+  restart: unless-stopped
+  # tini as PID 1: reaps yt-dlp/ffmpeg zombies and passes SIGTERM on.
+  init: true
+  environment: &app-env
+    DATABASE_URL: postgres://kaikku:${POSTGRES_PASSWORD:-kaikku}@postgres:5432/kaikku?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kaikku
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kaikku}
+      POSTGRES_DB: kaikku
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kaikku", "-d", "kaikku"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Migrations: on every `up`, before the API and the worker.
+  migrate:
+    <<: *app
+    command: migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: api
+    environment:
+      <<: *app-env
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 32)}
+      MEDIA_SECRET: ${MEDIA_SECRET:?set MEDIA_SECRET in .env (openssl rand -hex 32)}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:8080}
+      MEDIA_TTL_SECONDS: ${MEDIA_TTL_SECONDS:-600}
+      DEEZER_PROXY: ${DEEZER_PROXY:-}
+      LASTFM_API_KEY: ${LASTFM_API_KEY:-}
+      LASTFM_API_SECRET: ${LASTFM_API_SECRET:-}
+      YTDLP_UPDATE_HOURS: ${YTDLP_UPDATE_HOURS:-24}
+    # DEEZER_PROXY=socks5://host.docker.internal:… reaches a proxy on the host.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - data:/data
+      - ytdlp:/opt/yt-dlp
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      # The first start updates yt-dlp: up to a couple of minutes.
+      start_period: 5m
+    mem_limit: 600m
+
+  worker:
+    <<: *app
+    command: worker
+    environment:
+      <<: *app-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+      AUDIO_KEEP_DAYS: ${AUDIO_KEEP_DAYS:-3}
+    volumes:
+      - data:/data
+      # The API updates yt-dlp; the worker only reads it.
+      - ytdlp:/opt/yt-dlp:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    # On SIGTERM the worker finishes the current download.
+    stop_grace_period: 15m
+    mem_limit: 900m
+
+  web:
+    image: ghcr.io/wkywoff/kaikku-web:${KAIKKU_VERSION:-latest}
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    environment:
+      MEDIA_SECRET: ${MEDIA_SECRET:?set MEDIA_SECRET in .env (openssl rand -hex 32)}
+    volumes:
+      - data:/data:ro
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  data:
+  ytdlp:

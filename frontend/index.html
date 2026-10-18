@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Иконка вкладки — та же, что у установленного приложения (public/icon.svg). -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <!-- viewport-fit=cover: страница рисуется и под полосой жестов внизу
+         (Android, iPhone), как в приложениях; отступы под неё — через
+         env(safe-area-inset-*) у нижних панелей и плеера. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#121212" />
+    <!-- Установка как приложение (PWA): манифест, иконки, сервис-воркер (src/main.js). -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="kaikku" />
+    <title>kaikku</title>
+    <!-- Превью ссылок: сервер ставит сюда og-теги альбома, артиста или
+         плейлиста (internal/api/og.go); здесь — для остальных страниц. -->
+    <!--og--><meta property="og:site_name" content="kaikku" /><meta property="og:title" content="kaikku" /><!--/og-->
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

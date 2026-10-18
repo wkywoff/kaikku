@@ -1,0 +1,736 @@
+<script>
+  // Окно загрузки своего релиза (/upload/<id>, id — k…). Сверху — релиз:
+  // обложка, название, исполнители, тип, дата; ниже — треки (TrackRows).
+  // Файлы и обложка уходят на сервер сразу (файлы — по одному, очередью),
+  // поля — кнопкой «Сохранить». «Опубликовать» проверяет, что всё нужное
+  // есть (то же проверяет сервер), и открывает страницу релиза. Пустые поля
+  // заполняются из тегов первого файла: название альбома, дата, исполнитель
+  // (его остаётся выбрать в подсказках), обложка.
+  import { onMount, onDestroy, tick } from 'svelte';
+  import { api } from '../api.js';
+  import { t } from '../i18n.js';
+  import { navStore, paths, link, navigate, guardLeave } from '../stores/nav.js';
+  import { toast } from '../stores/toast.js';
+  import { openMenu } from '../stores/contextMenu.js';
+  import { setRouteTitle } from '../stores/title.js';
+  import { pageTint } from '../stores/theme.js';
+  import { clearPageCaches } from '../lru.js';
+  import { toSquareJpeg } from '../image.js';
+  import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue } from '../uploads.js';
+  import ArtistPicker from '../components/upload/ArtistPicker.svelte';
+  import TrackRows from '../components/upload/TrackRows.svelte';
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+  import ImagePlus from '@lucide/svelte/icons/image-plus';
+  import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+  import Ellipsis from '@lucide/svelte/icons/ellipsis';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
+  import EyeOff from '@lucide/svelte/icons/eye-off';
+  import ExternalLink from '@lucide/svelte/icons/external-link';
+
+  pageTint().none();
+  const id = $navStore.id;
+
+  let loading = true;
+  let error = '';
+  // Поля релиза.
+  let title = '';
+  let artists = []; // [{ id, name, picture_url }]
+  let recordType = 'single';
+  let recordTouched = false; // выбрали тип сами — больше не подбирается по трекам
+  let releaseDate = '';
+  let coverUrl = '';
+  let coverFromFile = false;
+  let draft = true;
+  let owner = ''; // кто загрузил — если правит не он (админ)
+  let artistQuery = '';
+  const touched = { title: false, releaseDate: false };
+  let rows = []; // строки TrackRows
+  // Что лежит на сервере (то же, что body() без published) — для «есть несохранённое».
+  let server = null;
+  let saving = false;
+  let coverBusy = false;
+  let coverInput;
+  let coverOver = false;
+  let showMissing = false; // нажали «Опубликовать», а чего-то не хватает — подсветить
+
+  const ref = (a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null });
+
+  function rowFrom(tr, prev) {
+    return {
+      key: prev?.key || tr.id,
+      id: tr.id,
+      title: tr.title,
+      durationMs: tr.duration_ms,
+      explicit: !!tr.explicit,
+      artists: tr.artists ? tr.artists.map(ref) : null,
+      state: 'done',
+      progress: 1,
+      error: '',
+      lyrics: prev?.lyrics,
+      lyricsInitial: prev?.lyrics,
+      open: !!prev?.open,
+      busy: false,
+    };
+  }
+
+  const trackBody = (r) => ({ id: r.id, title: r.title.trim(), artists: r.artists ? r.artists.map((a) => a.id) : null, explicit: r.explicit });
+
+  function fill(st) {
+    title = st.title;
+    artists = st.artists.map(ref);
+    releaseDate = st.release_date || '';
+    coverUrl = st.cover_url || '';
+    draft = st.draft;
+    owner = st.owner || '';
+    const pending = rows.filter((r) => !r.id);
+    rows = [...st.tracks.map((tr) => rowFrom(tr, rows.find((r) => r.id === tr.id))), ...pending];
+    recordType = st.record_type || recordTypeFor(rows);
+    recordTouched = st.tracks.length > 0 && recordType !== recordTypeFor(rows);
+    server = {
+      title: st.title,
+      artists: st.artists.map((a) => String(a.id)),
+      record_type: recordType,
+      release_date: st.release_date || '',
+      tracks: st.tracks.map((tr) => trackBody(rowFrom(tr))),
+    };
+  }
+
+  // Тип — по трекам, пока его не выбрали руками.
+  $: if (!loading && !recordTouched) recordType = recordTypeFor(rows);
+
+  $: current = JSON.stringify({
+    title: title.trim(),
+    artists: artists.map((a) => a.id),
+    record_type: recordType,
+    release_date: releaseDate,
+    tracks: rows.filter((r) => r.id).map(trackBody),
+  });
+  $: lyricsDirty = rows.some((r) => r.lyrics !== undefined && r.lyrics !== r.lyricsInitial);
+  $: dirty = !!server && (current !== JSON.stringify(server) || lyricsDirty);
+  $: uploading = rows.some((r) => !r.id && r.state !== 'error');
+  $: problems = missingForPublish({ title, artists, recordType, releaseDate, coverUrl, rows });
+  $: shownMissing = showMissing ? problems : [];
+  $: if (showMissing && !problems.length) showMissing = false;
+  $: setRouteTitle(`upload:${id}`, title.trim() || $t('upload.untitled'));
+
+  // --- загрузка файлов ---
+  const queue = createQueue(
+    (item, onProgress, signal) => api.addReleaseAudio(id, item.file, { onProgress, signal }),
+    () => syncQueue(),
+  );
+
+  function syncQueue() {
+    for (const item of queue.items) {
+      const row = rows.find((r) => r.key === item.key);
+      if (!row || row.id) continue;
+      row.state = item.state;
+      row.progress = item.progress;
+      row.error = item.error;
+      if (item.state === 'done' && item.result) uploaded(row, item.result);
+    }
+    rows = rows;
+  }
+
+  function uploaded(row, { track, tags, cover_url }) {
+    Object.assign(row, rowFrom(track, row));
+    row.title = track.title;
+    server.tracks = [...server.tracks, trackBody(row)]; // сервер добавил трек в конец
+    server = server;
+    const pre = prefillFromTags({ title, artists }, tags, touched);
+    if (pre.title) title = pre.title;
+    if (pre.releaseDate) {
+      releaseDate = pre.releaseDate;
+      touched.releaseDate = true;
+    }
+    if (pre.artistQuery && !artistQuery && !artists.length) artistQuery = pre.artistQuery;
+    if (cover_url && !coverUrl) {
+      coverUrl = cover_url;
+      coverFromFile = true;
+    }
+  }
+
+  function addFiles(files) {
+    const ok = [];
+    for (const file of files) {
+      if (file.size > MAX_AUDIO_BYTES) {
+        toast($t('upload.tooBig', { name: file.name }), 'error');
+        continue;
+      }
+      ok.push(file);
+    }
+    if (!ok.length) return;
+    const before = queue.items.length;
+    queue.add(ok);
+    rows = [
+      ...rows,
+      ...queue.items.slice(before).map((item) => ({
+        key: item.key, // по нему syncQueue находит строку
+        id: null,
+        title: item.file.name,
+        durationMs: 0,
+        explicit: false,
+        artists: null,
+        state: item.state,
+        progress: 0,
+        error: '',
+        open: false,
+      })),
+    ];
+    syncQueue();
+  }
+
+  function retryRow(row) {
+    const item = queue.items.find((i) => i.key === row.key);
+    if (item) queue.retry(item);
+  }
+
+  async function removeRow(row) {
+    if (!row.id) {
+      const item = queue.items.find((i) => i.key === row.key);
+      if (item && item.state !== 'error' && item.state !== 'queued') return toast($t('upload.waitUpload'));
+      if (item) item.state = 'error'; // из очереди — не грузить
+      rows = rows.filter((r) => r !== row);
+      return;
+    }
+    if (!confirm($t('upload.deleteTrackConfirm', { title: row.title }))) return;
+    try {
+      await api.deleteUploadTrack(row.id);
+      rows = rows.filter((r) => r !== row);
+      server.tracks = server.tracks.filter((tr) => tr.id !== row.id);
+      server = server;
+      clearPageCaches();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  async function replaceAudio({ row, file }) {
+    if (file.size > MAX_AUDIO_BYTES) return toast($t('upload.tooBig', { name: file.name }), 'error');
+    row.busy = true;
+    rows = rows;
+    try {
+      const res = await api.replaceTrackAudio(row.id, file);
+      row.durationMs = res.duration_ms;
+      toast($t('upload.replaced'));
+      clearPageCaches();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      row.busy = false;
+      rows = rows;
+    }
+  }
+
+  // --- обложка ---
+  async function setCover(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    coverBusy = true;
+    try {
+      const blob = await toSquareJpeg(file);
+      const res = await api.uploadReleaseCover(id, blob);
+      coverUrl = res.cover_url;
+      coverFromFile = false;
+      clearPageCaches();
+    } catch (e) {
+      toast(e.message === 'image too large' ? $t('upload.coverTooBig') : e.message, 'error');
+    } finally {
+      coverBusy = false;
+    }
+  }
+
+  // --- сохранение ---
+  function body(published) {
+    const b = JSON.parse(current);
+    if (published !== undefined) b.published = published;
+    return b;
+  }
+
+  async function save(published) {
+    if (published && problems.length) {
+      showMissing = true;
+      return;
+    }
+    saving = true;
+    try {
+      // Тексты — до релиза: публикация не должна обогнать их.
+      for (const r of rows) {
+        if (r.id && r.lyrics !== undefined && r.lyrics !== r.lyricsInitial) {
+          await api.saveTrackLyrics(r.id, r.lyrics);
+          r.lyricsInitial = r.lyrics;
+        }
+      }
+      const st = await api.saveRelease(id, body(published));
+      fill(st);
+      clearPageCaches();
+      if (published === true) {
+        toast($t('upload.published'));
+        await tick(); // dirty пересчитается — защита от ухода не спросит зря
+        navigate(paths.album(id));
+      } else toast($t(published === false ? 'upload.unpublished' : 'upload.saved'));
+    } catch (e) {
+      if (e.data?.missing?.length) showMissing = true; // сервер проверяет то же, что problems
+      else toast(e.message, 'error');
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function deleteRelease() {
+    if (!confirm($t('upload.deleteConfirm', { title: title.trim() || $t('upload.untitled') }))) return;
+    try {
+      await api.deleteRelease(id);
+      unguard();
+      queue.stop();
+      clearPageCaches();
+      toast($t('upload.deleted'));
+      navigate(paths.uploads(), { replace: true });
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  function moreMenu(e) {
+    openMenu(e, [
+      ...(!draft ? [{ label: $t('upload.openRelease'), icon: ExternalLink, href: paths.album(id) }] : []),
+      ...(!draft ? [{ label: $t('upload.unpublish'), icon: EyeOff, onClick: () => save(false) }] : []),
+      { label: $t('upload.deleteRelease'), icon: Trash2, danger: true, onClick: deleteRelease },
+    ]);
+  }
+
+  // --- уйти со страницы ---
+  const unguard = guardLeave(() => !(dirty || uploading) || confirm($t('upload.leaveConfirm')));
+  function beforeUnload(e) {
+    if (dirty || uploading) e.preventDefault();
+  }
+
+  onMount(async () => {
+    try {
+      fill(await api.getRelease(id));
+    } catch (e) {
+      error = e.status === 404 ? $t('upload.notFound') : e.message;
+    } finally {
+      loading = false;
+    }
+  });
+  onDestroy(() => {
+    unguard();
+    queue.stop();
+  });
+
+  const missingText = (codes) => codes.map((c) => $t(`upload.missing.${c}`)).join(', ');
+  $: bad = (code) => shownMissing.includes(code);
+</script>
+
+<svelte:window on:beforeunload={beforeUnload} />
+
+<div class="page-pad upload">
+  <a class="back" href={paths.uploads()} use:link><ArrowLeft size={18} /> {$t('upload.title')}</a>
+
+  {#if error}
+    <p class="error-text">{error}</p>
+  {:else if loading}
+    <div class="loading"><LoaderCircle class="spin" size={24} /></div>
+  {:else}
+    <header class="head">
+      <h1>{title.trim() || $t('upload.untitled')}</h1>
+      <span class="state" class:live={!draft}>{$t(draft ? 'upload.draftNote' : 'upload.liveNote')}</span>
+      {#if owner}<span class="state">{$t('upload.by', { name: owner })}</span>{/if}
+    </header>
+    <p class="legend">{$t('upload.legend')}</p>
+
+    <section class="release">
+      <div class="cover-col">
+        <span class="label">{$t('upload.cover')} <b>*</b></span>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="cover"
+          class:over={coverOver}
+          class:invalid={bad('cover')}
+          on:dragover|preventDefault={() => (coverOver = true)}
+          on:dragleave={() => (coverOver = false)}
+          on:drop|preventDefault={(e) => ((coverOver = false), setCover(e.dataTransfer?.files?.[0]))}
+        >
+          <button type="button" class="cover-btn" aria-label={$t(coverUrl ? 'upload.changeCover' : 'upload.cover')} on:click={() => coverInput.click()}>
+            {#if coverUrl}
+              <img src={coverUrl} alt="" />
+              <span class="cover-overlay"><ImagePlus size={28} />{$t('upload.changeCover')}</span>
+            {:else}
+              <span class="cover-empty"><ImagePlus size={36} /><span>{$t('upload.coverDrop')}</span></span>
+            {/if}
+            {#if coverBusy}<span class="cover-busy"><LoaderCircle class="spin" size={28} /></span>{/if}
+          </button>
+        </div>
+        <input bind:this={coverInput} type="file" accept="image/*" hidden on:change={(e) => (setCover(e.currentTarget.files[0]), (e.currentTarget.value = ''))} />
+        <small>{$t(coverFromFile ? 'upload.coverFromFile' : 'upload.coverHint')}</small>
+      </div>
+
+      <div class="fields">
+        <label class="field">
+          <span class="label">{$t('upload.releaseTitle')} <b>*</b></span>
+          <input
+            type="text"
+            maxlength="300"
+            class:invalid={bad('title')}
+            placeholder={$t('upload.titlePlaceholder')}
+            bind:value={title}
+            on:input={() => (touched.title = true)}
+          />
+        </label>
+        <div class="field">
+          <label class="label" for="release-artists">{$t('upload.artists')} <b>*</b></label>
+          <ArtistPicker bind:artists bind:query={artistQuery} invalid={bad('artists')} inputId="release-artists" />
+          <small>{$t('upload.artistsHint')}</small>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <span class="label" id="release-type">{$t('upload.type')} <b>*</b></span>
+            <div class="segmented" role="radiogroup" aria-labelledby="release-type">
+              {#each RECORD_TYPES as type}
+                <button type="button" role="radio" aria-checked={recordType === type} class:active={recordType === type}
+                  on:click={() => ((recordType = type), (recordTouched = true))}>{$t(`type.${type}`)}</button>
+              {/each}
+            </div>
+            {#if !recordTouched}<small>{$t('upload.typeAuto')}</small>{/if}
+          </div>
+          <label class="field">
+            <span class="label">{$t('upload.date')} <b>*</b></span>
+            <input type="date" class:invalid={bad('release_date')} bind:value={releaseDate} on:input={() => (touched.releaseDate = true)} />
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="tracks">
+      <h2>{$t('upload.tracks')} <b>*</b>{#if rows.length}<span class="count">{rows.length}</span>{/if}</h2>
+      <TrackRows
+        bind:rows
+        releaseArtists={artists}
+        invalid={bad('tracks')}
+        invalidTitles={bad('track_titles')}
+        on:files={(e) => addFiles(e.detail)}
+        on:rejected={() => toast($t('upload.notAudio'), 'error')}
+        on:retry={(e) => retryRow(e.detail)}
+        on:remove={(e) => removeRow(e.detail)}
+        on:replace={(e) => replaceAudio(e.detail)}
+      />
+    </section>
+  {/if}
+</div>
+
+{#if !loading && !error}
+  <div class="savebar">
+    <div class="savebar-in page-pad">
+      <p class="status" class:warn={shownMissing.length}>
+        {#if shownMissing.length}
+          {$t('upload.missingPrefix', { list: missingText(shownMissing) })}
+        {:else if uploading}
+          {$t('upload.uploadingFiles')}
+        {:else if dirty}
+          {$t('upload.unsaved')}
+        {:else}
+          {$t(draft ? 'upload.savedDraft' : 'upload.savedLive')}
+        {/if}
+      </p>
+      <div class="buttons">
+        <button type="button" class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.more')} on:click={moreMenu}><Ellipsis size={22} /></button>
+        <button type="button" class="pill outline" disabled={!dirty || saving} on:click={() => save()}>
+          {#if saving}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.save')}
+        </button>
+        {#if draft}
+          <button type="button" class="pill publish" disabled={saving} on:click={() => save(true)}>{$t('upload.publish')}</button>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .upload {
+    padding-top: 16px;
+    padding-bottom: 32px;
+    max-width: 980px;
+  }
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+  @media (hover: hover) {
+    .back:hover {
+      color: var(--text);
+    }
+  }
+  .loading {
+    padding: 48px 0;
+    color: var(--text-dim);
+  }
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-top: 12px;
+  }
+  h1 {
+    font-size: 30px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .state {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--bg-press);
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .state.live {
+    background: rgba(30, 215, 96, 0.15);
+    color: var(--ok);
+  }
+  .legend {
+    margin: 8px 0 24px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  b {
+    color: var(--danger);
+    font-weight: 700;
+  }
+  .release {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 28px;
+  }
+  .cover-col,
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .label {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  small {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-dim);
+  }
+  .cover {
+    width: 220px;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    border: 2px dashed #4a4a4a;
+    overflow: hidden;
+  }
+  .cover.over {
+    border-color: var(--text);
+  }
+  .cover.invalid {
+    border-color: var(--danger);
+  }
+  .cover-btn {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .cover-empty,
+  .cover-overlay,
+  .cover-busy {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cover-overlay {
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .cover-btn:focus-visible .cover-overlay {
+    opacity: 1;
+  }
+  @media (hover: hover) {
+    .cover-btn:hover .cover-overlay {
+      opacity: 1;
+    }
+  }
+  .cover-busy {
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text);
+  }
+  .fields {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+  }
+  .row2 {
+    display: grid;
+    grid-template-columns: auto minmax(160px, 220px);
+    gap: 20px;
+    align-items: start;
+  }
+  input[type='text'],
+  input[type='date'] {
+    height: 40px;
+    padding: 0 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: #3e3e3e;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    color-scheme: dark;
+  }
+  input:focus {
+    outline: none;
+    border-color: #6a6a6a;
+    background: #333;
+  }
+  input.invalid {
+    border-color: var(--danger);
+  }
+  .segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: var(--bg-card);
+    width: fit-content;
+  }
+  .segmented button {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+  .segmented button.active {
+    background: var(--text);
+    color: var(--bg);
+  }
+  .tracks {
+    margin-top: 36px;
+  }
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+  .count {
+    margin-left: 6px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-dim);
+  }
+  .savebar {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    margin-top: 8px;
+    background: rgba(18, 18, 18, 0.94);
+    backdrop-filter: blur(8px);
+    /* Фон и линия сверху — во всю ширину, хотя панель в колонке страницы
+       (App.svelte): тени без размытия продолжают их в стороны, clip-path
+       оставляет только высоту панели и линию над ней. */
+    box-shadow:
+      0 0 0 100vmax rgba(18, 18, 18, 0.94),
+      0 -1px 0 100vmax var(--border);
+    clip-path: inset(-1px -100vmax 0);
+  }
+  .savebar-in {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    max-width: 980px;
+  }
+  .status {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+  .status.warn {
+    color: var(--danger);
+  }
+  .buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .buttons .pill {
+    height: 40px;
+    padding: 0 20px;
+    font-weight: 700;
+  }
+  .publish {
+    background: var(--text);
+    color: var(--bg);
+  }
+  @media (hover: hover) {
+    .publish:hover:not(:disabled) {
+      background: var(--text);
+      transform: scale(1.04);
+    }
+  }
+  .pill:disabled {
+    opacity: 0.5;
+  }
+  @media (max-width: 720px) {
+    .release {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 20px;
+    }
+    .cover,
+    .cover-col {
+      width: min(220px, 100%);
+    }
+    .row2 {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    h1 {
+      font-size: 24px;
+    }
+    .savebar-in {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .status {
+      flex-basis: 100%;
+    }
+    .buttons {
+      width: 100%;
+      justify-content: flex-end;
+    }
+    /* «Мини-альбом» длинный: четыре типа должны влезть в одну строку */
+    .segmented button {
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+  }
+</style>

@@ -1,0 +1,270 @@
+/* Тёмная тема в духе Spotify / Apple Music. Акцентные цвета страниц и плеера
+   динамические — считаются из обложки (lib/color.js) и приходят через
+   --page-*, --player-* на соответствующих элементах; здесь только нейтральная
+   база.
+
+   Наведение (:hover) везде — только внутри @media (hover: hover), то есть
+   с мышью: на iPhone оно залипает после касания, съедает первый тап и
+   попадает в снимок страницы для свайпа «назад». */
+:root {
+  --bg: #121212;
+  --bg-elevated: #181818;
+  --bg-card: #1f1f1f;
+  --bg-hover: #2a2a2a;
+  --bg-press: #333333;
+  --bg-input: #242424;
+  --border: #2e2e2e;
+  --text: #ffffff;
+  --text-dim: #b3b3b3;
+  --text-faint: #7a7a7a;
+  --danger: #f15e6c;
+  --ok: #1ed760;
+
+  /* Значения по умолчанию, пока обложка не посчитана. */
+  --accent: #e8e8e8;
+  --accent-text: #121212;
+
+  /* Onest: кириллица и латиница нарисованы как одно семейство — раньше
+     Space Grotesk без кириллицы подменялся системным шрифтом. */
+  --font: 'Onest Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Заголовки и логотип — Unbounded, широкий акцидентный (как у Spotify:
+     свой шрифт для заголовков, простой — для остального). Чего в нём нет
+     (иероглифы и т.п.) — берётся из Onest. */
+  --font-display: 'Unbounded', 'Onest Variable', system-ui, sans-serif;
+
+  --radius: 8px;
+  --topbar-h: 64px;
+  --player-h: 88px;
+  --tabbar-h: 56px; /* нижняя панель на телефоне (BottomNav) */
+
+  color-scheme: dark;
+}
+
+/* Цвета страницы (--page-*, App.svelte) зарегистрированы как цвета, чтобы
+   их смена анимировалась и внутри градиентов. */
+@property --page-header {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #121212;
+}
+/* Прокрутка страницы для подкраски под полосой прокрутки (App.svelte);
+   не наследуется — меняется на каждом кадре прокрутки, и пересчитывать
+   стили всей страницы из-за неё незачем. */
+@property --tint-scroll {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+/* Сколько снизу текста песни закрыто кнопками плеера (NowPlaying,
+   LyricsView): анимируется, когда они прячутся, поэтому зарегистрировано. */
+@property --lyrics-cut {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+/* Левое затухание бегущей строки (lib/marquee.js): анимируется, поэтому
+   зарегистрировано; 0 — в покое первая буква целая. */
+@property --marquee-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --page-flat {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #121212;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+input {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+}
+/* iPhone приближает страницу, когда фокус попадает в поле со шрифтом
+   меньше 16 px, и сам обратно не отдаляет. На сенсорных экранах все поля
+   ввода — 16 px (!important: у полей в компонентах свой размер). */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='file']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Длительность, номера треков — табличные цифры. */
+.num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.muted {
+  color: var(--text-dim);
+}
+
+.error-text {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* Круглая иконка-кнопка (плеер, топбар, действия на страницах). */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--text-dim);
+  transition:
+    color 0.15s,
+    transform 0.1s,
+    background-color 0.15s;
+}
+@media (hover: hover) {
+  .icon-btn:hover:not(:disabled) {
+    color: var(--text);
+  }
+}
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.icon-btn.on {
+  color: var(--accent);
+}
+
+/* Пилюля: чипы фильтров, вторичные кнопки. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+}
+@media (hover: hover) {
+  .pill:hover:not(:disabled) {
+    background: var(--bg-press);
+  }
+}
+/* Выбранная — белая и под курсором: :hover:not() весит больше, чем .active. */
+.pill.active {
+  background: var(--text);
+  color: var(--bg);
+}
+@media (hover: hover) {
+  .pill.active:hover:not(:disabled) {
+    background: var(--text);
+    color: var(--bg);
+  }
+}
+.pill.outline {
+  background: transparent;
+  border: 1px solid var(--text-faint);
+}
+@media (hover: hover) {
+  .pill.outline:hover:not(:disabled) {
+    border-color: var(--text);
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Обновляет yt-dlp[default] в /opt/yt-dlp (volume, общий у API и воркера).
+# YouTube регулярно ломает старые версии, поэтому образ не пересобирают:
+#   docker compose exec api update-yt-dlp --restart
+# --restart: если версия сменилась, перезапустить API (его тёплый помощник
+# держит yt-dlp загруженным). Без новой версии ничего не трогает.
+set -eu
+
+VENV=/opt/yt-dlp
+pip_() { timeout 300 "$VENV/bin/pip" --disable-pip-version-check --no-cache-dir "$@"; }
+versions() { pip_ list --format=freeze 2>/dev/null | grep -iE '^yt-dlp(-ejs)?==' | tr '\n' ' ' || true; }
+
+# Один запуск за раз (старт API и ночное обновление могут совпасть).
+exec 9>/tmp/update-yt-dlp.lock
+flock 9
+
+# venv из старого образа мог сломаться (новый Python в новом образе) — заново.
+if ! "$VENV/bin/python" -c 'import yt_dlp' 2>/dev/null; then
+  echo "yt-dlp: the venv is broken, recreating it"
+  /usr/bin/python3 -m venv --clear "$VENV"
+fi
+
+before=$(versions)
+if ! pip_ install --quiet --upgrade 'yt-dlp[default]'; then
+  echo "yt-dlp: pip install failed" >&2
+  "$VENV/bin/python" -c 'import yt_dlp' 2>/dev/null || exit 1
+  exit 0
+fi
+after=$(versions)
+
+if [ "$before" = "$after" ]; then
+  echo "yt-dlp up to date: $after"
+else
+  echo "yt-dlp updated: ${before:-none} -> $after"
+  if [ "${1:-}" = "--restart" ]; then
+    # PID 1 — init контейнера (или сам API); SIGTERM — штатная остановка,
+    # Docker поднимет контейнер заново.
+    kill -TERM 1
+  fi
+fi

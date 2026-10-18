@@ -1,0 +1,125 @@
+# kaikku в Docker: сайт, /api/ и файлы. Без TLS: HTTPS — на вашем reverse proxy перед этим контейнером (README).
+# ${MEDIA_SECRET} подставляет образ nginx при старте (envsubst) из .env.
+#
+# НЕ добавлять `error_page 400 403 404 405 = @close` / `return 444`: плеер
+# должен отличать протухшую ссылку (403/410 от secure_link) от сетевой ошибки.
+
+# Адрес клиента — из X-Forwarded-For, если запрос пришёл от reverse proxy из
+# частной сети (или с этой машины): иначе лимит входа был бы общим на всех.
+real_ip_header    X-Forwarded-For;
+real_ip_recursive on;
+set_real_ip_from  127.0.0.1;
+set_real_ip_from  10.0.0.0/8;
+set_real_ip_from  172.16.0.0/12;
+set_real_ip_from  192.168.0.0/16;
+set_real_ip_from  fc00::/7;
+
+limit_req_zone $binary_remote_addr zone=kaikku_login:10m rate=30r/m;
+
+# DNS Docker: API может перезапуститься с другим адресом.
+resolver 127.0.0.11 valid=10s ipv6=off;
+upstream kaikku_api {
+  zone kaikku_api 64k;
+  server api:8080 resolve;
+}
+
+server {
+  listen 80;
+  server_name _;
+  server_tokens off;
+  root /usr/share/nginx/html;
+
+  add_header X-Content-Type-Options "nosniff"                         always;
+  add_header X-Frame-Options        "SAMEORIGIN"                      always;
+  add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+
+  # Политика содержимого: всё только со своего домена (картинки Deezer идут через /api/img).
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
+
+  gzip on;
+  gzip_proxied any;
+  gzip_vary on;
+  gzip_min_length 1024;
+  gzip_types application/javascript text/css application/json image/svg+xml application/manifest+json;
+
+  client_max_body_size 1m;
+
+  proxy_http_version 1.1;
+  proxy_set_header Host              $host;
+  proxy_set_header X-Real-IP         $remote_addr;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  # Обложки — публично, без подписи (иначе ломается кеширование <img>).
+  location /media/covers/ {
+    alias /data/storage/covers/;
+    expires 1d;
+  }
+
+  # Треки — secure_link + Range. alias — тот же каталог, что STORAGE_DIR
+  # воркера: подпись считается от $uri (/media/<key>).
+  location /media/ {
+    secure_link $arg_st,$arg_e;
+    secure_link_md5 "$secure_link_expires$uri ${MEDIA_SECRET}";
+    if ($secure_link = "")  { return 403; }
+    if ($secure_link = "0") { return 410; }
+    alias /data/storage/;
+  }
+
+  location ~ ^/api/(login|register)$ {
+    limit_req zone=kaikku_login burst=5 nodelay;
+    proxy_pass http://kaikku_api;
+  }
+
+  # Свой аудиофайл трека (админ): до 200 МБ и перекодирование до минут.
+  location ~ ^/api/tracks/deezer/[0-9]+/audio$ {
+    client_max_body_size 200m;
+    proxy_read_timeout 360s;
+    proxy_pass http://kaikku_api;
+  }
+
+  # Загрузка своих релизов. Список — без слеша, иначе редирект на /api/uploads/.
+  location = /api/uploads {
+    proxy_pass http://kaikku_api;
+  }
+  location /api/uploads/ {
+    client_max_body_size 200m;
+    proxy_read_timeout 420s;
+    proxy_pass http://kaikku_api;
+  }
+
+  location /api/ {
+    proxy_pass http://kaikku_api;
+  }
+
+  # Subsonic API для приложений.
+  location /rest/ {
+    proxy_pass http://kaikku_api;
+  }
+
+  # Ссылки на альбом, артиста и плейлист — через API (og-теги для превью).
+  # API недоступен — обычная страница.
+  location ~ ^/(album|artist|playlist)/[^/]+$ {
+    proxy_pass http://kaikku_api;
+    proxy_intercept_errors on;
+    error_page 404 500 502 503 504 = @spa;
+  }
+  location @spa {
+    try_files /index.html =404;
+    expires -1;
+  }
+
+  # Файлы сборки с хешем в имени не меняются — кеш на год.
+  location /assets/ {
+    expires 1y;
+  }
+  # Страница и сервис-воркер — всегда свежие.
+  location ~ ^/(index\.html|sw\.js)$ {
+    expires -1;
+  }
+
+  # SPA: всё неизвестное → index.html.
+  location / {
+    try_files $uri /index.html;
+  }
+}
