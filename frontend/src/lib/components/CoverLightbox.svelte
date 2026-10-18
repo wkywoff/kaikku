@@ -42,6 +42,7 @@
   }
   img {
     width: min(640px, 86vw, calc(100vh - 140px));
+    width: min(640px, 86vw, calc(100dvh - 140px)); /* видимая высота, без адресной строки */
     aspect-ratio: 1;
     object-fit: cover;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);

@@ -126,6 +126,7 @@
     min-width: 220px;
     max-width: min(340px, calc(100vw - 16px));
     max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px); /* видимая высота: без адресной строки браузера на телефоне */
     overflow-y: auto;
     padding: 4px;
     border-radius: 6px;
