@@ -75,4 +75,5 @@ FROM nginx:1.30-alpine AS web
 ENV NGINX_ENVSUBST_FILTER=^MEDIA_SECRET$
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --chmod=755 docker/security-txt.sh /docker-entrypoint.d/40-security-txt.sh
 COPY --from=frontend /src/dist/ /usr/share/nginx/html/
