@@ -38,6 +38,13 @@ server {
   # закрывает — иначе поисковик не увидит этот заголовок.
   add_header X-Robots-Tag           "noindex"                         always;
 
+  # Чужие окна не получают ссылку на наше (window.opener), и наоборот.
+  add_header Cross-Origin-Opener-Policy "same-origin" always;
+  # Плееру не нужны камера, микрофон, геолокация, платежи и устройства —
+  # выключены и для встроенных фреймов. Полный экран, буфер обмена и
+  # «Поделиться» (web-share) остаются: ими пользуется плеер.
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), midi=(), browsing-topics=()" always;
+
   # Политика содержимого: всё только со своего домена (картинки Deezer идут через /api/img).
   add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
 
