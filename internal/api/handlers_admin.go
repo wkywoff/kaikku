@@ -328,8 +328,7 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 	// админа и станет треком.
 	missing := false
 	if err := s.DB.QueryRow(`SELECT storage_key FROM tracks WHERE deezer_id = $1`, dz).Scan(&oldKey); err == sql.ErrNoRows {
-		if s.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM ingest_jobs WHERE source_ref = $1 AND status IN ('failed', 'done'))`,
-			"deezer:"+dz).Scan(&missing); !missing {
+		if missing = s.trackMissing(dz); !missing {
 			writeError(w, http.StatusConflict, "the track is not in the library yet")
 			return
 		}

@@ -99,6 +99,19 @@ func TestEditTrackByDeezerID(t *testing.T) {
 		t.Errorf("after reset: %+v", edit)
 	}
 
+	// Не скачался (задача упала) — окно правки даёт загрузить свой файл.
+	var missing struct{ Missing bool }
+	json.Unmarshal(call(t, router, "GET", "/api/tracks/deezer/501/edit", token, "", http.StatusOK), &missing)
+	if missing.Missing {
+		t.Error("a song nobody tried to download is not missing")
+	}
+	db.Exec(`INSERT INTO ingest_jobs (source_ref, title, artist_name, album_artist_name, album_title, duration_ms, status)
+	         VALUES ('deezer:501', 'Album Track One', 'A', 'A', 'Album', 200000, 'failed')`)
+	json.Unmarshal(call(t, router, "GET", "/api/tracks/deezer/501/edit", token, "", http.StatusOK), &missing)
+	if !missing.Missing {
+		t.Error("a failed download must offer an audio upload")
+	}
+
 	// Скачанный — правится его строка.
 	var artistID, albumID, trackID string
 	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('Test Artist', '1') RETURNING id`).Scan(&artistID)

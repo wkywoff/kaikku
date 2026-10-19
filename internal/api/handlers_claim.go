@@ -83,7 +83,19 @@ type deezerTrackEdit struct {
 	TrackNo   *int   `json:"track_no"`
 	DiscNo    *int   `json:"disc_no"`
 	Edited    bool   `json:"edited"`
+	// Missing — трека нет в медиатеке, но его можно загрузить файлом: задача
+	// упала (на YouTube не нашлось или не скачалось) или файл удалили.
+	Missing bool `json:"missing,omitempty"`
 	trackCreditsState
+}
+
+// trackMissing — трека нет в медиатеке, а его задача закончилась (упала или
+// файл удалили как неслушаемый): файл админа может стать треком.
+func (s *Server) trackMissing(dz string) bool {
+	var missing bool
+	s.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM ingest_jobs WHERE source_ref = $1 AND status IN ('failed', 'done'))`,
+		"deezer:"+dz).Scan(&missing)
+	return missing
 }
 
 func (s *Server) libraryTrackByDeezer(dz string) (string, error) {
@@ -112,6 +124,7 @@ func (s *Server) handleGetDeezerTrackEdit(w http.ResponseWriter, r *http.Request
 			return
 		}
 		resp.Title = t.Title
+		resp.Missing = s.trackMissing(dz)
 		trackNo = sql.NullInt64{Int64: int64(t.TrackNo), Valid: t.TrackNo > 0}
 		discNo = sql.NullInt64{Int64: int64(t.DiscNo), Valid: t.DiscNo > 0}
 		var et string

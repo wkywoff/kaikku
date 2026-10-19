@@ -466,6 +466,9 @@
               {#if toolBusy === 'audio'}<LoaderCircle class="spin" size={16} />{:else}<Download size={16} />{/if}
               {$t('edit.redownload')}
             </button>
+          {/if}
+          <!-- Не скачался (missing) — свой файл и станет треком. -->
+          {#if item.library_id || item.missing}
             <button type="button" class="tool" disabled={!!toolBusy} on:click={() => audioInput.click()}>
               {#if toolBusy === 'upload'}<LoaderCircle class="spin" size={16} />{:else}<FileMusic size={16} />{/if}
               {#if uploadPct === null}{$t('edit.uploadAudio')}
