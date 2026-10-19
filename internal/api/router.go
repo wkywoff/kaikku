@@ -143,6 +143,7 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("DELETE /api/me/artists/{id}", s.authed(s.handleUnfollow))
 	mux.Handle("GET /api/me/releases", s.authed(s.handleNewReleases))
 	mux.Handle("POST /api/me/plays", s.authed(s.handleRecordPlay))
+	mux.Handle("POST /api/me/plays/{id}/listened", s.authed(s.handlePlayListened))
 	mux.Handle("GET /api/me/lastfm", s.authed(s.handleLastfmStatus))
 	mux.Handle("POST /api/me/lastfm", s.authed(s.handleLastfmLink))
 	mux.Handle("PATCH /api/me/lastfm", s.authed(s.handleLastfmSettings))

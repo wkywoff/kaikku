@@ -132,14 +132,14 @@ func TestMixes_API(t *testing.T) {
 	call(t, router, "GET", "/api/me/mixes/Tag-Phonk", token, "", http.StatusNotFound)
 
 	// Включённое из микса — в «Недавно прослушанном» карточкой микса.
-	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888","context":{"kind":"mix","id":"tag-phonk"}}`, http.StatusNoContent)
+	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888","context":{"kind":"mix","id":"tag-phonk"}}`, http.StatusOK)
 	var recent struct{ Items []recentItem }
 	json.Unmarshal(call(t, router, "GET", "/api/me/recent", token, "", http.StatusOK), &recent)
 	if len(recent.Items) == 0 || recent.Items[0].Kind != "mix" || recent.Items[0].Mix.Tag != "phonk" {
 		t.Fatalf("recent: %+v", recent.Items)
 	}
 	// Несуществующий микс — как трек альбома.
-	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888","context":{"kind":"mix","id":"tag-jazz"}}`, http.StatusNoContent)
+	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888","context":{"kind":"mix","id":"tag-jazz"}}`, http.StatusOK)
 	var kind string
 	db.QueryRow(`SELECT context_kind FROM plays ORDER BY id DESC LIMIT 1`).Scan(&kind)
 	if kind != "album" {

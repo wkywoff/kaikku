@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -24,7 +25,8 @@ type playContext struct {
 }
 
 // handleRecordPlay — клиент присылает трек, дослушанный до 30 секунд (или до
-// половины), и откуда его включили.
+// половины), и откуда его включили. Ответ — id прослушивания: по нему плеер
+// потом сообщает, сколько трек играл (handlePlayListened).
 func (s *Server) handleRecordPlay(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	var req struct {
@@ -47,11 +49,39 @@ func (s *Server) handleRecordPlay(w http.ResponseWriter, r *http.Request) {
 		s.asTracklistOf(ctx.ID, track)
 	}
 	meta, _ := json.Marshal(track)
-	if _, err := s.DB.Exec(
-		`INSERT INTO plays (user_id, deezer_id, meta, context_kind, context_id, context_meta) VALUES ($1, $2, $3, $4, $5, $6)`,
+	var id int64
+	if err := s.DB.QueryRow(
+		`INSERT INTO plays (user_id, deezer_id, meta, context_kind, context_id, context_meta) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 		userID, req.DeezerID, meta, ctx.Kind, ctx.ID, ctxMeta,
-	); err != nil {
+	).Scan(&id); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not record the play")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"id": id})
+}
+
+// handlePlayListened — сколько трек реально играл за прослушивание (ms, без
+// перемоток): по нему итоги года считают минуты. Плеер присылает его
+// несколько раз за прослушивание — остаётся наибольшее, не длиннее трека.
+func (s *Server) handlePlayListened(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var req struct {
+		Ms int `json:"ms"`
+	}
+	if err != nil || json.NewDecoder(r.Body).Decode(&req) != nil || req.Ms < 0 {
+		writeError(w, http.StatusBadRequest, "ms must be a number of milliseconds")
+		return
+	}
+	res, err := s.DB.Exec(
+		`UPDATE plays SET listened_ms = GREATEST(COALESCE(listened_ms, 0),
+		        CASE WHEN COALESCE((meta->>'duration_ms')::int, 0) > 0 THEN LEAST($1, (meta->>'duration_ms')::int) ELSE $1 END)
+		  WHERE id = $2 AND user_id = $3`, req.Ms, id, currentUser(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save the play")
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		writeError(w, http.StatusNotFound, "no such play")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

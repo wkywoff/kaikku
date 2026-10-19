@@ -121,7 +121,10 @@ func (s *Server) handleWrapped(w http.ResponseWriter, r *http.Request) {
 type wrappedPlay struct {
 	trackID, title, artist, artistID, album, albumID, cover, isrc string
 	durationMs                                                    int
-	at                                                            time.Time
+	// listenedMs — сколько трек реально играл; у старых прослушиваний —
+	// его длина. Из него минуты; из durationMs — одна ли это запись.
+	listenedMs int
+	at         time.Time
 }
 
 // wrappedCounter — прослушивания трека, исполнителя или альбома.
@@ -224,7 +227,8 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 	rows, err := s.DB.Query(
 		`SELECT deezer_id, played_at, COALESCE(meta->>'title', ''), COALESCE(meta->>'artist', ''),
 		        COALESCE(meta->>'artist_id', ''), COALESCE(meta->>'album', ''), COALESCE(meta->>'album_id', ''),
-		        COALESCE(meta->>'cover_url', ''), COALESCE((meta->>'duration_ms')::int, 0), COALESCE(meta->>'isrc', '')
+		        COALESCE(meta->>'cover_url', ''), COALESCE((meta->>'duration_ms')::int, 0), COALESCE(meta->>'isrc', ''),
+		        COALESCE(listened_ms, (meta->>'duration_ms')::int, 0)
 		   FROM plays
 		  WHERE user_id = $1 AND played_at >= $2 AND played_at < $3
 		  ORDER BY played_at`, userID, from, to)
@@ -242,7 +246,7 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 	var totalMs int64
 	for rows.Next() {
 		var p wrappedPlay
-		if err := rows.Scan(&p.trackID, &p.at, &p.title, &p.artist, &p.artistID, &p.album, &p.albumID, &p.cover, &p.durationMs, &p.isrc); err != nil {
+		if err := rows.Scan(&p.trackID, &p.at, &p.title, &p.artist, &p.artistID, &p.album, &p.albumID, &p.cover, &p.durationMs, &p.isrc, &p.listenedMs); err != nil {
 			return nil, err
 		}
 		if firstPlay == nil {
@@ -250,11 +254,11 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 			firstPlay = &fp
 		}
 		st.Plays++
-		totalMs += int64(p.durationMs)
+		totalMs += int64(p.listenedMs)
 		local := p.at.In(loc)
-		st.Months[local.Month()-1] += p.durationMs
+		st.Months[local.Month()-1] += p.listenedMs
 		st.Hours[local.Hour()]++
-		days[local.Format("2006-01-02")] += p.durationMs
+		days[local.Format("2006-01-02")] += p.listenedMs
 		bump := func(m map[string]*counter, key string) {
 			if key == "" {
 				return
@@ -265,7 +269,7 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 				m[key] = c
 			}
 			c.plays++
-			c.ms += p.durationMs
+			c.ms += p.listenedMs
 			c.p = p
 		}
 		bump(tracks, p.trackID)

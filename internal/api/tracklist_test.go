@@ -111,7 +111,7 @@ func TestTracklistPlayCountsForTheAlbum(t *testing.T) {
 		t.Fatalf("claim: %v", err)
 	}
 	put(t, router, "/api/albums/"+id, token, `{"title":"Compilation","tracklist":["12345","502"]}`, http.StatusOK)
-	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"12345","context":{"kind":"album","id":"77"}}`, http.StatusNoContent)
+	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"12345","context":{"kind":"album","id":"77"}}`, http.StatusOK)
 
 	var albumID, album string
 	db.QueryRow(`SELECT meta->>'album_id', meta->>'album' FROM plays WHERE deezer_id = '12345'`).Scan(&albumID, &album)

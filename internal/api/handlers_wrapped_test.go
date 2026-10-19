@@ -144,3 +144,48 @@ func TestWrappedMergesReleasesAndUsesEdits(t *testing.T) {
 		t.Errorf("album edits: %+v", w.TopAlbums)
 	}
 }
+
+// Минуты — сколько трек реально играл (плеер присылает), у старых
+// прослушиваний без этого — длина трека.
+func TestWrappedCountsListenedTime(t *testing.T) {
+	db, router, token := newTestRouter(t)
+	db.Exec(`TRUNCATE plays`)
+	t.Cleanup(func() { db.Exec(`TRUNCATE plays`) })
+	other := invitedUser(t, router, token, "listened-other")
+	me := userIDOf(t, router, token)
+
+	at := time.Date(2025, 4, 1, 12, 0, 0, 0, time.UTC)
+	addPlay(t, db, token, router, me, "110", "81", "510", 240, at)
+	addPlay(t, db, token, router, me, "111", "81", "510", 240, at.Add(time.Hour)) // старое: без listened_ms
+	var id int64
+	db.QueryRow(`SELECT id FROM plays WHERE deezer_id = '110'`).Scan(&id)
+	listened := func(who string, ms int, want int) {
+		t.Helper()
+		call(t, router, "POST", fmt.Sprintf("/api/me/plays/%d/listened", id), who, fmt.Sprintf(`{"ms":%d}`, ms), want)
+	}
+	stored := func() int {
+		var ms int
+		db.QueryRow(`SELECT listened_ms FROM plays WHERE id = $1`, id).Scan(&ms)
+		return ms
+	}
+
+	listened(token, 30000, http.StatusNoContent)
+	listened(token, 20000, http.StatusNoContent) // запоздавшее меньшее не уменьшает
+	if got := stored(); got != 30000 {
+		t.Errorf("listened_ms = %d, want 30000", got)
+	}
+	listened(other, 90000, http.StatusNotFound) // чужое прослушивание
+	listened(token, 90000, http.StatusNoContent)
+	listened(token, -1, http.StatusBadRequest)
+
+	var w wrappedStats
+	json.Unmarshal(call(t, router, "GET", "/api/me/wrapped?year=2025&tz=UTC", token, "", http.StatusOK), &w)
+	if w.Plays != 2 || w.Minutes != (90+240)/60 {
+		t.Errorf("plays %d, minutes %d; want 2 plays, %d minutes", w.Plays, w.Minutes, (90+240)/60)
+	}
+
+	listened(token, 999999, http.StatusNoContent) // не длиннее трека
+	if got := stored(); got != 240000 {
+		t.Errorf("listened_ms = %d, want the song length 240000", got)
+	}
+}

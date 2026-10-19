@@ -13,7 +13,7 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 	var pl struct{ ID string }
 	json.Unmarshal(call(t, router, "POST", "/api/playlists", token, `{"title":"Mix"}`, http.StatusCreated), &pl)
 
-	play := func(body string) { call(t, router, "POST", "/api/me/plays", token, body, http.StatusNoContent) }
+	play := func(body string) { call(t, router, "POST", "/api/me/plays", token, body, http.StatusOK) }
 	play(`{"deezer_id":"12345"}`)                                                  // без контекста — альбом трека (9)
 	play(`{"deezer_id":"888","context":{"kind":"artist","id":"1"}}`)               // со страницы артиста
 	play(`{"deezer_id":"501","context":{"kind":"playlist","id":"` + pl.ID + `"}}`) // из своего плейлиста
@@ -67,7 +67,11 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 func TestFollowsSuggestionsAndReleases(t *testing.T) {
 	_, router, token := newTestRouter(t)
 
-	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"12345"}`, http.StatusNoContent)
+	var played struct{ ID int64 }
+	json.Unmarshal(call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"12345"}`, http.StatusOK), &played)
+	if played.ID == 0 {
+		t.Error("a recorded play must return its id (the player reports the listened time by it)")
+	}
 	call(t, router, "PUT", "/api/me/artists/1", token, "", http.StatusNoContent)
 
 	var ids struct{ Artists []string }

@@ -314,9 +314,9 @@ func TestOwnRelease_PlaysAndNewReleases(t *testing.T) {
 	db.Exec(`UPDATE albums SET released_at = current_date - 3 WHERE deezer_id = $1`, rel.album)
 
 	call(t, router, "POST", "/api/me/plays", user,
-		`{"deezer_id":"`+rel.tracks[0]+`","context":{"kind":"artist","id":"`+rel.artist+`"}}`, http.StatusNoContent)
+		`{"deezer_id":"`+rel.tracks[0]+`","context":{"kind":"artist","id":"`+rel.artist+`"}}`, http.StatusOK)
 	call(t, router, "POST", "/api/me/plays", user,
-		`{"deezer_id":"`+rel.tracks[1]+`","context":{"kind":"album","id":"`+rel.album+`"}}`, http.StatusNoContent)
+		`{"deezer_id":"`+rel.tracks[1]+`","context":{"kind":"album","id":"`+rel.album+`"}}`, http.StatusOK)
 	var recent struct {
 		Items []struct {
 			Kind   string

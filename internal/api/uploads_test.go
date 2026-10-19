@@ -226,7 +226,7 @@ func TestUploads_CoverAndDelete(t *testing.T) {
 	var p struct{ ID string }
 	json.Unmarshal(call(t, router, "POST", "/api/playlists", fan, `{"title":"Mine"}`, http.StatusCreated), &p)
 	call(t, router, "POST", "/api/playlists/"+p.ID+"/tracks", fan, `{"deezer_ids":["`+rel.tracks[1]+`","12345"]}`, http.StatusOK)
-	call(t, router, "POST", "/api/me/plays", fan, `{"deezer_id":"`+rel.tracks[0]+`"}`, http.StatusNoContent)
+	call(t, router, "POST", "/api/me/plays", fan, `{"deezer_id":"`+rel.tracks[0]+`"}`, http.StatusOK)
 	db.Exec(`INSERT INTO lyrics (deezer_id, source, sync, body) VALUES ($1, 'upload', 'none', '{}')`, rel.tracks[0])
 
 	// Обложка: снимок в лайках и сохранённом альбоме — с новой.
