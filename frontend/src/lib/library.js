@@ -210,8 +210,12 @@ player.setHooks({
     completeArtists(entry);
     if (entry.deezerId && get(me)?.lastfm_scrobble) api.lastfmNowPlaying(entry.deezerId).catch(() => {});
   },
-  onPlayed(entry) {
-    if (entry.deezerId) api.recordPlay(entry.deezerId, entry.context).catch(() => {});
+  onPlayed(entry, play) {
+    if (entry.deezerId) play.recorded = api.recordPlay(entry.deezerId, entry.context).catch(() => null);
+  },
+  // Сколько трек реально играл — к записи прослушивания (минуты в итогах года).
+  onListened(play, ms) {
+    play.recorded?.then((r) => r?.id && api.playListened(r.id, ms).catch(() => {}));
   },
   onScrobble(entry, startedAt) {
     if (entry.deezerId && get(me)?.lastfm_scrobble) api.lastfmScrobble(entry.deezerId, startedAt).catch(() => {});

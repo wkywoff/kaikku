@@ -567,6 +567,32 @@ test('a play is reported once the track has played 30 s (or half of a short one)
   }
 });
 
+test('the listened time counts only playback, not seeks, and goes out when the track changes', async () => {
+  const sent = [];
+  player.setHooks({ onPlayed: () => {}, onListened: (play, ms) => sent.push(ms) });
+  try {
+    await player.playQueue([{ id: 'l1', title: 'L1' }, { id: 'l2', title: 'L2' }], 0);
+    const el = FakeAudio.instances.find((e) => e.src.includes('l1'));
+    el.duration = 200;
+    el.paused = false;
+    for (let t = 0; t <= 40; t += 0.5) {
+      el.currentTime = t;
+      el.dispatch('timeupdate');
+    }
+    el.currentTime = 150; // перемотка вперёд — не слушал
+    el.dispatch('timeupdate');
+    for (let t = 150.5; t <= 160; t += 0.5) {
+      el.currentTime = t;
+      el.dispatch('timeupdate');
+    }
+    assert.deepEqual(sent, [], 'до конца прослушивания — ничего');
+    await player.next();
+    assert.deepEqual(sent, [50000]);
+  } finally {
+    player.setHooks({ onPlayed: null, onListened: null });
+  }
+});
+
 test('a scrobble goes out at half the track or 4 minutes, never for a track of 30 s or less', async () => {
   const scrobbled = [];
   player.setHooks({ onScrobble: (e, startedAt) => scrobbled.push([e.id, startedAt]) });

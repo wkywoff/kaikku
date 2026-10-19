@@ -131,6 +131,8 @@ export const api = {
   newReleases: () => request('/me/releases'), // -> { albums } — свежее у артистов из подписок
   // История: трек дослушан до порога; context — { kind: album|playlist|artist|liked|mix, id }.
   recordPlay: (deezerTrackId, context) => request('/me/plays', { method: 'POST', body: { deezer_id: deezerTrackId, context: context || {} } }),
+  // keepalive — уходит и при закрытии вкладки (pagehide).
+  playListened: (playId, ms) => request(`/me/plays/${playId}/listened`, { method: 'POST', body: { ms }, keepalive: true }),
   recent: () => request('/me/recent'),
   libraryTimes: () => request('/me/library/times'), // -> { added: {"album:ID": ts}, played: {…} } — сортировка медиатеки
   // Миксы — подборки из истории и лайков: { mixes: [{ id, kind, tag?, artists, covers }] };

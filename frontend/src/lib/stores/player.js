@@ -13,6 +13,12 @@ const QUEUE_STORAGE_KEY = 'kaikku_queue';
 // Прослушивание записывается в историю, когда трек проиграл столько секунд
 // (короткий — половину), как у Spotify.
 const PLAY_REPORT_SECONDS = 30;
+// Сколько трек реально играл (минуты в итогах года): шаг позиции длиннее
+// LISTEN_STEP_MAX_SECONDS — перемотка, не в счёт. Кроме паузы, смены трека и
+// ухода со страницы, время отправляется каждые LISTEN_FLUSH_SECONDS —
+// телефон может выгрузить вкладку в фоне молча.
+const LISTEN_STEP_MAX_SECONDS = 5;
+const LISTEN_FLUSH_SECONDS = 60;
 const SCROBBLE_MIN_SECONDS = 30;
 const SCROBBLE_MAX_SECONDS = 240;
 // Позиция в сохранённой очереди обновляется не чаще этого.
@@ -145,14 +151,19 @@ function createPlayerStore() {
   let restoredPending = !!saved;
 
   // Хуки из lib/library.js (тот импортирует этот модуль, а не наоборот):
-  //   onPlayed(entry)          — трек дослушан до порога, записать в историю;
+  //   onPlayed(entry, play)    — трек дослушан до порога, записать в историю;
+  //                              play — это прослушивание, тот же объект
+  //                              потом приходит в onListened;
+  //   onListened(play, ms)     — сколько трек реально играл за прослушивание
+  //                              (растёт, приходит несколько раз);
   //   autoplay(last, queue)    — чем продолжить, когда очередь кончилась
   //                              (Promise со списком элементов очереди);
   //   onTrackStart(entry)      — трек стал текущим (дозапросить фиты);
   //   onScrobble(entry, startedAt) — дослушан до порога Last.fm (половина
   //                              или 4 минуты); startedAt — unix-секунды начала.
-  let hooks = { onPlayed: null, autoplay: null, onTrackStart: null, onScrobble: null };
+  let hooks = { onPlayed: null, onListened: null, autoplay: null, onTrackStart: null, onScrobble: null };
   let playReported = false; // за текущее проигрывание трека уже записали
+  let listen = null; // текущее прослушивание: { sec, lastPos, sent, reported }
   let scrobbled = false; // и отправили в Last.fm
   let autoplayPending = null;
   let autoplayFailedAfter = null; // последний элемент очереди, после которого подобрать не вышло
@@ -165,7 +176,13 @@ function createPlayerStore() {
     saveQueue(s, unshuffled);
   });
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    window.addEventListener('pagehide', () => saveQueue(get(state), unshuffled));
+    window.addEventListener('pagehide', () => {
+      saveQueue(get(state), unshuffled);
+      flushListen();
+    });
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flushListen());
+    }
   }
 
   // Web Audio граф создаётся лениво (нужен user gesture) — два <audio> +
@@ -284,6 +301,7 @@ function createPlayerStore() {
       state.update((s) => ({ ...s, currentTime: el.currentTime }));
       maybeSleep(); // на случай, если таймер в фоне сработал не вовремя
       updatePositionState(el);
+      trackListen(el);
       maybeReportPlay(el);
       maybeStartPreload(el);
       maybeStartCrossfade(el);
@@ -308,6 +326,8 @@ function createPlayerStore() {
       // не пауза пользователя: следующий трек уже играет во втором слоте.
       if (slot !== activeSlot || el.ended) return;
       cancelGaplessTimer(); // пауза/перемотка у конца — перепланируем по следующему timeupdate
+      if (listen) listen.lastPos = null;
+      flushListen();
       state.update((s) => ({ ...s, isPlaying: false }));
       setPlaybackState('paused');
     });
@@ -475,7 +495,7 @@ function createPlayerStore() {
     if (s.repeat === 'one') {
       const el = elements[activeSlot];
       el.currentTime = 0;
-      playReported = scrobbled = false; // повтор — новое прослушивание
+      newPlay(); // повтор — новое прослушивание
       el.play();
       return;
     }
@@ -514,7 +534,7 @@ function createPlayerStore() {
     preloadedForIndex = null;
     preloadReady = false;
     fadeStarted = false;
-    playReported = scrobbled = false;
+    newPlay();
     loadAuto = true; // включился сам: не сыграет — пропустим (trackFailed)
 
     const track = get(state).queue[newIndex];
@@ -635,7 +655,7 @@ function createPlayerStore() {
     ensureContext();
     restoredPending = false;
     // Перезапрос ссылки после ошибки (resumeAt > 0) — то же прослушивание.
-    if (resumeAt === 0) playReported = scrobbled = false;
+    if (resumeAt === 0) newPlay();
     if (audioContext?.state === 'suspended') {
       try {
         await audioContext.resume();
@@ -952,7 +972,44 @@ function createPlayerStore() {
     playReported = true;
     const s = get(state);
     const entry = s.queue[s.index];
-    if (entry) hooks.onPlayed(entry);
+    if (!entry) return;
+    const play = currentListen();
+    play.reported = true;
+    hooks.onPlayed(entry, play);
+  }
+
+  // Прежнее прослушивание закончилось (другой трек, повтор): отправить его
+  // время и начать считать заново.
+  function newPlay() {
+    flushListen();
+    listen = null;
+    playReported = scrobbled = false;
+  }
+
+  function currentListen() {
+    if (!listen) listen = { sec: 0, lastPos: null, sent: 0, reported: false };
+    return listen;
+  }
+
+  // Время игры копится по шагам позиции между timeupdate: перемотка
+  // (большой шаг или назад) и пауза не в счёт.
+  function trackListen(el) {
+    const l = currentListen();
+    if (el.paused) {
+      l.lastPos = null;
+      return;
+    }
+    const step = l.lastPos === null ? 0 : el.currentTime - l.lastPos;
+    if (step > 0 && step < LISTEN_STEP_MAX_SECONDS) l.sec += step;
+    l.lastPos = el.currentTime;
+    if (l.sec - l.sent >= LISTEN_FLUSH_SECONDS) flushListen();
+  }
+
+  function flushListen() {
+    const l = listen;
+    if (!l?.reported || !hooks.onListened || l.sec - l.sent < 1) return;
+    l.sent = l.sec;
+    hooks.onListened(l, Math.round(l.sec * 1000));
   }
 
   // Правило Last.fm: трек длиннее 30 с, дослушан до половины или до 4 минут.
