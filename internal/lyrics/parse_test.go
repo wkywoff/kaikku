@@ -16,7 +16,7 @@ import (
 func near(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
 
 func TestParseLRC_RepeatsGapsAndMeta(t *testing.T) {
-	l := parseLRC("[ar:Буря]\n[ti:Огни города]\n[00:10.50]Тихий вечер\n[00:14.00]\n[00:20.00][01:30.25]Огни города над рекой\n[01:35.000]Мой неспешный <00:01.00>шаг\n", 120, nil)
+	l := parseLRC("[ar:Буря]\n[ti:Огни города]\n[00:10.50]Тихий вечер\n[00:14.00]\n[00:20.00][01:30.25]Огни города над рекой\n[01:35.000]Мой неспешный <00:01.00>шаг\n", 120)
 	if l == nil || l.Sync != SyncLine || len(l.Lines) != 4 {
 		t.Fatalf("%+v", l)
 	}
@@ -30,19 +30,12 @@ func TestParseLRC_RepeatsGapsAndMeta(t *testing.T) {
 	if l.Lines[3].Text != "Мой неспешный шаг" || !near(l.Lines[3].End, 120) {
 		t.Errorf("word stamps / last end: %+v", l.Lines[3])
 	}
-	if parseLRC("Просто текст\nбез времени", 100, nil) != nil {
+	if parseLRC("Просто текст\nбез времени", 100) != nil {
 		t.Error("text without stamps is not LRC")
 	}
 	// Все отметки нулевые — это текст.
-	if z := parseLRC("[00:00.00]Раз\n[00:00.00]Два", 100, nil); z == nil || z.Sync != SyncNone || len(z.Lines) != 2 {
+	if z := parseLRC("[00:00.00]Раз\n[00:00.00]Два", 100); z == nil || z.Sync != SyncNone || len(z.Lines) != 2 {
 		t.Errorf("zero stamps: %+v", z)
-	}
-}
-
-func TestParseLRC_NeteaseCreditsDropped(t *testing.T) {
-	l := parseLRC("[00:00.00] 作词 : Буря\n[00:01.00] 作曲 : Буря\n[00:12.30]Космос\n[00:15.00]纯音乐，请欣赏", 200, neteaseCredit)
-	if l == nil || len(l.Lines) != 1 || l.Lines[0].Text != "Космос" {
-		t.Fatalf("%+v", l)
 	}
 }
 
@@ -53,19 +46,6 @@ func TestPlainText(t *testing.T) {
 	}
 	if plainText(" \n \n") != nil {
 		t.Error("blank text")
-	}
-}
-
-func TestSameSongAndArtist(t *testing.T) {
-	tr := Track{Title: "Stronger (Remastered)", Duration: 312}
-	if !sameSong(tr, "Stronger", 311.9) || sameSong(tr, "NOKIA", 241) || sameSong(tr, "Stronger", 250) {
-		t.Error("sameSong")
-	}
-	if !sameSong(Track{Title: "НАД РЕКОЙ", Duration: 164}, "над рекой", 165) {
-		t.Error("cyrillic case")
-	}
-	if !sameArtist("Nightvox", "NIGHTVOX") || !sameArtist("Kanye West", "Kanye West, Daft Punk") || sameArtist("Буря", "Причал") {
-		t.Error("sameArtist")
 	}
 }
 
@@ -125,31 +105,6 @@ func TestDeezer_WordsLinesTextAndMissing(t *testing.T) {
 	}
 	if auths != 1 {
 		t.Errorf("anonymous token fetched %d times, want 1 (cached)", auths)
-	}
-}
-
-func TestNetEase_MatchesByTitleArtistAndLength(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasPrefix(r.URL.Path, "/search/get"):
-			io.WriteString(w, `{"result":{"songs":[
-				{"id":1,"name":"Космос (Remix)","duration":180000,"artists":[{"name":"Буря"}]},
-				{"id":2,"name":"Космос","duration":227400,"artists":[{"name":"Другой"}]},
-				{"id":3,"name":"Космос","duration":226900,"artists":[{"name":"Буря"}]}]}}`)
-		case r.URL.Query().Get("id") == "3":
-			io.WriteString(w, `{"lrc":{"lyric":"[00:00.00] 作词 : Буря\n[00:12.00]Строка\n[00:15.50]Ещё"}}`)
-		default:
-			io.WriteString(w, `{"nolyric":true}`)
-		}
-	}))
-	defer srv.Close()
-	old := neteaseAPI
-	neteaseAPI = srv.URL
-	defer func() { neteaseAPI = old }()
-
-	l, err := NetEase{}.Find(context.Background(), Track{Artist: "Буря", Title: "Космос", Duration: 227})
-	if err != nil || l == nil || l.Sync != SyncLine || len(l.Lines) != 2 || l.Lines[0].Text != "Строка" {
-		t.Fatalf("%+v %v", l, err)
 	}
 }
 

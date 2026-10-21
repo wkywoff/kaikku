@@ -12,7 +12,7 @@
 <script>
   // Текст песни в стиле Apple Music / Beautiful Lyrics. Сервер отдаёт строки
   // с таймингом по словам, по строкам или без времени — что нашлось у
-  // Deezer, NetEase или LRCLIB (internal/lyrics).
+  // lrc.red, Deezer или LRCLIB (internal/lyrics).
   //   - текущая строка яркая; слова и слоги заливаются в такт, спетые чуть
   //     приподнимаются; подпевки — мельче под строкой;
   //   - в проигрыше дольше 3 с — три «дышащие» точки;
@@ -34,7 +34,7 @@
   let active = -1; // индекс текущей строки
   let gap = -1; // индекс строки, перед которой сейчас проигрыш с точками
 
-  const SOURCES = { lrcred: 'lrc.red', deezer: 'Deezer', netease: 'NetEase Cloud Music', lrclib: 'LRCLIB' };
+  const SOURCES = { lrcred: 'lrc.red', deezer: 'Deezer', lrclib: 'LRCLIB' };
   // lrc.red просит ссылку на себя рядом со своим текстом.
   const SOURCE_LINKS = { lrcred: 'https://lrc.red' };
   const LEAD = 0.12; // с; строка загорается чуть раньше голоса, как в Apple Music

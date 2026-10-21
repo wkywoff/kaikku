@@ -101,8 +101,8 @@ func (s *Service) Get(ctx context.Context, t Track) (*Lyrics, error) {
 //
 // complete=false — источник, который мог дать лучше, не ответил (LRCLIB
 // «занят»): найденное отдаётся, но не запоминается, и в следующий раз
-// источники спрашиваются снова. Иначе на месяц оставался бы синхрон NetEase
-// от другой версии трека, хотя у LRCLIB он верный.
+// источники спрашиваются снова. Иначе на месяц оставался бы худший текст,
+// хотя лучший источник просто был занят.
 func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, findTimeout)
 	defer cancel() // ответ уже есть — остальные запросы обрываются
@@ -168,11 +168,11 @@ func outranked(l *Lyrics, sources map[string]bool) bool {
 	return false
 }
 
-// Порядок источников: lrc.red, Deezer, потом LRCLIB, потом NetEase. Текст со
+// Порядок источников: lrc.red, Deezer, потом LRCLIB. Текст со
 // временем (по словам или строкам) важнее текста без времени — его не
 // прокрутить в такт, по словам — важнее, чем по строкам; дальше решает
 // порядок.
-var sourceOrder = map[string]int{"lrcred": 4, "deezer": 3, "lrclib": 2, "netease": 1}
+var sourceOrder = map[string]int{"lrcred": 3, "deezer": 2, "lrclib": 1}
 
 // topSource — лучший источник: его текст по словам не перепроверяется.
 const topSource = "lrcred"

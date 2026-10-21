@@ -4,10 +4,11 @@
 // Sources (Service.Providers), none of them needs a token: lrc.red (exact
 // by ISRC; word or syllable timing with backing vocals and duet voices for
 // many songs; on only when LRCRED_CONTACT is set), Deezer (exact by Deezer
-// ID; word or line timing for some songs, otherwise text), NetEase Cloud
-// Music and LRCLIB (line timing, found by artist, title and length). Word
-// timing wins over line timing, lrc.red over Deezer; among line timing
-// NetEase and LRCLIB are preferred over Deezer's (Service.better).
+// ID; word or line timing for some songs, otherwise text) and LRCLIB (line
+// timing, found by artist, title and length). Word timing wins over line
+// timing, line timing over plain text; then lrc.red, Deezer, LRCLIB in that
+// order (Service.better). NetEase was dropped: its lyrics were too often
+// wrong.
 package lyrics
 
 import (
@@ -60,7 +61,7 @@ type Line struct {
 }
 
 type Lyrics struct {
-	Source  string `json:"source"` // lrcred | deezer | netease | lrclib | upload
+	Source  string `json:"source"` // lrcred | deezer | lrclib | upload
 	Sync    Sync   `json:"sync"`
 	Lines   []Line `json:"lines"`
 	Writers string `json:"writers,omitempty"`
@@ -110,36 +111,4 @@ func fillEnds(lines []Line, duration float64) {
 			lines[i].End = lines[i].Start + 5
 		}
 	}
-}
-
-// norm — для сравнения названий: нижний регистр, без знаков и скобок с
-// пометками («feat.», «Remastered»).
-func norm(s string) string {
-	s = strings.ToLower(s)
-	if i := strings.IndexAny(s, "(["); i > 0 {
-		s = s[:i]
-	}
-	var b strings.Builder
-	for _, r := range s {
-		if r == ' ' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r >= 'а' && r <= 'я' || r == 'ё' || r > 0x2E80 {
-			b.WriteRune(r)
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
-}
-
-// sameSong: названия совпадают (одно содержит другое) и длительность в
-// пределах допуска. Защита от «похожих» ответов источников.
-func sameSong(t Track, title string, durationS float64) bool {
-	a, b := norm(t.Title), norm(title)
-	if a == "" || b == "" || !(strings.Contains(a, b) || strings.Contains(b, a)) {
-		return false
-	}
-	if t.Duration > 0 && durationS > 0 {
-		d := t.Duration - durationS
-		if d < -4 || d > 4 {
-			return false
-		}
-	}
-	return true
 }

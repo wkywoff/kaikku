@@ -61,8 +61,8 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	db := openTestDB(t)
 	// Deezer по словам — сразу ответ, медленный источник не ждём.
 	dz := &fakeProvider{name: "deezer", l: lines(SyncWord)}
-	ne := &fakeProvider{name: "netease", l: lines(SyncLine), delay: 2 * time.Second}
-	s := &Service{DB: db, Providers: []Provider{dz, ne}}
+	lc := &fakeProvider{name: "lrclib", l: lines(SyncLine), delay: 2 * time.Second}
+	s := &Service{DB: db, Providers: []Provider{dz, lc}}
 	started := time.Now()
 	if l, err := s.Get(context.Background(), Track{DeezerID: "test-lyrics-1"}); err != nil || l == nil || l.Source != "deezer" || time.Since(started) > time.Second {
 		t.Fatalf("got %+v, %v after %v", l, err, time.Since(started))
@@ -72,27 +72,27 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 		t.Fatalf("not cached: deezer calls %d", dz.calls.Load())
 	}
 
-	// По строкам у всех — по порядку: Deezer, LRCLIB, NetEase.
+	// По строкам у всех — по порядку: lrc.red, Deezer, LRCLIB.
 	s2 := &Service{DB: db, Providers: []Provider{
-		&fakeProvider{name: "netease", l: lines(SyncLine)},
 		&fakeProvider{name: "lrclib", l: lines(SyncLine)},
+		&fakeProvider{name: "deezer", l: lines(SyncLine)},
 	}}
-	if l, _ := s2.Get(context.Background(), Track{DeezerID: "test-lyrics-2"}); l == nil || l.Source != "lrclib" {
+	if l, _ := s2.Get(context.Background(), Track{DeezerID: "test-lyrics-2"}); l == nil || l.Source != "deezer" {
 		t.Fatalf("line sync tie: %+v", l)
 	}
 	// Источники спрашиваются одновременно: три медленных — не втрое дольше.
 	slow := func(name string) *fakeProvider {
 		return &fakeProvider{name: name, l: lines(SyncLine), delay: 300 * time.Millisecond}
 	}
-	sp := &Service{DB: db, Providers: []Provider{slow("deezer"), slow("netease"), slow("lrclib")}}
+	sp := &Service{DB: db, Providers: []Provider{slow("deezer"), slow("lrcred"), slow("lrclib")}}
 	started = time.Now()
-	if l, _ := sp.Get(context.Background(), Track{DeezerID: "test-lyrics-8"}); l == nil || l.Source != "deezer" || time.Since(started) > 700*time.Millisecond {
+	if l, _ := sp.Get(context.Background(), Track{DeezerID: "test-lyrics-8"}); l == nil || l.Source != "lrcred" || time.Since(started) > 700*time.Millisecond {
 		t.Fatalf("parallel: %+v after %v", l, time.Since(started))
 	}
 	// Тайминг важнее источника: LRCLIB по строкам лучше текста Deezer.
 	s3 := &Service{DB: db, Providers: []Provider{
 		&fakeProvider{name: "deezer", l: lines(SyncNone)},
-		&fakeProvider{name: "netease"},
+		&fakeProvider{name: "lrcred"},
 		&fakeProvider{name: "lrclib", l: lines(SyncLine)},
 	}}
 	if l, _ := s3.Get(context.Background(), Track{DeezerID: "test-lyrics-3"}); l == nil || l.Source != "lrclib" {
@@ -101,7 +101,7 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	// Только тексты — полный текст Deezer.
 	s4 := &Service{DB: db, Providers: []Provider{
 		&fakeProvider{name: "deezer", l: lines(SyncNone)},
-		&fakeProvider{name: "netease", l: lines(SyncNone)},
+		&fakeProvider{name: "lrclib", l: lines(SyncNone)},
 	}}
 	if l, _ := s4.Get(context.Background(), Track{DeezerID: "test-lyrics-6"}); l == nil || l.Source != "deezer" {
 		t.Fatalf("text tie: %+v", l)
@@ -122,7 +122,7 @@ func TestService_MissingIsRememberedUnlessAllFailed(t *testing.T) {
 	}
 
 	// Источник упал, а другие ничего не нашли — ошибка, ничего не запоминается.
-	down := &fakeProvider{name: "netease", err: errors.New("timeout")}
+	down := &fakeProvider{name: "lrclib", err: errors.New("timeout")}
 	s2 := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "deezer"}, down}}
 	for i := 0; i < 2; i++ {
 		if _, err := s2.Get(context.Background(), Track{DeezerID: "test-lyrics-7"}); err == nil {
@@ -138,24 +138,24 @@ func TestService_MissingIsRememberedUnlessAllFailed(t *testing.T) {
 // запоминается: в следующий раз он может ответить, и текст будет лучше.
 func TestService_BetterSourceDownIsAskedAgain(t *testing.T) {
 	db := openTestDB(t)
-	lrclib := &fakeProvider{name: "lrclib", err: errors.New("HTTP 503: busy")}
-	netease := &fakeProvider{name: "netease", l: lines(SyncLine)}
-	s := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "deezer"}, lrclib, netease}}
+	deezer := &fakeProvider{name: "deezer", err: errors.New("HTTP 503: busy")}
+	lrclib := &fakeProvider{name: "lrclib", l: lines(SyncLine)}
+	s := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "lrcred"}, deezer, lrclib}}
 	for i := 0; i < 2; i++ {
-		if l, err := s.Get(context.Background(), Track{DeezerID: "test-lyrics-9"}); err != nil || l == nil || l.Source != "netease" {
+		if l, err := s.Get(context.Background(), Track{DeezerID: "test-lyrics-9"}); err != nil || l == nil || l.Source != "lrclib" {
 			t.Fatalf("got %+v, %v", l, err)
 		}
 	}
-	if lrclib.calls.Load() != 2 {
-		t.Errorf("lrclib asked %d times, want 2 (result not saved)", lrclib.calls.Load())
+	if deezer.calls.Load() != 2 {
+		t.Errorf("deezer asked %d times, want 2 (result not saved)", deezer.calls.Load())
 	}
 	// Ниже по цепочке не ответил — лучшее уже есть, запоминается.
-	s2 := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "lrclib", l: lines(SyncLine)}, &fakeProvider{name: "netease", err: errors.New("timeout")}}}
+	s2 := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "deezer", l: lines(SyncLine)}, &fakeProvider{name: "lrclib", err: errors.New("timeout")}}}
 	s2.Get(context.Background(), Track{DeezerID: "test-lyrics-10"})
 	var n int
 	db.QueryRow(`SELECT count(*) FROM lyrics WHERE deezer_id = 'test-lyrics-10'`).Scan(&n)
 	if n != 1 {
-		t.Error("lrclib result must be saved when only netease failed")
+		t.Error("deezer result must be saved when only lrclib failed")
 	}
 }
 

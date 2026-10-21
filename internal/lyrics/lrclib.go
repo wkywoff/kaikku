@@ -41,7 +41,7 @@ func (LRCLIB) Find(ctx context.Context, t Track) (*Lyrics, error) {
 	if err != nil || r.Instrumental {
 		return nil, err
 	}
-	if l := parseLRC(r.Synced, t.Duration, nil); l != nil {
+	if l := parseLRC(r.Synced, t.Duration); l != nil {
 		return l, nil
 	}
 	return plainText(r.Plain), nil

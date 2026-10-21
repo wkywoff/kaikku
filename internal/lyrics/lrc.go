@@ -16,9 +16,8 @@ var (
 
 // parseLRC разбирает LRC: «[mm:ss.xx]строка», у строки может быть
 // несколько отметок («[00:12.00][01:30.00]припев»). Пустая строка с
-// отметкой — конец предыдущей (проигрыш). skip отбрасывает служебные строки
-// (у NetEase — авторы в начале). Без единой отметки — nil.
-func parseLRC(src string, duration float64, skip func(string) bool) *Lyrics {
+// отметкой — конец предыдущей (проигрыш). Без единой отметки — nil.
+func parseLRC(src string, duration float64) *Lyrics {
 	type entry struct {
 		at   float64
 		text string
@@ -43,9 +42,6 @@ func parseLRC(src string, duration float64, skip func(string) bool) *Lyrics {
 		}
 		text := strings.TrimSpace(lrcWordRe.ReplaceAllString(raw[end:], ""))
 		text = strings.Join(strings.Fields(text), " ")
-		if text != "" && skip != nil && skip(text) {
-			continue
-		}
 		for _, s := range stamps {
 			if s[0] >= end {
 				break
@@ -122,7 +118,7 @@ const SourceUpload = "upload"
 // FromText — текст, который автор дал своему треку: LRC с отметками
 // времени (тогда он синхронный) или просто строки. nil — пусто.
 func FromText(text string, duration float64) *Lyrics {
-	l := parseLRC(text, duration, nil)
+	l := parseLRC(text, duration)
 	if l == nil {
 		l = plainText(text)
 	}

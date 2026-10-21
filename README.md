@@ -38,7 +38,8 @@ app, or use any Subsonic app.
 **Lyrics**
 - Synced lyrics, word by word where available, with backing vocals; tap a
   line to jump to it.
-- From Deezer, LRCLIB and NetEase, no keys needed.
+- From Deezer and LRCLIB, no keys needed; with a contact email set, also
+  lrc.red (word and syllable timing, duets).
 
 **Library and playlists**
 - Liked songs, saved albums, followed artists.

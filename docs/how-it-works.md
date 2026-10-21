@@ -77,7 +77,7 @@ yt-dlp to start.
 
 ## Lyrics
 
-`internal/lyrics` asks Deezer, LRCLIB and NetEase at once, and lrc.red
+`internal/lyrics` asks Deezer and LRCLIB at once, and lrc.red
 (by ISRC) when `LRCRED_CONTACT` is set. Word-by-word timing beats line
 timing, line timing beats plain text; lrc.red's word timing beats Deezer's.
 Results are stored per recording. "Not found" is rechecked after a week,
