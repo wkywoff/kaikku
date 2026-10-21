@@ -287,7 +287,6 @@
     margin: 0 -12px;
   }
   .recent {
-    max-width: 640px;
     padding-top: 8px;
   }
   .recent-head {
@@ -305,10 +304,14 @@
     font-weight: 700;
     color: var(--text-dim);
   }
+  /* Колонками по ширине, а не одним столбиком: справа было пусто. */
   .recent ul {
     list-style: none;
     margin: 0;
     padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    column-gap: 16px;
   }
   .recent li {
     display: flex;
