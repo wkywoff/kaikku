@@ -99,17 +99,10 @@ func TestProcessJob_SharesFileOfSameRecording(t *testing.T) {
 }
 
 // Перекачка (админ): трек уже в медиатеке — файл заменяется в той же строке
-// трека (лайки и плейлисты при нём), старый удаляется.
+// трека (лайки и плейлисты при нём) и у той же записи на другом релизе,
+// которая делила с ним файл; старый удаляется, чужие файлы не трогаются.
 func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	db := openTestDB(t)
-	bin := t.TempDir()
-	for _, tool := range []string{"ffmpeg", "ffprobe"} {
-		path, err := exec.LookPath(tool)
-		if err != nil {
-			t.Skipf("%s not installed", tool)
-		}
-		os.Symlink(path, filepath.Join(bin, tool))
-	}
 	staging, storage := t.TempDir(), t.TempDir()
 
 	var artistID, albumID, trackID string
@@ -117,16 +110,17 @@ func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	db.QueryRow(`INSERT INTO albums (artist_id, title, deezer_id) VALUES ($1, 'Album', '9') RETURNING id`, artistID).Scan(&albumID)
 	db.QueryRow(`INSERT INTO tracks (album_id, artist_id, title, duration_ms, storage_key, deezer_id) VALUES ($1, $2, 'Song', 3000, 'old.m4a', '777') RETURNING id`,
 		albumID, artistID).Scan(&trackID)
+	var deluxeID string
+	db.QueryRow(`INSERT INTO albums (artist_id, title, deezer_id) VALUES ($1, 'Album (Deluxe)', '10') RETURNING id`, artistID).Scan(&deluxeID)
+	db.Exec(`INSERT INTO tracks (album_id, artist_id, title, duration_ms, storage_key, deezer_id, audio_pinned)
+	         VALUES ($1, $2, 'Song', 3000, 'old.m4a', '778', true), ($1, $2, 'Other Song', 3000, 'other.m4a', '779', false)`,
+		deluxeID, artistID)
 	os.WriteFile(filepath.Join(storage, "old.m4a"), []byte("wrong song"), 0o644)
+	os.WriteFile(filepath.Join(storage, "other.m4a"), []byte("other song"), 0o644)
 	var jobID int64
 	db.QueryRow(`INSERT INTO ingest_jobs (source_ref, title, artist_name, album_artist_name, album_title, duration_ms, status, replace_audio)
 	             VALUES ('deezer:777', 'Song', 'Artist', 'Artist', 'Album', 3000, 'processing', true) RETURNING id`).Scan(&jobID)
-	prefetch := PrefetchPath(staging, jobID)
-	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
-		"-c:a", "aac", "-movflags", "+dash+global_sidx", "-f", "mp4", prefetch).CombinedOutput(); err != nil {
-		t.Fatalf("making a DASH file: %v %s", err, out)
-	}
-	t.Setenv("PATH", bin)
+	prefetchAudio(t, staging, jobID)
 
 	ProcessJob(db, &Job{ID: jobID, SourceRef: "deezer:777", Title: "Song", ArtistName: "Artist", ArtistDeezerID: str("1"),
 		AlbumArtistName: "Artist", AlbumArtistDeezerID: str("1"), AlbumTitle: "Album", AlbumDeezerID: str("9"), DurationMs: 3000,
@@ -141,8 +135,21 @@ func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	}
 	var n int
 	db.QueryRow(`SELECT count(*) FROM tracks`).Scan(&n)
-	if n != 1 {
-		t.Errorf("%d tracks, want the same one", n)
+	if n != 3 {
+		t.Errorf("%d tracks, want the same three", n)
+	}
+	var deluxeKey, otherKey string
+	var pinned bool
+	db.QueryRow(`SELECT storage_key, audio_pinned FROM tracks WHERE deezer_id = '778'`).Scan(&deluxeKey, &pinned)
+	db.QueryRow(`SELECT storage_key FROM tracks WHERE deezer_id = '779'`).Scan(&otherKey)
+	if deluxeKey != key || pinned {
+		t.Errorf("same recording on the deluxe: key %q pinned %v, want %q unpinned", deluxeKey, pinned, key)
+	}
+	if otherKey != "other.m4a" {
+		t.Errorf("another song's file changed: %q", otherKey)
+	}
+	if _, err := os.Stat(filepath.Join(storage, "other.m4a")); err != nil {
+		t.Errorf("another song's file: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(storage, "old.m4a")); !os.IsNotExist(err) {
 		t.Errorf("old file left: %v", err)
@@ -150,4 +157,24 @@ func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(storage, key)); err != nil {
 		t.Errorf("new file: %v", err)
 	}
+}
+
+// prefetchAudio puts a short DASH file where the API leaves a streamed
+// download for the job, so ProcessJob skips YouTube, and leaves only
+// ffmpeg/ffprobe in PATH.
+func prefetchAudio(t *testing.T, staging string, jobID int64) {
+	t.Helper()
+	bin := t.TempDir()
+	for _, tool := range []string{"ffmpeg", "ffprobe"} {
+		path, err := exec.LookPath(tool)
+		if err != nil {
+			t.Skipf("%s not installed", tool)
+		}
+		os.Symlink(path, filepath.Join(bin, tool))
+	}
+	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+		"-c:a", "aac", "-movflags", "+dash+global_sidx", "-f", "mp4", PrefetchPath(staging, jobID)).CombinedOutput(); err != nil {
+		t.Fatalf("making a DASH file: %v %s", err, out)
+	}
+	t.Setenv("PATH", bin)
 }

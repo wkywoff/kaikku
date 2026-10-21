@@ -287,17 +287,43 @@ func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (
 // one unless another track (the same recording on another release) uses
 // it. sql.ErrNoRows — the track is gone.
 func replaceAudio(db *sql.DB, job *Job, storageDir, storageKey string, lufs, gainDB float64) (string, error) {
-	var trackID, oldKey string
-	err := db.QueryRow(
+	// Файл меняется у всех треков на нём: та же запись (ISRC) на другом
+	// релизе делит файл (sameRecording) и иначе осталась бы на старом — так
+	// же, как при загрузке файла админом (internal/api).
+	rows, err := db.Query(
 		`UPDATE tracks t SET storage_key = $1, loudness_lufs = $2, gain_db = $3,
 		        audio_pinned = false, last_played_at = now() -- файл снова с YouTube
-		   FROM (SELECT id, storage_key FROM tracks WHERE deezer_id = $4) prev
-		  WHERE t.id = prev.id
-		  RETURNING t.id, prev.storage_key`,
+		   FROM (SELECT storage_key FROM tracks WHERE deezer_id = $4) prev
+		  WHERE t.storage_key = prev.storage_key
+		  RETURNING t.id, t.deezer_id, prev.storage_key`,
 		storageKey, lufs, gainDB, job.deezerTrackID(),
-	).Scan(&trackID, &oldKey)
+	)
 	if err != nil {
 		return "", err
+	}
+	var trackID, oldKey string
+	shared := 0
+	for rows.Next() {
+		var id, dz string
+		if err := rows.Scan(&id, &dz, &oldKey); err != nil {
+			rows.Close()
+			return "", err
+		}
+		if dz == job.deezerTrackID() {
+			trackID = id
+		} else {
+			shared++
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if trackID == "" {
+		return "", sql.ErrNoRows
+	}
+	if shared > 0 {
+		log.Printf("job %d: the same recording on %d other release(s) gets the new audio too", job.ID, shared)
 	}
 	_, _ = db.Exec(`UPDATE ingest_jobs SET replace_audio = false WHERE id = $1`, job.ID)
 	var others int
