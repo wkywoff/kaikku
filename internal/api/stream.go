@@ -559,15 +559,17 @@ func (s *Server) startStream(deezerID string) error {
 	var job streamJob
 	var status string
 	var manual, known sql.NullString
+	var explicit sql.NullBool
 	err := s.DB.QueryRow(
-		`SELECT id, status, artist_name, other_artists, title, album_title, duration_ms, manual_video_id, known_video_id
+		`SELECT id, status, artist_name, other_artists, title, album_title, duration_ms, manual_video_id, known_video_id, explicit
 		   FROM ingest_jobs WHERE source_ref = $1`,
 		"deezer:"+deezerID,
 	).Scan(&job.id, &status, &job.want.Artist, pq.Array(&job.want.OtherArtists), &job.want.Title, &job.want.Album, &job.want.DurationMs,
-		&manual, &known)
+		&manual, &known, &explicit)
 	if err != nil {
 		return err
 	}
+	job.want.Explicit = ytdlp.NullBool(explicit)
 	// Видео админа — только оно; уже скачанное раньше (файл удалили как
 	// неслушаемый) — сначала оно, не открылось — поиск.
 	switch {

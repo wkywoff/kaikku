@@ -56,15 +56,15 @@ func (s *Server) insertIngestJob(userID, sourceRef string, track deezer.Track, a
 		`INSERT INTO ingest_jobs
 		   (requested_by, source_ref, title, artist_name, artist_deezer_id,
 		    album_artist_name, album_artist_deezer_id, album_title, album_deezer_id,
-		    track_no, disc_no, duration_ms, cover_url, release_date, album_record_type, other_artists, isrc)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		    track_no, disc_no, duration_ms, cover_url, release_date, album_record_type, other_artists, isrc, explicit)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		 ON CONFLICT (source_ref) DO NOTHING
 		 RETURNING id`,
 		nullableString(userID), sourceRef, track.Title, track.Artist, nullableString(track.ArtistID),
 		album.ArtistName, nullableString(album.ArtistID), album.Title, nullableString(album.ID),
 		nullablePositive(track.TrackNo), nullablePositive(track.DiscNo), track.DurationMs,
 		nullableString(album.CoverURL), nullableDate(album.ReleaseDate), nullableString(album.RecordType),
-		pq.Array(otherArtists(track)), nullableString(track.ISRC),
+		pq.Array(otherArtists(track)), nullableString(track.ISRC), track.Explicit,
 	).Scan(&jobID)
 
 	switch {
@@ -96,11 +96,11 @@ func otherArtists(track deezer.Track) []string {
 	return out
 }
 
-// currentOtherArtists re-reads the featured artists of a job's track from
-// Deezer before a retry: jobs queued before migration 0008 don't have them,
-// and without them YouTube may never find the track. nil (keep what the
-// job has) if Deezer is unavailable.
-func (s *Server) currentOtherArtists(jobID int64) []string {
+// currentTrack re-reads a job's track from Deezer before a retry: jobs
+// queued before migrations 0008 and 0037 don't have the featured artists
+// (without them YouTube may never find the track) and the explicit label.
+// nil (keep what the job has) if Deezer is unavailable.
+func (s *Server) currentTrack(jobID int64) *deezer.Track {
 	var sourceRef string
 	if err := s.DB.QueryRow(`SELECT source_ref FROM ingest_jobs WHERE id = $1`, jobID).Scan(&sourceRef); err != nil {
 		return nil
@@ -113,7 +113,7 @@ func (s *Server) currentOtherArtists(jobID int64) []string {
 	if err != nil {
 		return nil
 	}
-	return otherArtists(*track)
+	return track
 }
 
 func statusFor(result map[string]any) int {
@@ -161,16 +161,16 @@ func (s *Server) existingJob(sourceRef string) (map[string]any, error) {
 // requeueJob moves a job from fromStatus back to pending; false if the job
 // was no longer in fromStatus.
 func (s *Server) requeueJob(jobID int64, fromStatus string) (bool, error) {
-	var others any // NULL — оставить как есть
-	if o := s.currentOtherArtists(jobID); o != nil {
-		others = pq.Array(o)
+	var others, explicit any // NULL — оставить как есть
+	if t := s.currentTrack(jobID); t != nil {
+		others, explicit = pq.Array(otherArtists(*t)), t.Explicit
 	}
 	res, err := s.DB.Exec(
 		`UPDATE ingest_jobs
 		    SET status = 'pending', error = NULL, result_track_id = NULL, video_id = NULL, updated_at = now(),
-		        other_artists = COALESCE($3, other_artists)
+		        other_artists = COALESCE($3, other_artists), explicit = COALESCE($4, explicit)
 		  WHERE id = $1 AND status = $2`,
-		jobID, fromStatus, others,
+		jobID, fromStatus, others, explicit,
 	)
 	if err != nil {
 		return false, err

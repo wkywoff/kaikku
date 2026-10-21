@@ -45,20 +45,22 @@ type Job struct {
 	// KnownVideoID — видео, с которого трек уже качали (файл удалили как
 	// неслушаемый, 0029): сначала оно, не скачалось — обычный поиск.
 	KnownVideoID sql.NullString
+	// Explicit — метка Deezer, для выбора версии на YouTube Music (0037).
+	Explicit sql.NullBool
 }
 
 // jobColumns и scanJob — одна задача целиком (ClaimNextJob, LoadJob).
 const jobColumns = `id, source_ref, title, artist_name, artist_deezer_id,
 	album_artist_name, album_artist_deezer_id, album_title, album_deezer_id,
 	track_no, disc_no, duration_ms, cover_url, to_char(release_date, 'YYYY-MM-DD'), album_record_type,
-	other_artists, isrc, replace_audio, manual_video_id, known_video_id`
+	other_artists, isrc, replace_audio, manual_video_id, known_video_id, explicit`
 
 func scanJob(row interface{ Scan(...any) error }) (*Job, error) {
 	var job Job
 	err := row.Scan(&job.ID, &job.SourceRef, &job.Title, &job.ArtistName, &job.ArtistDeezerID,
 		&job.AlbumArtistName, &job.AlbumArtistDeezerID, &job.AlbumTitle, &job.AlbumDeezerID,
 		&job.TrackNo, &job.DiscNo, &job.DurationMs, &job.CoverURL, &job.ReleaseDate, &job.AlbumRecordType,
-		pq.Array(&job.OtherArtists), &job.ISRC, &job.ReplaceAudio, &job.ManualVideoID, &job.KnownVideoID)
+		pq.Array(&job.OtherArtists), &job.ISRC, &job.ReplaceAudio, &job.ManualVideoID, &job.KnownVideoID, &job.Explicit)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +248,8 @@ func processJob(db *sql.DB, job *Job, stagingDir, storageDir string) (string, er
 func searchAndDownload(db *sql.DB, job *Job, stagingDir string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
 	videoIDs, err := findMatches(ctx,
-		ytdlp.Want{Artist: job.ArtistName, OtherArtists: job.OtherArtists, Title: job.Title, Album: job.AlbumTitle, DurationMs: job.DurationMs},
+		ytdlp.Want{Artist: job.ArtistName, OtherArtists: job.OtherArtists, Title: job.Title, Album: job.AlbumTitle, DurationMs: job.DurationMs,
+			Explicit: ytdlp.NullBool(job.Explicit)},
 		searchCandidates, durationTolerance)
 	cancel()
 	if err != nil {

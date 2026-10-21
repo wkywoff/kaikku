@@ -113,7 +113,7 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{"id":501,"title":"Album Track One","duration":180,"track_position":1,"disk_number":1,"artist":{"id":1,"name":"Test Artist"},"album":{"id":77,"title":"Compilation"}}`))
 	})
 	mux.HandleFunc("/track/888", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id":888,"title":"Feat Song","duration":101,"artist":{"id":1,"name":"Test Artist"},"album":{"id":9,"title":"Test Album"},
+		w.Write([]byte(`{"id":888,"title":"Feat Song","duration":101,"explicit_lyrics":true,"artist":{"id":1,"name":"Test Artist"},"album":{"id":9,"title":"Test Album"},
 			"contributors":[{"id":1,"name":"Test Artist","role":"Main"},{"id":3,"name":"Feat Artist","role":"Main"}]}`))
 	})
 	mux.HandleFunc("/artist/1/related", func(w http.ResponseWriter, r *http.Request) {
@@ -347,19 +347,21 @@ func TestDownload_OtherArtistsForSearch(t *testing.T) {
 	call(t, router, "PUT", "/api/me/liked/888", token, "", http.StatusNoContent)
 	job, _ := jobOf(t, db, "888")
 	var others []string
-	db.QueryRow(`SELECT other_artists FROM ingest_jobs WHERE id = $1`, job).Scan(pq.Array(&others))
-	if !slices.Equal(others, []string{"Feat Artist"}) {
-		t.Fatalf("other_artists = %q, want [Feat Artist]", others)
+	var explicit sql.NullBool
+	db.QueryRow(`SELECT other_artists, explicit FROM ingest_jobs WHERE id = $1`, job).Scan(pq.Array(&others), &explicit)
+	if !slices.Equal(others, []string{"Feat Artist"}) || !explicit.Valid || !explicit.Bool {
+		t.Fatalf("other_artists = %q, explicit = %v, want [Feat Artist], true", others, explicit)
 	}
 
-	// Job из времён до миграции 0008: при перезапуске упавшего фиты дозаполняются.
-	db.Exec(`UPDATE ingest_jobs SET status = 'failed', other_artists = '{}' WHERE id = $1`, job)
+	// Job из времён до миграций 0008 и 0037: при перезапуске упавшего фиты
+	// и explicit дозаполняются.
+	db.Exec(`UPDATE ingest_jobs SET status = 'failed', other_artists = '{}', explicit = NULL WHERE id = $1`, job)
 	call(t, router, "PUT", "/api/me/liked/888", token, "", http.StatusNoContent)
 	others = nil
 	var status string
-	db.QueryRow(`SELECT status, other_artists FROM ingest_jobs WHERE id = $1`, job).Scan(&status, pq.Array(&others))
-	if status != "pending" || !slices.Equal(others, []string{"Feat Artist"}) {
-		t.Errorf("after requeue: status %s, other_artists = %q, want pending [Feat Artist]", status, others)
+	db.QueryRow(`SELECT status, other_artists, explicit FROM ingest_jobs WHERE id = $1`, job).Scan(&status, pq.Array(&others), &explicit)
+	if status != "pending" || !slices.Equal(others, []string{"Feat Artist"}) || !explicit.Valid || !explicit.Bool {
+		t.Errorf("after requeue: status %s, other_artists = %q, explicit = %v, want pending [Feat Artist] true", status, others, explicit)
 	}
 }
 

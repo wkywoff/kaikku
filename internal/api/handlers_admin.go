@@ -273,12 +273,18 @@ func (s *Server) handleRedownloadTrack(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "numeric deezer id is required")
 		return
 	}
+	// Задачи до 0037 не знают explicit, а без него YouTube Music может
+	// снова дать clean-версию. Deezer недоступен — оставить как есть.
+	var explicit any
+	if t, err := s.Deezer.GetTrack(dz); err == nil {
+		explicit = t.Explicit
+	}
 	res, err := s.DB.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, hold_until = NULL,
 		        manual_video_id = NULL, known_video_id = NULL, attempts = 0, -- заново искать
-		        replace_audio = true, updated_at = now()
+		        replace_audio = true, explicit = COALESCE($3, explicit), updated_at = now()
 		  WHERE source_ref = $1 AND status IN ('done', 'failed')
-		    AND EXISTS (SELECT 1 FROM tracks WHERE deezer_id = $2)`, "deezer:"+dz, dz)
+		    AND EXISTS (SELECT 1 FROM tracks WHERE deezer_id = $2)`, "deezer:"+dz, dz, explicit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "update failed")
 		return

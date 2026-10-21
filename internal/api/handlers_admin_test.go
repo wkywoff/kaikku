@@ -179,9 +179,13 @@ func TestRedownloadTrack(t *testing.T) {
 	var status string
 	var replace bool
 	var video sql.NullString
-	db.QueryRow(`SELECT status, replace_audio, video_id FROM ingest_jobs WHERE source_ref = 'deezer:12345'`).Scan(&status, &replace, &video)
+	var explicit sql.NullBool
+	db.QueryRow(`SELECT status, replace_audio, video_id, explicit FROM ingest_jobs WHERE source_ref = 'deezer:12345'`).Scan(&status, &replace, &video, &explicit)
 	if status != "pending" || !replace || video.Valid {
 		t.Errorf("job: %s replace=%v video=%v", status, replace, video)
+	}
+	if !explicit.Valid || explicit.Bool { // задача без explicit — метку берём у Deezer
+		t.Errorf("explicit = %v, want false from Deezer", explicit)
 	}
 	post(http.StatusConflict) // уже в очереди
 }
