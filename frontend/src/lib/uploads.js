@@ -40,7 +40,7 @@ export function missingForPublish(r) {
   if (!r.coverUrl) missing.push('cover');
   const ready = r.rows.filter((row) => row.id);
   if (!ready.length) missing.push('tracks');
-  if (ready.some((row) => !row.title?.trim())) missing.push('track_titles');
+  if (ready.some((row) => !row.other && !row.title?.trim())) missing.push('track_titles'); // у добавленных с других релизов — свои
   if (r.rows.some((row) => !row.id)) missing.push('uploading');
   return missing;
 }

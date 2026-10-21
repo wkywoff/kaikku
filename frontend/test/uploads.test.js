@@ -25,6 +25,8 @@ test('missingForPublish names every gap, and files still uploading', () => {
   assert.deepEqual(missingForPublish({ ...full, title: ' ', artists: [], coverUrl: '' }), ['title', 'artists', 'cover']);
   assert.deepEqual(missingForPublish({ ...full, rows: [] }), ['tracks']);
   assert.deepEqual(missingForPublish({ ...full, rows: [{ id: 'k2', title: '' }, { id: null, title: 'x.flac' }] }), ['track_titles', 'uploading']);
+  // трек, добавленный с другого релиза, здесь не называют
+  assert.deepEqual(missingForPublish({ ...full, rows: [{ id: '12345', title: '', other: true }] }), []);
 });
 
 test('naturalCompare puts 2 before 10', () => {

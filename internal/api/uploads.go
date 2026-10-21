@@ -23,7 +23,9 @@ import (
 // (uploads_audio.go), заполняются название, исполнители, тип, дата и
 // обложка, и он публикуется — тогда его видят все, как релиз Deezer
 // (local.go). ID у своих артистов, релизов и треков — «k…» (helpers.go).
-// Релиз можно привязать версией к другому (versions.go).
+// В треклист можно добавить и уже существующие треки — Deezer или с других
+// своих релизов (albums.tracklist, local.go: arrangeOwn), а релиз — привязать
+// версией к другому (versions.go).
 //
 // Загружать может любой пользователь (canUpload), править релиз — его автор
 // и админ, своего артиста (имя, фото) — тот, кто его завёл, и админ.
@@ -150,7 +152,8 @@ type uploadTrack struct {
 	Title      string             `json:"title"`
 	DurationMs int                `json:"duration_ms"`
 	Explicit   bool               `json:"explicit"`
-	Artists    []deezer.ArtistRef `json:"artists"` // null — как у релиза
+	Artists    []deezer.ArtistRef `json:"artists"`         // null — как у релиза
+	Other      bool               `json:"other,omitempty"` // добавлен с другого релиза: не правится здесь
 }
 
 type releaseState struct {
@@ -199,7 +202,13 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 	rows.Close()
 	for _, t := range tracks {
 		ut := uploadTrack{ID: t.ID, Title: t.Title, DurationMs: t.DurationMs, Explicit: t.Explicit}
-		if own[t.ID] {
+		switch {
+		case t.AlbumID != rel.id:
+			ut.Other = true
+			if ut.Artists = t.Contributors; ut.Artists == nil {
+				ut.Artists = []deezer.ArtistRef{{ID: t.ArtistID, Name: t.Artist}}
+			}
+		case own[t.ID]:
 			ut.Artists = t.Contributors
 		}
 		st.Tracks = append(st.Tracks, ut)
@@ -232,11 +241,13 @@ type releaseEdit struct {
 	Artists     []string           `json:"artists"` // ID по порядку, основной первый: свои (k…) и Deezer
 	RecordType  string             `json:"record_type"`
 	ReleaseDate string             `json:"release_date"` // YYYY-MM-DD или ""
-	Tracks      []releaseTrackEdit `json:"tracks"`       // все треки релиза, по порядку
+	Tracks      []releaseTrackEdit `json:"tracks"`       // все треки релиза, по порядку, с добавленными с других релизов
 	VersionOf   *string            `json:"version_of"`   // ID основного релиза (versions.go), "" — отвязать; нет — не менять
 	Published   *bool              `json:"published"`    // true — опубликовать, false — снять; нет — не менять
 }
 
+// releaseTrackEdit — трек релиза. У трека с другого релиза (Deezer или
+// свой чужой) значим только ID: его самого здесь не правят.
 type releaseTrackEdit struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
@@ -286,8 +297,25 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if len(req.Tracks) > maxTracklist {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("a release can have up to %d tracks", maxTracklist))
+		return
+	}
+	have, err := idsIn(s.DB, `SELECT deezer_id FROM tracks WHERE album_id = $1`, rel.libraryID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "save failed")
+		return
+	}
+	other, err := s.otherTracks(viewerOf(r), rel.id, req.Tracks, have)
+	if err != nil {
+		writeSaveError(w, err)
+		return
+	}
 	trackArtists := make([][]string, len(req.Tracks))
 	for i, t := range req.Tracks {
+		if other[t.ID] {
+			continue
+		}
 		req.Tracks[i].Title = strings.TrimSpace(t.Title)
 		if tooLong(t.Title) {
 			writeError(w, http.StatusBadRequest, "track titles must be up to 300 characters")
@@ -320,26 +348,36 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "save failed")
 		return
 	}
-	have, err := idsIn(tx, `SELECT deezer_id FROM tracks WHERE album_id = $1`, rel.libraryID)
-	if err != nil {
+	if have, err = idsIn(tx, `SELECT deezer_id FROM tracks WHERE album_id = $1`, rel.libraryID); err != nil {
 		writeError(w, http.StatusInternalServerError, "save failed")
 		return
 	}
 	sent := make([]string, len(req.Tracks))
+	var mine []string
 	for i, t := range req.Tracks {
 		sent[i] = t.ID
+		if !other[t.ID] {
+			mine = append(mine, t.ID)
+		}
 	}
-	if !sameSet(have, sent) {
+	if !sameSet(have, mine) {
 		writeError(w, http.StatusConflict, "the release's tracks changed meanwhile, reload the page")
 		return
 	}
+	var tracklist []string // свой порядок нужен, только когда есть треки с других релизов
+	if len(other) > 0 {
+		tracklist = sent
+	}
 	if _, err := tx.Exec(
-		`UPDATE albums SET title = $2, artist_ids = $3, record_type = NULLIF($4, ''), released_at = $5 WHERE id = $1`,
-		rel.libraryID, req.Title, nullArray(artists), req.RecordType, released); err != nil {
+		`UPDATE albums SET title = $2, artist_ids = $3, record_type = NULLIF($4, ''), released_at = $5, tracklist = $6 WHERE id = $1`,
+		rel.libraryID, req.Title, nullArray(artists), req.RecordType, released, nullArray(tracklist)); err != nil {
 		writeError(w, http.StatusInternalServerError, "save failed")
 		return
 	}
 	for i, t := range req.Tracks {
+		if other[t.ID] {
+			continue
+		}
 		if _, err := tx.Exec(`UPDATE tracks SET title = $2, track_no = $3, disc_no = 1 WHERE deezer_id = $1`,
 			t.ID, t.Title, i+1); err != nil {
 			writeError(w, http.StatusInternalServerError, "save failed")
@@ -360,7 +398,7 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Published != nil {
 		if *req.Published {
-			if missing := missingForPublish(req, artists, cover.Valid); len(missing) > 0 {
+			if missing := missingForPublish(req, other, artists, cover.Valid); len(missing) > 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "the release is not complete", "missing": missing})
 				return
 			}
@@ -384,9 +422,39 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
+// otherTracks checks the tracks added to the release from other releases —
+// those in tracks that aren't its own (have): each must be a real track the
+// viewer can see (Deezer, or a published own one), and none may repeat.
+func (s *Server) otherTracks(v viewer, releaseID string, tracks []releaseTrackEdit, have []string) (map[string]bool, error) {
+	other := map[string]bool{}
+	seen := map[string]bool{}
+	for _, t := range tracks {
+		if seen[t.ID] {
+			return nil, &badRequest{"a track can be on the release only once"}
+		}
+		seen[t.ID] = true
+		if slices.Contains(have, t.ID) {
+			continue
+		}
+		if !validCatalogID(t.ID) {
+			return nil, &badRequest{"tracks must be Deezer or kaikku track IDs"}
+		}
+		got, err := s.catalogTrack(v, t.ID)
+		if errors.Is(err, errNotFound) || err == nil && got.AlbumID == releaseID {
+			return nil, &badRequest{fmt.Sprintf("track %s not found", t.ID)}
+		}
+		if err != nil {
+			return nil, &badRequest{fmt.Sprintf("track %s not found on Deezer", t.ID)}
+		}
+		other[t.ID] = true
+	}
+	return other, nil
+}
+
 // missingForPublish — чего не хватает для публикации (те же коды проверяет
-// фронт, lib/uploads.js).
-func missingForPublish(req releaseEdit, artists []string, hasCover bool) []string {
+// фронт, lib/uploads.js). Названия треков с других релизов не проверяются:
+// они не отсюда.
+func missingForPublish(req releaseEdit, other map[string]bool, artists []string, hasCover bool) []string {
 	missing := []string{}
 	if req.Title == "" {
 		missing = append(missing, "title")
@@ -406,7 +474,7 @@ func missingForPublish(req releaseEdit, artists []string, hasCover bool) []strin
 	if len(req.Tracks) == 0 {
 		missing = append(missing, "tracks")
 	}
-	if slices.ContainsFunc(req.Tracks, func(t releaseTrackEdit) bool { return t.Title == "" }) {
+	if slices.ContainsFunc(req.Tracks, func(t releaseTrackEdit) bool { return !other[t.ID] && t.Title == "" }) {
 		missing = append(missing, "track_titles")
 	}
 	return missing
@@ -532,6 +600,9 @@ func (s *Server) deleteOwn(albumID, libraryID, trackID string) ([]string, error)
 		`DELETE FROM plays WHERE deezer_id = ANY($1)`,
 		`DELETE FROM lyrics WHERE deezer_id = ANY($1)`,
 		`DELETE FROM track_overrides WHERE deezer_id = ANY($1)`,
+		// добавлен в треклист других релизов (arrangeOwn) — убрать оттуда
+		`UPDATE albums SET tracklist = NULLIF(ARRAY(SELECT x FROM unnest(tracklist) x WHERE x <> ALL($1)), '{}')
+		  WHERE tracklist && $1`,
 	}
 	for _, q := range refs {
 		if _, err := tx.Exec(q, pq.Array(ids)); err != nil {

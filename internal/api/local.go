@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"math/rand/v2"
 	"net/http"
 	"slices"
@@ -69,11 +70,12 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 	var rel localRelease
 	a := deezer.Album{ID: id}
 	var cover string
+	var list []string
 	err := s.DB.QueryRow(
 		`SELECT id, coalesce(owner_id::text, ''), draft, title, coalesce(to_char(released_at, 'YYYY-MM-DD'), ''),
-		        coalesce(record_type, ''), coalesce(cover_key, '')
+		        coalesce(record_type, ''), coalesce(cover_key, ''), tracklist
 		   FROM albums WHERE deezer_id = $1`, id).
-		Scan(&rel.libraryID, &rel.owner, &rel.draft, &a.Title, &a.ReleaseDate, &a.RecordType, &cover)
+		Scan(&rel.libraryID, &rel.owner, &rel.draft, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, pq.Array(&list))
 	if errors.Is(err, sql.ErrNoRows) || err == nil && !v.sees(rel.draft, rel.owner) {
 		return nil, nil, rel, errNotFound
 	}
@@ -98,13 +100,18 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 			return nil, nil, rel, err
 		}
 		tracks = append(tracks, t)
-		a.DurationSec += t.DurationMs / 1000
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, rel, err
 	}
-	a.NbTracks = len(tracks)
 	s.overlayFor(nil, []*deezer.Album{&a}, tracks)
+	if list != nil {
+		tracks = s.arrangeOwn(v, &a, tracks, list)
+	}
+	a.NbTracks = len(tracks)
+	for _, t := range tracks {
+		a.DurationSec += t.DurationMs / 1000
+	}
 	a.Explicit = slices.ContainsFunc(tracks, func(t deezer.Track) bool { return t.Explicit })
 	if rel.draft { // видит автор или админ — не серым
 		a.Hidden = false
@@ -113,6 +120,50 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 		}
 	}
 	return &a, tracks, rel, nil
+}
+
+// arrangeOwn puts an own release's tracks in its tracklist's order
+// (albums.tracklist: own tracks and tracks from other releases — Deezer or
+// own — added in the upload editor). An added track keeps its ID, audio and
+// album, but shows under this release's title and cover, as on a Deezer
+// album with an edited tracklist (tracklist.go). Own tracks not in the list
+// (uploaded after the last save) go to the end; a track that's gone, or a
+// stranger's draft, is skipped. Numbers follow the order.
+func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list []string) []deezer.Track {
+	byID := make(map[string]deezer.Track, len(own))
+	for _, t := range own {
+		byID[t.ID] = t
+	}
+	out := make([]deezer.Track, 0, len(list)+len(own))
+	placed := map[string]bool{}
+	for _, id := range list {
+		if placed[id] {
+			continue
+		}
+		placed[id] = true
+		if t, ok := byID[id]; ok {
+			out = append(out, t)
+			continue
+		}
+		t, err := s.catalogTrack(v, id)
+		if err != nil {
+			if !errors.Is(err, errNotFound) {
+				log.Printf("tracklist of %s: track %s: %v", a.ID, id, err)
+			}
+			continue
+		}
+		t.Album, t.CoverURL = a.Title, a.CoverURL
+		out = append(out, *t)
+	}
+	for _, t := range own {
+		if !placed[t.ID] {
+			out = append(out, t)
+		}
+	}
+	for i := range out {
+		out[i].TrackNo, out[i].DiscNo = i+1, 1
+	}
+	return out
 }
 
 // localAlbumCards — свои релизы карточками (дискография, медиатека), в
@@ -124,7 +175,10 @@ func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	}
 	rows, err := s.DB.Query(
 		`SELECT a.deezer_id, a.title, coalesce(to_char(a.released_at, 'YYYY-MM-DD'), ''), coalesce(a.record_type, ''),
-		        coalesce(a.cover_key, ''), count(t.id), coalesce(sum(t.duration_ms), 0)
+		        coalesce(a.cover_key, ''),
+		        count(t.id) + coalesce((SELECT count(*) FROM unnest(a.tracklist) x
+		                                 WHERE NOT EXISTS (SELECT 1 FROM tracks o WHERE o.album_id = a.id AND o.deezer_id = x)), 0),
+		        coalesce(sum(t.duration_ms), 0)
 		   FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
 		  WHERE a.deezer_id = ANY($1)
 		  GROUP BY a.id`, pq.Array(ids))

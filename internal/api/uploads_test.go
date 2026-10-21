@@ -228,6 +228,65 @@ func TestUploads_Version(t *testing.T) {
 	}
 }
 
+// В релиз добавляются существующие треки (Deezer, другие свои) — под
+// названием и обложкой релиза, на своём месте; сами они не меняются.
+// Mock: трек 12345 — с релиза 9.
+func TestUploads_OtherTracks(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	srv.StorageDir = t.TempDir()
+	listener := invitedUser(t, router, admin, "ears")
+	id, tracks := newDraft(t, db, router, admin, 1)
+	if rec := adminRequest(router, "PUT", "/api/uploads/releases/"+id+"/cover", admin, testJPEG(t), "image/jpeg"); rec.Code != http.StatusOK {
+		t.Fatalf("cover: %d %s", rec.Code, rec.Body.String())
+	}
+	body := func(trackList string) string {
+		return `{"title":"Deluxe","artists":["1"],"record_type":"album","release_date":"2026-10-20",
+			"tracks":[` + trackList + `],"published":true}`
+	}
+	own := `{"id":"` + tracks[0] + `","title":"Bonus"}`
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own+`,`+own), http.StatusBadRequest)             // дважды
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own+`,{"id":"k999999"}`), http.StatusBadRequest) // нет такого
+
+	var st struct {
+		Tracks []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Other bool   `json:"other"`
+		} `json:"tracks"`
+	}
+	// У добавленного трека название не нужно: его здесь не правят.
+	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`{"id":"12345","title":"Renamed"},`+own), http.StatusOK), &st)
+	if len(st.Tracks) != 2 || st.Tracks[0].ID != "12345" || !st.Tracks[0].Other || st.Tracks[0].Title != "Test Song" || st.Tracks[1].Other {
+		t.Errorf("tracks = %+v", st.Tracks)
+	}
+	var n int
+	db.QueryRow(`SELECT count(*) FROM tracks WHERE deezer_id = '12345' AND title = 'Renamed'`).Scan(&n)
+	if n != 0 {
+		t.Error("an added track must not be renamed by the release")
+	}
+
+	var page struct {
+		Album struct {
+			NbTracks int `json:"nb_tracks"`
+		}
+		Tracks []tracklistTrack
+	}
+	getJSON(t, router, "/api/discover/albums/"+id, listener, false, &page)
+	if trackIDs(page.Tracks) != "12345 "+tracks[0]+" " || page.Tracks[0].Album != "Deluxe" || page.Tracks[0].TrackNo != 1 || page.Tracks[1].TrackNo != 2 {
+		t.Errorf("release tracks = %+v", page.Tracks)
+	}
+	if page.Album.NbTracks != 2 {
+		t.Errorf("nb_tracks = %d", page.Album.NbTracks)
+	}
+
+	// Без добавленных — обычный порядок своих треков.
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own), http.StatusOK)
+	db.QueryRow(`SELECT count(*) FROM albums WHERE deezer_id = $1 AND tracklist IS NULL`, id).Scan(&n)
+	if n != 1 {
+		t.Error("the tracklist must be cleared")
+	}
+}
+
 // Релиз правят только автор и админ; чужой черновик не виден вовсе.
 func TestUploads_Permissions(t *testing.T) {
 	db, router, admin := newTestRouter(t)

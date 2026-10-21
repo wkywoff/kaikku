@@ -5,7 +5,8 @@
   // текст трека, другой файл, удалить.
   // Строка: { key, id (k… — когда файл обработан), title, durationMs,
   //   explicit, artists (null — как у релиза), state, progress, error,
-  //   lyrics (undefined — ещё не загружен), lyricsInitial, open, busy (меняется файл) }.
+  //   lyrics (undefined — ещё не загружен), lyricsInitial, open, busy (меняется файл),
+  //   other (трек с другого релиза: только переставить и убрать) }.
   import { createEventDispatcher } from 'svelte';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
@@ -23,6 +24,7 @@
   import FileAudio from '@lucide/svelte/icons/file-audio';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
+  import X from '@lucide/svelte/icons/x';
 
   export let rows = [];
   export let releaseArtists = [];
@@ -46,6 +48,7 @@
   }
 
   function menu(e, row) {
+    if (row.other) return openMenu(e, [{ label: $t('upload.removeFromRelease'), icon: X, onClick: () => dispatch('remove', row) }]);
     openMenu(e, [
       ...(row.id ? [{ label: $t('upload.trackDetails'), icon: UsersRound, onClick: () => toggleDetails(row) }] : []),
       ...(row.id
@@ -170,36 +173,44 @@
           >
           <span class="n num">{i + 1}</span>
           <div class="main">
-            <input
-              class="title"
-              class:missing={invalidTitles && row.id && !row.title.trim()}
-              type="text"
-              maxlength="300"
-              placeholder={$t('upload.trackTitle')}
-              aria-label={$t('upload.trackTitleN', { n: i + 1 })}
-              bind:value={row.title}
-              on:input={() => dispatch('change')}
-            />
-            {#if row.id}
-              <button type="button" class="who" on:click={() => toggleDetails(row)}>
-                {row.artists ? artistNames(row) : $t('upload.asRelease', { names: artistNames(row) || '—' })}
-              </button>
-            {:else if row.state === 'error'}
-              <span class="status err"><CircleAlert size={14} /> {row.error || $t('upload.failed')}</span>
+            {#if row.other}
+              <span class="title fixed">{row.title}</span>
+              <span class="who">{artistNames(row)}{' · '}<em>{$t('edit.otherRelease')}</em></span>
             {:else}
-              <span class="status">
-                {#if row.state === 'uploading'}
-                  <span class="bar"><span style:width="{Math.round(row.progress * 100)}%"></span></span>
-                  {$t('upload.uploadingPct', { pct: Math.round(row.progress * 100) })}
-                {:else if row.state === 'processing'}
-                  <LoaderCircle class="spin" size={14} /> {$t('upload.processing')}
-                {:else}
-                  {$t('upload.queued')}
-                {/if}
-              </span>
+              <input
+                class="title"
+                class:missing={invalidTitles && row.id && !row.title.trim()}
+                type="text"
+                maxlength="300"
+                placeholder={$t('upload.trackTitle')}
+                aria-label={$t('upload.trackTitleN', { n: i + 1 })}
+                bind:value={row.title}
+                on:input={() => dispatch('change')}
+              />
+              {#if row.id}
+                <button type="button" class="who" on:click={() => toggleDetails(row)}>
+                  {row.artists ? artistNames(row) : $t('upload.asRelease', { names: artistNames(row) || '—' })}
+                </button>
+              {:else if row.state === 'error'}
+                <span class="status err"><CircleAlert size={14} /> {row.error || $t('upload.failed')}</span>
+              {:else}
+                <span class="status">
+                  {#if row.state === 'uploading'}
+                    <span class="bar"><span style:width="{Math.round(row.progress * 100)}%"></span></span>
+                    {$t('upload.uploadingPct', { pct: Math.round(row.progress * 100) })}
+                  {:else if row.state === 'processing'}
+                    <LoaderCircle class="spin" size={14} /> {$t('upload.processing')}
+                  {:else}
+                    {$t('upload.queued')}
+                  {/if}
+                </span>
+              {/if}
             {/if}
           </div>
-          {#if row.id}
+          {#if row.other}
+            {#if row.explicit}<span class="e on" title={$t('upload.explicitHint')}>E</span>{/if}
+            <span class="dur num">{formatTime((row.durationMs || 0) / 1000)}</span>
+          {:else if row.id}
             <button
               type="button"
               class="e"
@@ -223,7 +234,7 @@
             <Ellipsis size={20} />
           </button>
         </div>
-        {#if row.open && row.id}
+        {#if row.open && row.id && !row.other}
           <div class="details">
             <label class="check">
               <input type="checkbox" checked={!!row.artists} on:change={(e) => ownArtists(row, e.currentTarget.checked)} />
@@ -364,6 +375,23 @@
   .title.missing {
     border-color: var(--danger);
   }
+  .title.fixed {
+    display: block;
+    line-height: 34px;
+    border: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @media (hover: hover) {
+    .title.fixed:hover {
+      background: transparent;
+    }
+  }
+  .who em {
+    font-style: normal;
+    color: var(--accent);
+  }
   .who,
   .status {
     display: inline-flex;
@@ -411,6 +439,11 @@
     font-size: 12px;
     font-weight: 700;
     flex-shrink: 0;
+  }
+  span.e {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .e.on {
     background: var(--text-dim);

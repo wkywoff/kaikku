@@ -6,8 +6,10 @@
   // есть (то же проверяет сервер), и открывает страницу релиза. Пустые поля
   // заполняются из тегов первого файла: название альбома, дата, исполнитель
   // (его остаётся выбрать в подсказках), обложка.
-  // Релиз можно привязать версией к другому (делюкс, clean): он уйдёт из
-  // дискографии в «Другие версии» основного.
+  // В треки можно добавить существующий трек по ссылке (Deezer или kaikku,
+  // как замена трека в окне правки) — он встаёт в релиз как есть, его здесь
+  // не правят; а релиз — привязать версией к другому (делюкс, clean): он
+  // уйдёт из дискографии в «Другие версии» основного.
   import { onMount, onDestroy, tick } from 'svelte';
   import { api } from '../api.js';
   import { t } from '../i18n.js';
@@ -19,7 +21,7 @@
   import { clearPageCaches } from '../lru.js';
   import { toSquareJpeg } from '../image.js';
   import { sized } from '../imageproxy.js';
-  import { albumIdFrom, isShortDeezerLink } from '../links.js';
+  import { trackIdFrom, albumIdFrom, isShortDeezerLink } from '../links.js';
   import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue } from '../uploads.js';
   import ArtistPicker from '../components/upload/ArtistPicker.svelte';
   import TrackRows from '../components/upload/TrackRows.svelte';
@@ -61,6 +63,9 @@
   let versionLink = '';
   let versionError = '';
   let versionBusy = false;
+  let trackLink = ''; // добавить существующий трек
+  let trackLinkError = '';
+  let trackLinkBusy = false;
 
   const ref = (a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null });
 
@@ -72,6 +77,7 @@
       durationMs: tr.duration_ms,
       explicit: !!tr.explicit,
       artists: tr.artists ? tr.artists.map(ref) : null,
+      other: !!tr.other, // с другого релиза: только порядок и «убрать»
       state: 'done',
       progress: 1,
       error: '',
@@ -82,7 +88,8 @@
     };
   }
 
-  const trackBody = (r) => ({ id: r.id, title: r.title.trim(), artists: r.artists ? r.artists.map((a) => a.id) : null, explicit: r.explicit });
+  const trackBody = (r) =>
+    r.other ? { id: r.id } : { id: r.id, title: r.title.trim(), artists: r.artists ? r.artists.map((a) => a.id) : null, explicit: r.explicit };
 
   function fill(st) {
     title = st.title;
@@ -197,6 +204,10 @@
   }
 
   async function removeRow(row) {
+    if (row.other) {
+      rows = rows.filter((r) => r !== row); // сам трек остаётся, где был
+      return;
+    }
     if (!row.id) {
       const item = queue.items.find((i) => i.key === row.key);
       if (item && item.state !== 'error' && item.state !== 'queued') return toast($t('upload.waitUpload'));
@@ -233,7 +244,26 @@
     }
   }
 
-  // --- версия ---
+  // --- существующий трек и версия ---
+  async function addExisting() {
+    trackLinkError = '';
+    if (isShortDeezerLink(trackLink)) return (trackLinkError = $t('edit.shortLink'));
+    const tid = trackIdFrom(trackLink);
+    if (!tid) return (trackLinkError = $t('edit.badTrackLink'));
+    if (rows.some((r) => r.id === tid)) return (trackLinkError = $t('edit.trackExists'));
+    trackLinkBusy = true;
+    try {
+      const tr = await api.discoverTrack(tid);
+      const artists = tr.contributors?.length ? tr.contributors : [{ id: tr.artist_id, name: tr.artist }];
+      rows = [...rows, rowFrom({ id: String(tr.id), title: tr.title, duration_ms: tr.duration_ms, explicit: tr.explicit, artists, other: true })];
+      trackLink = '';
+    } catch (e) {
+      trackLinkError = e.message;
+    } finally {
+      trackLinkBusy = false;
+    }
+  }
+
   async function linkVersion() {
     versionError = '';
     if (isShortDeezerLink(versionLink)) return (versionError = $t('edit.shortLink'));
@@ -464,6 +494,18 @@
         on:remove={(e) => removeRow(e.detail)}
         on:replace={(e) => replaceAudio(e.detail)}
       />
+      <div class="field existing">
+        <label class="label" for="existing-track">{$t('upload.addExisting')}</label>
+        <div class="link-row">
+          <input id="existing-track" type="text" bind:value={trackLink} placeholder={$t('edit.trackLink')}
+            on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), addExisting())} />
+          <button type="button" class="pill outline" disabled={!trackLink.trim() || trackLinkBusy} on:click={addExisting}>
+            {#if trackLinkBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.add')}
+          </button>
+        </div>
+        {#if trackLinkError}<p class="error-text">{trackLinkError}</p>{/if}
+        <small>{$t('upload.addExistingHint')}</small>
+      </div>
     </section>
   {/if}
 </div>
@@ -713,6 +755,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 15px;
+  }
+  .existing {
+    margin-top: 20px;
   }
   h2 {
     display: flex;
