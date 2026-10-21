@@ -13,6 +13,7 @@ package ytdlp
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,8 +34,13 @@ var execCommand = exec.CommandContext
 type candidate struct {
 	ID         string
 	Title      string
-	Channel    string
+	Channel    string // у YouTube Music — исполнители через запятую
 	DurationMs int
+	// Только у песен с YouTube Music (searchMusic).
+	Music    bool
+	Artists  []string
+	Album    string
+	Explicit bool
 }
 
 type ytDlpEntry struct {
@@ -94,12 +100,23 @@ type Want struct {
 	Title        string
 	Album        string
 	DurationMs   int
+	// Explicit — метка Deezer: версия с матом или clean (nil — неизвестно,
+	// задачи до 0037). По ней выбирается песня на YouTube Music.
+	Explicit *bool
 	// VideoID — видео, которое брать без поиска: ссылка от админа или то,
 	// с которого трек уже качали (его файл удалили как неслушаемый).
 	VideoID string
 	// SearchIfVideoFails: VideoID не открылся (видео удалили) — искать как
 	// обычно. Для ссылки админа — нет: он выбрал именно это видео.
 	SearchIfVideoFails bool
+}
+
+// NullBool is Want.Explicit from a nullable column.
+func NullBool(b sql.NullBool) *bool {
+	if !b.Valid {
+		return nil
+	}
+	return &b.Bool
 }
 
 // ErrNoMatch — на YouTube не нашлось подходящего видео (а не сбой сети или
@@ -135,9 +152,13 @@ func VideoIDFromURL(s string) (string, bool) {
 	return "", false
 }
 
-// FindMatches searches YouTube and returns qualifying video IDs, best first
-// (see rankCandidates), so the caller can fall back to the next one if a
-// download fails. Queries are tried in order until one yields a match:
+// FindMatches searches YouTube and returns qualifying video IDs, best first,
+// so the caller can fall back to the next one if a download fails.
+//
+// First YouTube Music (findOnMusic, rankMusic): official songs only, with
+// artists, album and the explicit badge. If it finds nothing that fits or
+// fails, the plain YouTube search (rankCandidates) tries queries in order
+// until one yields a match:
 //
 //   - "artist title";
 //   - "artist featured title" — with all of the track's artists; some
@@ -159,6 +180,16 @@ func VideoIDFromURL(s string) (string, bool) {
 func FindMatches(ctx context.Context, want Want, resultCount, toleranceMs int) ([]string, error) {
 	if resultCount <= 0 {
 		resultCount = 15
+	}
+	ids, err := findOnMusic(ctx, want, toleranceMs)
+	if err == nil {
+		return ids, nil
+	}
+	if !errors.Is(err, errMusicDisabled) {
+		log.Printf("youtube music: %q: %v, trying youtube search", want.Title, err)
+	}
+	if ctx.Err() != nil {
+		return nil, err
 	}
 	var firstErr error
 	for i, q := range searchQueries(want) {
