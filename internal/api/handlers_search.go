@@ -53,9 +53,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// на каждый трек выдачи делал поиск в ~8 раз дороже, а печатают его на ходу.
 	s.enrichLater(s.Deezer.EnrichContributorsCached(tracks))
 	s.overlayFor(artistPtrs(artists), albumPtrs(albums), tracks)
-	tracks = append(own.tracks, visibleTracks(r, tracks)...)
-	artists = append(own.artists, artists...)
-	albums = append(visibleAlbums(r, own.albums), visibleAlbums(r, albums)...) // версии — на странице основного
+	// Пустой список — [], не null (append к nil пустого даёт nil): фронт
+	// читает artists.length.
+	tracks = append(append([]deezer.Track{}, own.tracks...), visibleTracks(r, tracks)...)
+	artists = append(append([]deezer.Artist{}, own.artists...), artists...)
+	albums = append(append([]deezer.Album{}, visibleAlbums(r, own.albums)...), visibleAlbums(r, albums)...) // версии — на странице основного
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": tracks, "artists": artists, "albums": albums,
 		"users": s.searchPeople(currentUser(r), q)})
 }

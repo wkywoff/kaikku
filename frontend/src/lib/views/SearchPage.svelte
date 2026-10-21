@@ -82,7 +82,7 @@
   $: rows = (results?.tracks || []).map((tr) => rowFromDeezerTrack(tr));
   $: topArtist = results?.artists?.[0];
   $: people = results?.users || [];
-  $: empty = results && !rows.length && !results.artists.length && !results.albums.length && !people.length;
+  $: empty = results && !rows.length && !results.artists?.length && !results.albums?.length && !people.length;
 </script>
 
 <div class="page-pad search">

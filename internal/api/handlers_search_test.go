@@ -87,3 +87,29 @@ func TestSearch_ContributorsInBackground(t *testing.T) {
 		t.Errorf("repeated search without the featured artists: %+v", got.Tracks)
 	}
 }
+
+// Пустая выдача — пустые массивы, не null: страница поиска читает
+// artists.length и с null зависала на «Ищем…».
+func TestSearch_EmptyListsNotNull(t *testing.T) {
+	empty := func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[],"total":0}`)) }
+	dz := httptest.NewServer(http.HandlerFunc(empty))
+	defer dz.Close()
+	router := NewRouter(&Server{
+		DB:        openTestDB(t),
+		JWTSecret: []byte("test-secret-at-least-32-bytes-long!!"),
+		Deezer:    deezer.NewClientWithBaseURL(dz.URL),
+	})
+	token := registerTestUser(t, router)
+
+	rec := request(router, http.MethodGet, "/api/search?q=nothing", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
+	}
+	var got map[string]json.RawMessage
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	for _, k := range []string{"tracks", "artists", "albums", "users"} {
+		if string(got[k]) != "[]" {
+			t.Errorf("%s = %s, want []", k, got[k])
+		}
+	}
+}
