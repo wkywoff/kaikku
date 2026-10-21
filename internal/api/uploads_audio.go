@@ -166,7 +166,7 @@ func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 	if tooLong(title) {
 		title = string([]rune(title)[:maxTitle])
 	}
-	trackID, err := s.insertOwnTrack(rel, title, a)
+	trackID, disc, err := s.insertOwnTrack(rel, title, a)
 	if err != nil {
 		s.removeStorageFiles(a.key)
 		log.Printf("upload to %s: %v", rel.id, err)
@@ -179,7 +179,7 @@ func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp := map[string]any{
-		"track": uploadTrack{ID: trackID, Title: title, DurationMs: a.durationMs},
+		"track": uploadTrack{ID: trackID, Title: title, DurationMs: a.durationMs, Disc: disc},
 		"tags":  a.info.Tags,
 	}
 	if url := s.coverFromFile(r, rel, a); url != "" {
@@ -188,26 +188,33 @@ func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-func (s *Server) insertOwnTrack(rel releaseRow, title string, a receivedAudio) (string, error) {
+func (s *Server) insertOwnTrack(rel releaseRow, title string, a receivedAudio) (string, int, error) {
 	tx, err := s.DB.Begin()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer tx.Rollback()
 	// FOR UPDATE: два файла, загруженные разом, не получат один номер.
 	if err := tx.QueryRow(`SELECT 1 FROM albums WHERE id = $1 FOR UPDATE`, rel.libraryID).Scan(new(int)); err != nil {
-		return "", err
+		return "", 0, err
 	}
+	// Новый трек — в конец последнего диска (своего или из треклиста с
+	// добавленными треками, local.go: arrangeOwn).
 	var id string
+	var disc int
 	if err := tx.QueryRow(
-		`INSERT INTO tracks (deezer_id, album_id, title, duration_ms, track_no, disc_no, storage_key, loudness_lufs, gain_db, isrc, edited)
-		 SELECT 'k' || nextval('kaikku_ids'), $1, $2, $3, coalesce(max(track_no), 0) + 1, 1, $4, $5, $6, '', true
-		   FROM tracks WHERE album_id = $1
-		 RETURNING deezer_id`,
-		rel.libraryID, title, a.durationMs, a.key, a.lufs, a.gain).Scan(&id); err != nil {
-		return "", err
+		`WITH d AS (SELECT greatest(
+		                (SELECT coalesce(max(disc_no), 1) FROM tracks WHERE album_id = $1),
+		                (SELECT coalesce(max(x), 1) FROM albums a, unnest(a.tracklist_discs) x WHERE a.id = $1)) AS n)
+		 INSERT INTO tracks (deezer_id, album_id, title, duration_ms, track_no, disc_no, storage_key, loudness_lufs, gain_db, isrc, edited)
+		 SELECT 'k' || nextval('kaikku_ids'), $1, $2, $3,
+		        (SELECT coalesce(max(track_no), 0) + 1 FROM tracks WHERE album_id = $1 AND disc_no = d.n), d.n, $4, $5, $6, '', true
+		   FROM d
+		 RETURNING deezer_id, disc_no`,
+		rel.libraryID, title, a.durationMs, a.key, a.lufs, a.gain).Scan(&id, &disc); err != nil {
+		return "", 0, err
 	}
-	return id, tx.Commit()
+	return id, disc, tx.Commit()
 }
 
 // coverFromFile ставит картинку из файла обложкой релиза, если своей у

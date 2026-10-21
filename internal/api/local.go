@@ -71,11 +71,12 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 	a := deezer.Album{ID: id}
 	var cover string
 	var list []string
+	var discs []sql.NullInt64
 	err := s.DB.QueryRow(
 		`SELECT id, coalesce(owner_id::text, ''), draft, title, coalesce(to_char(released_at, 'YYYY-MM-DD'), ''),
-		        coalesce(record_type, ''), coalesce(cover_key, ''), tracklist
+		        coalesce(record_type, ''), coalesce(cover_key, ''), tracklist, tracklist_discs
 		   FROM albums WHERE deezer_id = $1`, id).
-		Scan(&rel.libraryID, &rel.owner, &rel.draft, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, pq.Array(&list))
+		Scan(&rel.libraryID, &rel.owner, &rel.draft, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, pq.Array(&list), pq.Array(&discs))
 	if errors.Is(err, sql.ErrNoRows) || err == nil && !v.sees(rel.draft, rel.owner) {
 		return nil, nil, rel, errNotFound
 	}
@@ -106,7 +107,7 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 	}
 	s.overlayFor(nil, []*deezer.Album{&a}, tracks)
 	if list != nil {
-		tracks = s.arrangeOwn(v, &a, tracks, list)
+		tracks = s.arrangeOwn(v, &a, tracks, list, discs)
 	}
 	a.NbTracks = len(tracks)
 	for _, t := range tracks {
@@ -128,20 +129,27 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 // album, but shows under this release's title and cover, as on a Deezer
 // album with an edited tracklist (tracklist.go). Own tracks not in the list
 // (uploaded after the last save) go to the end; a track that's gone, or a
-// stranger's draft, is skipped. Numbers follow the order.
-func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list []string) []deezer.Track {
+// stranger's draft, is skipped. discs — the disc of each place in list
+// (albums.tracklist_discs); a place without one stays on the disc before
+// it. Numbers follow the order within each disc.
+func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list []string, discs []sql.NullInt64) []deezer.Track {
 	byID := make(map[string]deezer.Track, len(own))
 	for _, t := range own {
 		byID[t.ID] = t
 	}
 	out := make([]deezer.Track, 0, len(list)+len(own))
 	placed := map[string]bool{}
-	for _, id := range list {
+	disc := 1
+	for k, id := range list {
 		if placed[id] {
 			continue
 		}
 		placed[id] = true
+		if k < len(discs) && discs[k].Valid && discs[k].Int64 > 0 {
+			disc = int(discs[k].Int64)
+		}
 		if t, ok := byID[id]; ok {
+			t.DiscNo = disc
 			out = append(out, t)
 			continue
 		}
@@ -152,16 +160,19 @@ func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list 
 			}
 			continue
 		}
-		t.Album, t.CoverURL = a.Title, a.CoverURL
+		t.Album, t.CoverURL, t.DiscNo = a.Title, a.CoverURL, disc
 		out = append(out, *t)
 	}
 	for _, t := range own {
 		if !placed[t.ID] {
+			t.DiscNo = max(t.DiscNo, disc) // загружен на последний диск (uploads_audio.go)
 			out = append(out, t)
 		}
 	}
+	next := map[int]int{}
 	for i := range out {
-		out[i].TrackNo, out[i].DiscNo = i+1, 1
+		next[out[i].DiscNo]++
+		out[i].TrackNo = next[out[i].DiscNo]
 	}
 	return out
 }

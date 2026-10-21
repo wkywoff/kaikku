@@ -24,7 +24,7 @@
   import { trackIdFrom, albumIdFrom, isShortDeezerLink } from '../links.js';
   import { lang } from '../stores/settings.js';
   import { recordTypeLabel, tracksCount, longDuration, year } from '../format.js';
-  import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue } from '../uploads.js';
+  import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue, discsOf, withSeparators } from '../uploads.js';
   import ArtistPicker from '../components/upload/ArtistPicker.svelte';
   import TrackRows from '../components/upload/TrackRows.svelte';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -54,7 +54,9 @@
   let owner = ''; // кто загрузил — если правит не он (админ)
   let artistQuery = '';
   const touched = { title: false, releaseDate: false };
-  let rows = []; // строки TrackRows
+  let rows = []; // строки TrackRows: треки и разделители дисков ({ key, sep: true })
+  let sepSeq = 0;
+  const sepKey = () => `disc-${++sepSeq}`;
   // Что лежит на сервере (то же, что body() без published) — для «есть несохранённое».
   let server = null;
   let saving = false;
@@ -91,8 +93,10 @@
     };
   }
 
-  const trackBody = (r) =>
-    r.other ? { id: r.id } : { id: r.id, title: r.title.trim(), artists: r.artists ? r.artists.map((a) => a.id) : null, explicit: r.explicit };
+  const trackBody = (r, disc) =>
+    r.other
+      ? { id: r.id, disc }
+      : { id: r.id, title: r.title.trim(), artists: r.artists ? r.artists.map((a) => a.id) : null, explicit: r.explicit, disc };
 
   function fill(st) {
     title = st.title;
@@ -102,22 +106,29 @@
     draft = st.draft;
     owner = st.owner || '';
     versionOf = st.version_of || null;
-    const pending = rows.filter((r) => !r.id);
-    rows = [...st.tracks.map((tr) => rowFrom(tr, rows.find((r) => r.id === tr.id))), ...pending];
-    recordType = st.record_type || recordTypeFor(rows);
-    recordTouched = st.tracks.length > 0 && recordType !== recordTypeFor(rows);
+    // Ещё не загруженные файлы — в конец; если их положили под новый диск,
+    // которого на сервере пока нет, — вместе с его разделителем.
+    const lastSep = rows.findLastIndex((r) => r.sep);
+    const newDisc = lastSep >= 0 && rows.slice(lastSep + 1).every((r) => !r.id) ? [rows[lastSep]] : [];
+    const pending = rows.filter((r) => !r.id && !r.sep);
+    const saved = st.tracks.map((tr) => ({ ...rowFrom(tr, rows.find((r) => r.id === tr.id)), disc: tr.disc || 1 }));
+    rows = [...withSeparators(saved, sepKey), ...newDisc, ...pending];
+    const tracks = rows.filter((r) => !r.sep);
+    recordType = st.record_type || recordTypeFor(tracks);
+    recordTouched = st.tracks.length > 0 && recordType !== recordTypeFor(tracks);
     server = {
       title: st.title,
       artists: st.artists.map((a) => String(a.id)),
       record_type: recordType,
       release_date: st.release_date || '',
       version_of: st.version_of ? String(st.version_of.id) : '',
-      tracks: st.tracks.map((tr) => trackBody(rowFrom(tr))),
+      tracks: st.tracks.map((tr) => trackBody(rowFrom(tr), tr.disc || 1)),
     };
   }
 
   // Тип — по трекам, пока его не выбрали руками.
-  $: if (!loading && !recordTouched) recordType = recordTypeFor(rows);
+  $: trackRows = rows.filter((r) => !r.sep);
+  $: if (!loading && !recordTouched) recordType = recordTypeFor(trackRows);
 
   $: current = JSON.stringify({
     title: title.trim(),
@@ -125,12 +136,14 @@
     record_type: recordType,
     release_date: releaseDate,
     version_of: versionOf ? String(versionOf.id) : '',
-    tracks: rows.filter((r) => r.id).map(trackBody),
+    tracks: discsOf(rows)
+      .filter(({ row }) => row.id)
+      .map(({ row, disc }) => trackBody(row, disc)),
   });
   $: lyricsDirty = rows.some((r) => r.lyrics !== undefined && r.lyrics !== r.lyricsInitial);
   $: dirty = !!server && (current !== JSON.stringify(server) || lyricsDirty);
-  $: uploading = rows.some((r) => !r.id && r.state !== 'error');
-  $: problems = missingForPublish({ title, artists, recordType, releaseDate, coverUrl, rows });
+  $: uploading = trackRows.some((r) => !r.id && r.state !== 'error');
+  $: problems = missingForPublish({ title, artists, recordType, releaseDate, coverUrl, rows: trackRows });
   $: shownMissing = showMissing ? problems : [];
   $: if (showMissing && !problems.length) showMissing = false;
   $: setRouteTitle(`upload:${id}`, title.trim() || $t('upload.untitled'));
@@ -156,7 +169,7 @@
   function uploaded(row, { track, tags, cover_url }) {
     Object.assign(row, rowFrom(track, row));
     row.title = track.title;
-    server.tracks = [...server.tracks, trackBody(row)]; // сервер добавил трек в конец
+    server.tracks = [...server.tracks, trackBody(row, track.disc || 1)]; // сервер добавил трек в конец последнего диска
     server = server;
     const pre = prefillFromTags({ title, artists }, tags, touched);
     if (pre.title) title = pre.title;
@@ -382,7 +395,7 @@
   });
 
   // Сводка под обложкой: как релиз будет подписан на своей странице.
-  $: totalSec = rows.reduce((sum, r) => sum + (r.id ? r.durationMs || 0 : 0), 0) / 1000;
+  $: totalSec = trackRows.reduce((sum, r) => sum + (r.id ? r.durationMs || 0 : 0), 0) / 1000;
   $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' · ');
 
   const missingText = (codes) => codes.map((c) => $t(`upload.missing.${c}`)).join(', ');
@@ -438,12 +451,12 @@
         <input bind:this={coverInput} type="file" accept="image/*" hidden on:change={(e) => (setCover(e.currentTarget.files[0]), (e.currentTarget.value = ''))} />
         <div class="summary">
           <small>{$t(coverFromFile ? 'upload.coverFromFile' : 'upload.coverHint')}</small>
-          {#if title.trim() || artists.length || rows.length}
+          {#if title.trim() || artists.length || trackRows.length}
           <div class="summary-card">
             <span class="kind">{kindLine}</span>
             <strong class="sum-title">{title.trim() || $t('upload.untitled')}</strong>
             <span class="sum-artists">{artists.map((a) => a.name).join(', ') || '—'}</span>
-            <span class="sum-meta">{tracksCount(rows.filter((r) => r.id).length, $lang)}{#if totalSec}, {longDuration(totalSec, $lang)}{/if}</span>
+            <span class="sum-meta">{tracksCount(trackRows.filter((r) => r.id).length, $lang)}{#if totalSec}, {longDuration(totalSec, $lang)}{/if}</span>
           </div>
           {/if}
         </div>
@@ -487,7 +500,7 @@
         </section>
 
         <section class="card">
-          <h2>{$t('upload.tracks')} <b>*</b>{#if rows.length}<span class="count">{rows.length}</span>{/if}</h2>
+          <h2>{$t('upload.tracks')} <b>*</b>{#if trackRows.length}<span class="count">{trackRows.length}</span>{/if}</h2>
           <TrackRows
             bind:rows
             releaseArtists={artists}

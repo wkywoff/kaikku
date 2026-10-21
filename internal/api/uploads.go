@@ -154,6 +154,7 @@ type uploadTrack struct {
 	Explicit   bool               `json:"explicit"`
 	Artists    []deezer.ArtistRef `json:"artists"`         // null — как у релиза
 	Other      bool               `json:"other,omitempty"` // добавлен с другого релиза: не правится здесь
+	Disc       int                `json:"disc"`
 }
 
 type releaseState struct {
@@ -201,7 +202,7 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 	}
 	rows.Close()
 	for _, t := range tracks {
-		ut := uploadTrack{ID: t.ID, Title: t.Title, DurationMs: t.DurationMs, Explicit: t.Explicit}
+		ut := uploadTrack{ID: t.ID, Title: t.Title, DurationMs: t.DurationMs, Explicit: t.Explicit, Disc: max(t.DiscNo, 1)}
 		switch {
 		case t.AlbumID != rel.id:
 			ut.Other = true
@@ -253,6 +254,7 @@ type releaseTrackEdit struct {
 	Title    string   `json:"title"`
 	Artists  []string `json:"artists"` // null — как у релиза
 	Explicit bool     `json:"explicit"`
+	Disc     int      `json:"disc"` // 1…99, по порядку не убывает; нет — первый
 }
 
 const maxTitle = 300
@@ -311,6 +313,21 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		writeSaveError(w, err)
 		return
 	}
+	// Диски: по порядку треков номер не убывает (диск 2 — после диска 1);
+	// номер трека — место на своём диске.
+	trackNos := make([]int, len(req.Tracks))
+	onDisc := map[int]int{}
+	for i, t := range req.Tracks {
+		if t.Disc == 0 {
+			req.Tracks[i].Disc = 1
+		}
+		if d := req.Tracks[i].Disc; d < 1 || d > 99 || i > 0 && d < req.Tracks[i-1].Disc {
+			writeError(w, http.StatusBadRequest, "discs must be 1 to 99, in order")
+			return
+		}
+		onDisc[req.Tracks[i].Disc]++
+		trackNos[i] = onDisc[req.Tracks[i].Disc]
+	}
 	trackArtists := make([][]string, len(req.Tracks))
 	for i, t := range req.Tracks {
 		if other[t.ID] {
@@ -365,12 +382,21 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tracklist []string // свой порядок нужен, только когда есть треки с других релизов
+	var discs []int64      // и диск каждого места в нём: у добавленных он только здесь
 	if len(other) > 0 {
 		tracklist = sent
+		for _, t := range req.Tracks {
+			discs = append(discs, int64(t.Disc))
+		}
+	}
+	var discsArg any
+	if discs != nil {
+		discsArg = pq.Array(discs)
 	}
 	if _, err := tx.Exec(
-		`UPDATE albums SET title = $2, artist_ids = $3, record_type = NULLIF($4, ''), released_at = $5, tracklist = $6 WHERE id = $1`,
-		rel.libraryID, req.Title, nullArray(artists), req.RecordType, released, nullArray(tracklist)); err != nil {
+		`UPDATE albums SET title = $2, artist_ids = $3, record_type = NULLIF($4, ''), released_at = $5, tracklist = $6, tracklist_discs = $7
+		  WHERE id = $1`,
+		rel.libraryID, req.Title, nullArray(artists), req.RecordType, released, nullArray(tracklist), discsArg); err != nil {
 		writeError(w, http.StatusInternalServerError, "save failed")
 		return
 	}
@@ -378,8 +404,8 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		if other[t.ID] {
 			continue
 		}
-		if _, err := tx.Exec(`UPDATE tracks SET title = $2, track_no = $3, disc_no = 1 WHERE deezer_id = $1`,
-			t.ID, t.Title, i+1); err != nil {
+		if _, err := tx.Exec(`UPDATE tracks SET title = $2, track_no = $3, disc_no = $4 WHERE deezer_id = $1`,
+			t.ID, req.Tracks[i].Title, trackNos[i], req.Tracks[i].Disc); err != nil {
 			writeError(w, http.StatusInternalServerError, "save failed")
 			return
 		}
@@ -601,8 +627,16 @@ func (s *Server) deleteOwn(albumID, libraryID, trackID string) ([]string, error)
 		`DELETE FROM lyrics WHERE deezer_id = ANY($1)`,
 		`DELETE FROM track_overrides WHERE deezer_id = ANY($1)`,
 		// добавлен в треклист других релизов (arrangeOwn) — убрать оттуда
-		`UPDATE albums SET tracklist = NULLIF(ARRAY(SELECT x FROM unnest(tracklist) x WHERE x <> ALL($1)), '{}')
-		  WHERE tracklist && $1`,
+		// вместе с его диском (tracklist_discs — по тем же местам)
+		`UPDATE albums a SET tracklist = k.ids, tracklist_discs = k.discs
+		   FROM (SELECT al.id,
+		                array_agg(x.id ORDER BY x.n) FILTER (WHERE x.id <> ALL($1)) AS ids,
+		                CASE WHEN al.tracklist_discs IS NOT NULL
+		                     THEN array_agg(al.tracklist_discs[x.n] ORDER BY x.n) FILTER (WHERE x.id <> ALL($1)) END AS discs
+		           FROM albums al, unnest(al.tracklist) WITH ORDINALITY x(id, n)
+		          WHERE al.tracklist && $1
+		          GROUP BY al.id) k
+		  WHERE a.id = k.id`,
 	}
 	for _, q := range refs {
 		if _, err := tx.Exec(q, pq.Array(ids)); err != nil {

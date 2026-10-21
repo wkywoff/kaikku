@@ -7,13 +7,15 @@
   //   explicit, artists (null — как у релиза), state, progress, error,
   //   lyrics (undefined — ещё не загружен), lyricsInitial, open, busy (меняется файл),
   //   other (трек с другого релиза: только переставить и убрать) }.
+  // Разделитель дисков — строка { key, sep: true }: треки под ним — на
+  // следующем диске (uploads.js: discsOf). Его тоже тащат за ручку и убирают.
   import { createEventDispatcher, tick } from 'svelte';
   import { dropRest, nextPaint, rowStep } from '../../dragDrop.js';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
   import { formatTime } from '../../stores/player.js';
   import { openMenu } from '../../stores/contextMenu.js';
-  import { AUDIO_ACCEPT, isAudioFile, naturalCompare } from '../../uploads.js';
+  import { AUDIO_ACCEPT, isAudioFile, naturalCompare, discsOf } from '../../uploads.js';
   import ArtistPicker from './ArtistPicker.svelte';
   import AlignJustify from '@lucide/svelte/icons/align-justify';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -27,6 +29,8 @@
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import X from '@lucide/svelte/icons/x';
   import Link2 from '@lucide/svelte/icons/link-2';
+  import Disc3 from '@lucide/svelte/icons/disc-3';
+  import Plus from '@lucide/svelte/icons/plus';
 
   export let rows = [];
   export let releaseArtists = [];
@@ -80,6 +84,25 @@
   }
 
   const changed = () => ((rows = rows), dispatch('change'));
+
+  // --- диски ---
+  // Номер трека — место на своём диске; у разделителя — номер диска под ним.
+  $: numbers = new Map(discsOf(rows).map(({ row, disc, n }) => [row.key, { disc, n }]));
+  $: lastDisc = Math.max(1, ...[...numbers.values()].map((x) => x.disc));
+  $: hasDiscs = rows.some((r) => r.sep);
+  function sepDisc(i) {
+    const next = rows.slice(i + 1).find((r) => !r.sep);
+    return next ? numbers.get(next.key).disc : lastDisc + 1;
+  }
+  let sepSeq = 0;
+  function addDisc() {
+    rows = [...rows, { key: `disc-new-${++sepSeq}`, sep: true }];
+    dispatch('change');
+  }
+  function removeDisc(row) {
+    rows = rows.filter((r) => r !== row);
+    dispatch('change');
+  }
   const artistNames = (row) => (row.artists || releaseArtists).map((a) => a.name).join(', ');
 
   // --- порядок: перетаскивание за ручку (как в очереди и TracklistEditor) ---
@@ -159,6 +182,7 @@
 </div>
 
 {#if rows.length}
+  {#if hasDiscs}<div class="disc-head"><Disc3 size={16} /> {$t('tracks.disc', { n: 1 })}</div>{/if}
   <div class="rows" class:dragging={!!drag} class:settling={!!settling}>
     {#each rows as row, i (row.key)}
       <!-- Сдвиг — только пока тащат: transform у строки поднимает её в свой
@@ -167,9 +191,10 @@
         class="slot"
         class:lifted={drag?.i === i || settling?.key === row.key}
         class:open={row.open}
+        class:sep={row.sep}
         style:transform={drag ? `translateY(${shift(i, drag, target)}px)` : settling?.key === row.key ? `translateY(${settling.dy}px)` : null}
       >
-        <div class="row">
+        <div class="row" class:sep={row.sep}>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <span
             class="handle"
@@ -183,7 +208,13 @@
             on:pointercancel={endDrag}
             on:keydown={(e) => dragKey(e, i)}><AlignJustify size={18} /></span
           >
-          <span class="n num">{i + 1}</span>
+          {#if row.sep}
+          <span class="disc-name"><Disc3 size={18} /> {$t('tracks.disc', { n: sepDisc(i) })}</span>
+          <button type="button" class="icon-btn" title={$t('upload.removeDisc')} aria-label={$t('upload.removeDisc')} on:click={() => removeDisc(row)}>
+            <X size={18} />
+          </button>
+          {:else}
+          <span class="n num">{numbers.get(row.key)?.n ?? i + 1}</span>
           <div class="main">
             {#if row.other}
               <span class="title fixed">{row.title}</span>
@@ -247,8 +278,9 @@
           <button type="button" class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title: row.title })} on:click={(e) => menu(e, row)}>
             <Ellipsis size={20} />
           </button>
+          {/if}
         </div>
-        {#if row.open && row.id && !row.other}
+        {#if row.open && row.id && !row.other && !row.sep}
           <div class="details">
             <label class="check">
               <input type="checkbox" checked={!!row.artists} on:change={(e) => ownArtists(row, e.currentTarget.checked)} />
@@ -270,6 +302,11 @@
       </div>
     {/each}
   </div>
+  {#if rows.some((r) => !r.sep) && !rows[rows.length - 1].sep}
+    <button type="button" class="add-disc" title={$t('upload.addDiscHint')} on:click={addDisc}>
+      <Plus size={16} /> {$t('upload.addDisc', { n: lastDisc + 1 })}
+    </button>
+  {/if}
 {/if}
 
 <style>
@@ -318,6 +355,9 @@
     background: #282828;
     transition: transform 0.15s ease;
   }
+  .slot.sep {
+    background: transparent;
+  }
   .slot.open {
     z-index: 2; /* подсказки исполнителей — поверх следующих строк */
   }
@@ -336,10 +376,55 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 60px;
+    min-height: 62px; /* у всех строк, и у разделителя дисков: перетаскивание считает шаг по одной */
     padding: 4px 4px 4px 0;
     border-radius: 6px;
     background: #2e2e2e;
+  }
+  /* Разделитель дисков: не трек, а подпись над треками следующего диска. */
+  .row.sep {
+    background: transparent;
+    box-shadow: inset 0 -1px 0 var(--border);
+    border-radius: 0;
+  }
+  .lifted .row.sep {
+    background: #3a3a3a;
+    border-radius: 6px;
+  }
+  .disc-name,
+  .disc-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-dim);
+  }
+  .disc-name {
+    flex: 1;
+    min-width: 0;
+    padding-left: 8px;
+  }
+  .disc-head {
+    margin: 16px 0 4px;
+    padding-left: 54px; /* под подписью разделителя: ручка (40) + отступы */
+  }
+  .add-disc {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  @media (hover: hover) {
+    .add-disc:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+    }
   }
   .handle {
     display: inline-flex;

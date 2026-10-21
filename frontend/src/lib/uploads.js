@@ -45,6 +45,36 @@ export function missingForPublish(r) {
   return missing;
 }
 
+/**
+ * Диски в списке треков окна загрузки: строка-разделитель ({ sep: true })
+ * открывает следующий диск. Пустой диск не считается — разделитель в самом
+ * начале или два подряд номер не сдвигают. → [{ row, disc, n }] для строк
+ * треков, n — номер на своём диске.
+ */
+export function discsOf(rows) {
+  const out = [];
+  let disc = 1;
+  let n = 0;
+  for (const row of rows) {
+    if (row.sep) {
+      if (n) (disc += 1), (n = 0);
+      continue;
+    }
+    out.push({ row, disc, n: ++n });
+  }
+  return out;
+}
+
+/** Строки из треков с номерами дисков (ответ сервера): перед каждым следующим диском — разделитель. */
+export function withSeparators(tracks, sepKey) {
+  const out = [];
+  tracks.forEach((tr, i) => {
+    if (i > 0 && (tr.disc || 1) > (tracks[i - 1].disc || 1)) out.push({ key: sepKey(), sep: true });
+    out.push(tr);
+  });
+  return out;
+}
+
 /** Порядок файлов «как в папке»: 2 раньше 10. */
 export const naturalCompare = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 

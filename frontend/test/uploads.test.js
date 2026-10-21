@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recordTypeFor, missingForPublish, naturalCompare, fullDate, prefillFromTags, createQueue, isAudioFile } from '../src/lib/uploads.js';
+import { recordTypeFor, missingForPublish, naturalCompare, fullDate, prefillFromTags, createQueue, isAudioFile, discsOf, withSeparators } from '../src/lib/uploads.js';
 
 const min = 60 * 1000;
 const tracks = (n, each = 3 * min) => Array.from({ length: n }, () => ({ durationMs: each }));
@@ -27,6 +27,21 @@ test('missingForPublish names every gap, and files still uploading', () => {
   assert.deepEqual(missingForPublish({ ...full, rows: [{ id: 'k2', title: '' }, { id: null, title: 'x.flac' }] }), ['track_titles', 'uploading']);
   // трек, добавленный с другого релиза, здесь не называют
   assert.deepEqual(missingForPublish({ ...full, rows: [{ id: '12345', title: '', other: true }] }), []);
+});
+
+test('discsOf numbers tracks by disc, skipping empty discs', () => {
+  const sep = { sep: true };
+  const rows = [sep, { id: 'a' }, { id: 'b' }, sep, sep, { id: 'c' }, sep];
+  assert.deepEqual(
+    discsOf(rows).map(({ row, disc, n }) => `${row.id}:${disc}.${n}`),
+    ['a:1.1', 'b:1.2', 'c:2.1'],
+  );
+});
+
+test('withSeparators puts a divider before each next disc', () => {
+  let k = 0;
+  const rows = withSeparators([{ id: 'a', disc: 1 }, { id: 'b', disc: 2 }, { id: 'c', disc: 2 }, { id: 'd', disc: 3 }], () => `s${++k}`);
+  assert.deepEqual(rows.map((r) => r.id || r.key), ['a', 's1', 'b', 'c', 's2', 'd']);
 });
 
 test('naturalCompare puts 2 before 10', () => {

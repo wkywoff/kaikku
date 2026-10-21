@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -295,6 +297,62 @@ func TestUploads_OtherTracks(t *testing.T) {
 	db.QueryRow(`SELECT count(*) FROM albums WHERE deezer_id = $1 AND tracklist IS NULL`, id).Scan(&n)
 	if n != 1 {
 		t.Error("the tracklist must be cleared")
+	}
+}
+
+// Диски своего релиза: номер трека — место на своём диске, и у треков с
+// других релизов тоже; новый файл ложится в конец последнего диска; удалённый
+// трек уходит из треклиста вместе со своим диском. Mock: 12345 — с релиза 9.
+func TestUploads_Discs(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	id, tracks := newDraft(t, db, router, admin, 3)
+	tr := func(id string, disc int) string {
+		return `{"id":"` + id + `","title":"T` + id + `","disc":` + strconv.Itoa(disc) + `}`
+	}
+	save := func(want int, list ...string) {
+		t.Helper()
+		call(t, router, "PUT", "/api/uploads/releases/"+id, admin, `{"title":"Deluxe","tracks":[`+strings.Join(list, ",")+`]}`, want)
+	}
+	page := func() string {
+		t.Helper()
+		var p struct{ Tracks []tracklistTrack }
+		getJSON(t, router, "/api/discover/albums/"+id, admin, false, &p)
+		out := ""
+		for _, x := range p.Tracks {
+			out += fmt.Sprintf("%s:%d.%d ", x.ID, x.DiscNo, x.TrackNo)
+		}
+		return out
+	}
+	a, b, c := tracks[0], tracks[1], tracks[2]
+
+	save(http.StatusBadRequest, tr(a, 2), tr(b, 1), tr(c, 1)) // диск 2 раньше первого
+	save(http.StatusBadRequest, tr(a, 1), tr(b, 1), tr(c, 100))
+	save(http.StatusOK, tr(a, 1), tr(b, 2), tr(c, 2))
+	if got, want := page(), a+":1.1 "+b+":2.1 "+c+":2.2 "; got != want {
+		t.Errorf("own discs = %q, want %q", got, want)
+	}
+
+	// С добавленным треком диски хранятся и у него.
+	save(http.StatusOK, `{"id":"12345","disc":1}`, tr(a, 1), tr(b, 2), tr(c, 2))
+	if got, want := page(), "12345:1.1 "+a+":1.2 "+b+":2.1 "+c+":2.2 "; got != want {
+		t.Errorf("discs with an added track = %q, want %q", got, want)
+	}
+
+	// Новый файл — в конец последнего диска.
+	var lib string
+	db.QueryRow(`SELECT id FROM albums WHERE deezer_id = $1`, id).Scan(&lib)
+	added, disc, err := srv.insertOwnTrack(releaseRow{id: id, libraryID: lib}, "New", receivedAudio{key: "uploads/new.m4a", durationMs: 1000})
+	if err != nil || disc != 2 {
+		t.Fatalf("insert: disc %d, %v", disc, err)
+	}
+	if got, want := page(), "12345:1.1 "+a+":1.2 "+b+":2.1 "+c+":2.2 "+added+":2.3 "; got != want {
+		t.Errorf("after an upload = %q, want %q", got, want)
+	}
+
+	// Удалённый трек уходит из треклиста, диски остальных — на местах.
+	call(t, router, "DELETE", "/api/uploads/tracks/"+a, admin, "", http.StatusNoContent)
+	if got, want := page(), "12345:1.1 "+b+":2.1 "+c+":2.2 "+added+":2.3 "; got != want {
+		t.Errorf("after deleting a track = %q, want %q", got, want)
 	}
 }
 
