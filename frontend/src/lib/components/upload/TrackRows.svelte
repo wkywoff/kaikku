@@ -7,7 +7,8 @@
   //   explicit, artists (null — как у релиза), state, progress, error,
   //   lyrics (undefined — ещё не загружен), lyricsInitial, open, busy (меняется файл),
   //   other (трек с другого релиза: только переставить и убрать) }.
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
+  import { dropRest, nextPaint, rowStep } from '../../dragDrop.js';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
   import { formatTime } from '../../stores/player.js';
@@ -93,18 +94,23 @@
   function startDrag(e, i) {
     if (e.button !== 0) return;
     e.preventDefault();
-    drag = { i, y0: e.clientY, dy: 0, h: e.currentTarget.closest('.slot').offsetHeight, id: e.pointerId };
+    drag = { i, y0: e.clientY, dy: 0, h: rowStep(e.currentTarget.closest('.slot')), id: e.pointerId };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function moveDrag(e) {
     if (drag && e.pointerId === drag.id) drag = { ...drag, dy: e.clientY - drag.y0 };
   }
-  function endDrag(e) {
+  let settling = null; // { key, dy } — только что отпущенная строка доезжает на место (dragDrop.js)
+  async function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
-    const { i } = drag;
-    const to = targetOf({ ...drag, dy: e.clientY - drag.y0 });
+    const d = { ...drag, dy: e.clientY - drag.y0 };
+    const to = targetOf(d);
+    const mine = (settling = { key: rows[d.i].key, dy: dropRest(d, to) });
     drag = null;
-    move(i, to);
+    move(d.i, to);
+    await tick();
+    await nextPaint();
+    if (settling === mine) settling = null;
   }
   const targetOf = (d) => (d ? Math.max(0, Math.min(rows.length - 1, d.i + Math.round(d.dy / d.h))) : -1);
   $: target = targetOf(drag);
@@ -153,11 +159,16 @@
 </div>
 
 {#if rows.length}
-  <div class="rows" class:dragging={!!drag}>
+  <div class="rows" class:dragging={!!drag} class:settling={!!settling}>
     {#each rows as row, i (row.key)}
       <!-- Сдвиг — только пока тащат: transform у строки поднимает её в свой
            слой, и подсказки исполнителей уходили под следующие строки. -->
-      <div class="slot" class:lifted={drag?.i === i} class:open={row.open} style:transform={drag ? `translateY(${shift(i, drag, target)}px)` : null}>
+      <div
+        class="slot"
+        class:lifted={drag?.i === i || settling?.key === row.key}
+        class:open={row.open}
+        style:transform={drag ? `translateY(${shift(i, drag, target)}px)` : settling?.key === row.key ? `translateY(${settling.dy}px)` : null}
+      >
         <div class="row">
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <span
@@ -310,9 +321,12 @@
   .slot.open {
     z-index: 2; /* подсказки исполнителей — поверх следующих строк */
   }
-  .dragging .slot.lifted {
-    z-index: 3;
+  .dragging .slot.lifted,
+  .settling .slot {
     transition: none;
+  }
+  .slot.lifted {
+    z-index: 3;
   }
   .lifted .row {
     background: #3a3a3a;
@@ -398,6 +412,7 @@
   .who,
   .status {
     display: inline-flex;
+    line-height: 17px; /* у кнопки и у подписи — одна высота: строки равные, шаг перетаскивания ровный */
     align-items: center;
     gap: 6px;
     padding: 0 8px;

@@ -4,7 +4,9 @@
   // версия на релизе). Подставленный трек — настоящий трек Deezer со своим
   // ISRC, аудио и текстом (internal/api/tracklist.go). Сохраняет окно правки:
   // list — строки по порядку, list.map((r) => r.id) уходит на сервер.
+  import { tick } from 'svelte';
   import { api } from '../api.js';
+  import { dropRest, nextPaint, rowStep } from '../dragDrop.js';
   import { trackIdFrom, isShortDeezerLink } from '../links.js';
   import { t } from '../i18n.js';
   import AlignJustify from '@lucide/svelte/icons/align-justify';
@@ -66,18 +68,23 @@
   function startDrag(e, i) {
     if (e.button !== 0) return;
     e.preventDefault();
-    drag = { i, y0: e.clientY, dy: 0, h: e.currentTarget.closest('.slot').offsetHeight, id: e.pointerId };
+    drag = { i, y0: e.clientY, dy: 0, h: rowStep(e.currentTarget.closest('.slot')), id: e.pointerId };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function moveDrag(e) {
     if (drag && e.pointerId === drag.id) drag = { ...drag, dy: e.clientY - drag.y0 };
   }
-  function endDrag(e) {
+  let settling = null; // { id, dy } — только что отпущенная строка доезжает на место (dragDrop.js)
+  async function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
-    const { i } = drag;
-    const to = targetOf({ ...drag, dy: e.clientY - drag.y0 });
+    const d = { ...drag, dy: e.clientY - drag.y0 };
+    const to = targetOf(d);
+    const mine = (settling = { id: list[d.i].id, dy: dropRest(d, to) });
     drag = null;
-    move(i, to);
+    move(d.i, to);
+    await tick();
+    await nextPaint();
+    if (settling === mine) settling = null;
   }
   const targetOf = (d) => (d ? Math.max(0, Math.min(list.length - 1, d.i + Math.round(d.dy / d.h))) : -1);
   $: target = targetOf(drag);
@@ -96,10 +103,14 @@
   }
 </script>
 
-<div class="tracklist" class:dragging={!!drag}>
+<div class="tracklist" class:dragging={!!drag} class:settling={!!settling}>
   <span class="caption">{$t('edit.tracklist')}</span>
   {#each list as row, i (row.id)}
-    <div class="slot" class:lifted={drag?.i === i} style="transform: translateY({shift(i, drag, target)}px)">
+    <div
+      class="slot"
+      class:lifted={drag?.i === i || settling?.id === row.id}
+      style="transform: translateY({drag ? shift(i, drag, target) : settling?.id === row.id ? settling.dy : 0}px)"
+    >
       <div class="row">
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <span
@@ -155,9 +166,12 @@
     background: #282828;
     transition: transform 0.15s ease;
   }
-  .dragging .slot.lifted {
-    z-index: 1;
+  .dragging .slot.lifted,
+  .settling .slot {
     transition: none;
+  }
+  .slot.lifted {
+    z-index: 1;
   }
   .lifted .row {
     background: #3a3a3a;
