@@ -168,17 +168,17 @@ func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list 
 
 // localAlbumCards — свои релизы карточками (дискография, медиатека), в
 // порядке ids; чего нет — пропускается. Черновики помечены скрытыми
-// (overlay.go), списки каталога их отбрасывают сами.
+// (overlay.go), списки каталога их отбрасывают сами. Треки, добавленные с
+// других релизов (arrangeOwn), идут в число треков и длительность.
 func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	rows, err := s.DB.Query(
 		`SELECT a.deezer_id, a.title, coalesce(to_char(a.released_at, 'YYYY-MM-DD'), ''), coalesce(a.record_type, ''),
-		        coalesce(a.cover_key, ''),
-		        count(t.id) + coalesce((SELECT count(*) FROM unnest(a.tracklist) x
-		                                 WHERE NOT EXISTS (SELECT 1 FROM tracks o WHERE o.album_id = a.id AND o.deezer_id = x)), 0),
-		        coalesce(sum(t.duration_ms), 0)
+		        coalesce(a.cover_key, ''), count(t.id), coalesce(sum(t.duration_ms), 0),
+		        ARRAY(SELECT x FROM unnest(a.tracklist) x
+		               WHERE NOT EXISTS (SELECT 1 FROM tracks o WHERE o.album_id = a.id AND o.deezer_id = x))
 		   FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
 		  WHERE a.deezer_id = ANY($1)
 		  GROUP BY a.id`, pq.Array(ids))
@@ -187,21 +187,37 @@ func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	}
 	defer rows.Close()
 	byID := map[string]deezer.Album{}
+	added := map[string][]string{}
+	var all []string
 	for rows.Next() {
 		var a deezer.Album
 		var cover string
 		var ms int
-		if err := rows.Scan(&a.ID, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, &a.NbTracks, &ms); err != nil {
+		var other []string
+		if err := rows.Scan(&a.ID, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, &a.NbTracks, &ms, pq.Array(&other)); err != nil {
 			return nil, err
 		}
 		if cover != "" {
 			a.CoverURL = "/media/" + cover
 		}
+		a.NbTracks += len(other)
 		a.DurationSec = ms / 1000
 		byID[a.ID] = a
+		added[a.ID] = other
+		all = append(all, other...)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if len(all) > 0 {
+		dur := s.trackDurations(all)
+		for id, other := range added {
+			a := byID[id]
+			for _, t := range other {
+				a.DurationSec += dur[t] / 1000
+			}
+			byID[id] = a
+		}
 	}
 	out := make([]deezer.Album, 0, len(byID))
 	for _, id := range ids {
@@ -211,6 +227,32 @@ func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	}
 	s.overlayFor(nil, albumPtrs(out), nil)
 	return out, nil
+}
+
+// trackDurations — длительность треков (ms по ID): из базы (свои и
+// скачанные), остальные — из Deezer (кеш). Чего не узнать — нет в ответе.
+func (s *Server) trackDurations(ids []string) map[string]int {
+	out := map[string]int{}
+	rows, err := s.DB.Query(`SELECT deezer_id, duration_ms FROM tracks WHERE deezer_id = ANY($1) AND duration_ms > 0`, pq.Array(ids))
+	if err == nil {
+		for rows.Next() {
+			var id string
+			var ms int
+			if rows.Scan(&id, &ms) == nil {
+				out[id] = ms
+			}
+		}
+		rows.Close()
+	}
+	for _, id := range ids {
+		if _, ok := out[id]; ok || isLocalID(id) {
+			continue
+		}
+		if t, err := s.Deezer.GetTrack(id); err == nil {
+			out[id] = t.DurationMs
+		}
+	}
+	return out
 }
 
 // localTracks — свои треки по ID, в том же порядке; чужие черновики и то,

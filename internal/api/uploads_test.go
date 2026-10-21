@@ -278,6 +278,17 @@ func TestUploads_OtherTracks(t *testing.T) {
 	if page.Album.NbTracks != 2 {
 		t.Errorf("nb_tracks = %d", page.Album.NbTracks)
 	}
+	// Карточка (медиатека, дискография, Subsonic) считает добавленный тоже: 1 с + 200 с.
+	var mine struct {
+		Releases []struct {
+			NbTracks    int `json:"nb_tracks"`
+			DurationSec int `json:"duration_sec"`
+		}
+	}
+	json.Unmarshal(call(t, router, "GET", "/api/uploads", admin, "", http.StatusOK), &mine)
+	if len(mine.Releases) != 1 || mine.Releases[0].NbTracks != 2 || mine.Releases[0].DurationSec != 201 {
+		t.Errorf("card = %+v", mine.Releases)
+	}
 
 	// Без добавленных — обычный порядок своих треков.
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own), http.StatusOK)
