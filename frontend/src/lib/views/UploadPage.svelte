@@ -22,6 +22,8 @@
   import { toSquareJpeg } from '../image.js';
   import { sized } from '../imageproxy.js';
   import { trackIdFrom, albumIdFrom, isShortDeezerLink } from '../links.js';
+  import { lang } from '../stores/settings.js';
+  import { recordTypeLabel, tracksCount, longDuration, year } from '../format.js';
   import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue } from '../uploads.js';
   import ArtistPicker from '../components/upload/ArtistPicker.svelte';
   import TrackRows from '../components/upload/TrackRows.svelte';
@@ -33,6 +35,7 @@
   import EyeOff from '@lucide/svelte/icons/eye-off';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import X from '@lucide/svelte/icons/x';
+  import Link2 from '@lucide/svelte/icons/link-2';
 
   pageTint().none();
   const id = $navStore.id;
@@ -378,6 +381,10 @@
     queue.stop();
   });
 
+  // Сводка под обложкой: как релиз будет подписан на своей странице.
+  $: totalSec = rows.reduce((sum, r) => sum + (r.id ? r.durationMs || 0 : 0), 0) / 1000;
+  $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' · ');
+
   const missingText = (codes) => codes.map((c) => $t(`upload.missing.${c}`)).join(', ');
   $: bad = (code) => shownMissing.includes(code);
 </script>
@@ -393,20 +400,27 @@
     <div class="loading"><LoaderCircle class="spin" size={24} /></div>
   {:else}
     <header class="head">
-      <h1>{title.trim() || $t('upload.untitled')}</h1>
-      <span class="state" class:live={!draft}>{$t(draft ? 'upload.draftNote' : 'upload.liveNote')}</span>
-      {#if owner}<span class="state">{$t('upload.by', { name: owner })}</span>{/if}
+      <div class="head-text">
+        <h1>{title.trim() || $t('upload.untitled')}</h1>
+        <p class="legend">{$t('upload.legend')}</p>
+      </div>
+      <div class="chips">
+        <span class="state" class:live={!draft}>{$t(draft ? 'upload.draftNote' : 'upload.liveNote')}</span>
+        {#if owner}<span class="state">{$t('upload.by', { name: owner })}</span>{/if}
+      </div>
     </header>
-    <p class="legend">{$t('upload.legend')}</p>
 
-    <section class="release">
-      <div class="cover-col">
+    <div class="layout">
+      <!-- Слева — обложка и сводка, как релиз будет подписан; на широком
+           экране она остаётся на месте, пока правишь треки. -->
+      <aside class="side">
         <span class="label">{$t('upload.cover')} <b>*</b></span>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="cover"
           class:over={coverOver}
           class:invalid={bad('cover')}
+          class:filled={!!coverUrl}
           on:dragover|preventDefault={() => (coverOver = true)}
           on:dragleave={() => (coverOver = false)}
           on:drop|preventDefault={(e) => ((coverOver = false), setCover(e.dataTransfer?.files?.[0]))}
@@ -422,91 +436,107 @@
           </button>
         </div>
         <input bind:this={coverInput} type="file" accept="image/*" hidden on:change={(e) => (setCover(e.currentTarget.files[0]), (e.currentTarget.value = ''))} />
-        <small>{$t(coverFromFile ? 'upload.coverFromFile' : 'upload.coverHint')}</small>
-      </div>
-
-      <div class="fields">
-        <label class="field">
-          <span class="label">{$t('upload.releaseTitle')} <b>*</b></span>
-          <input
-            type="text"
-            maxlength="300"
-            class:invalid={bad('title')}
-            placeholder={$t('upload.titlePlaceholder')}
-            bind:value={title}
-            on:input={() => (touched.title = true)}
-          />
-        </label>
-        <div class="field">
-          <label class="label" for="release-artists">{$t('upload.artists')} <b>*</b></label>
-          <ArtistPicker bind:artists bind:query={artistQuery} invalid={bad('artists')} inputId="release-artists" />
-          <small>{$t('upload.artistsHint')}</small>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <span class="label" id="release-type">{$t('upload.type')} <b>*</b></span>
-            <div class="segmented" role="radiogroup" aria-labelledby="release-type">
-              {#each RECORD_TYPES as type}
-                <button type="button" role="radio" aria-checked={recordType === type} class:active={recordType === type}
-                  on:click={() => ((recordType = type), (recordTouched = true))}>{$t(`type.${type}`)}</button>
-              {/each}
-            </div>
-            {#if !recordTouched}<small>{$t('upload.typeAuto')}</small>{/if}
+        <div class="summary">
+          <small>{$t(coverFromFile ? 'upload.coverFromFile' : 'upload.coverHint')}</small>
+          {#if title.trim() || artists.length || rows.length}
+          <div class="summary-card">
+            <span class="kind">{kindLine}</span>
+            <strong class="sum-title">{title.trim() || $t('upload.untitled')}</strong>
+            <span class="sum-artists">{artists.map((a) => a.name).join(', ') || '—'}</span>
+            <span class="sum-meta">{tracksCount(rows.filter((r) => r.id).length, $lang)}{#if totalSec}, {longDuration(totalSec, $lang)}{/if}</span>
           </div>
-          <label class="field">
-            <span class="label">{$t('upload.date')} <b>*</b></span>
-            <input type="date" class:invalid={bad('release_date')} bind:value={releaseDate} on:input={() => (touched.releaseDate = true)} />
-          </label>
+          {/if}
         </div>
-        <div class="field">
-          <label class="label" for="release-version">{$t('edit.versionOf')}</label>
-          {#if versionOf}
-            <div class="linked">
-              {#if versionOf.cover_url}<img src={sized(versionOf.cover_url, 64)} alt="" />{/if}
-              <span class="linked-title">{versionOf.title}</span>
-              <button type="button" class="icon-btn" title={$t('edit.unlinkVersion')} aria-label={$t('edit.unlinkVersion')} on:click={() => (versionOf = null)}><X size={18} /></button>
+      </aside>
+
+      <div class="sections">
+        <section class="card">
+          <h2>{$t('upload.details')}</h2>
+          <label class="field">
+            <span class="label">{$t('upload.releaseTitle')} <b>*</b></span>
+            <input
+              type="text"
+              maxlength="300"
+              class:invalid={bad('title')}
+              placeholder={$t('upload.titlePlaceholder')}
+              bind:value={title}
+              on:input={() => (touched.title = true)}
+            />
+          </label>
+          <div class="field">
+            <label class="label" for="release-artists">{$t('upload.artists')} <b>*</b></label>
+            <ArtistPicker bind:artists bind:query={artistQuery} invalid={bad('artists')} inputId="release-artists" />
+            <small>{$t('upload.artistsHint')}</small>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <span class="label" id="release-type">{$t('upload.type')} <b>*</b></span>
+              <div class="segmented" role="radiogroup" aria-labelledby="release-type">
+                {#each RECORD_TYPES as type}
+                  <button type="button" role="radio" aria-checked={recordType === type} class:active={recordType === type}
+                    on:click={() => ((recordType = type), (recordTouched = true))}>{$t(`type.${type}`)}</button>
+                {/each}
+              </div>
+              {#if !recordTouched}<small>{$t('upload.typeAuto')}</small>{/if}
             </div>
-          {:else}
+            <label class="field">
+              <span class="label">{$t('upload.date')} <b>*</b></span>
+              <input type="date" class:invalid={bad('release_date')} bind:value={releaseDate} on:input={() => (touched.releaseDate = true)} />
+            </label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>{$t('upload.tracks')} <b>*</b>{#if rows.length}<span class="count">{rows.length}</span>{/if}</h2>
+          <TrackRows
+            bind:rows
+            releaseArtists={artists}
+            invalid={bad('tracks')}
+            invalidTitles={bad('track_titles')}
+            on:files={(e) => addFiles(e.detail)}
+            on:rejected={() => toast($t('upload.notAudio'), 'error')}
+            on:retry={(e) => retryRow(e.detail)}
+            on:remove={(e) => removeRow(e.detail)}
+            on:replace={(e) => replaceAudio(e.detail)}
+          />
+          <div class="field existing">
+            <label class="label sub" for="existing-track"><Link2 size={16} /> {$t('upload.addExisting')}</label>
             <div class="link-row">
-              <input id="release-version" type="text" bind:value={versionLink} placeholder={$t('edit.albumLink')}
-                on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), linkVersion())} />
-              <button type="button" class="pill outline" disabled={!versionLink.trim() || versionBusy} on:click={linkVersion}>
-                {#if versionBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('edit.linkVersion')}
+              <input id="existing-track" type="text" bind:value={trackLink} placeholder={$t('edit.trackLink')}
+                on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), addExisting())} />
+              <button type="button" class="pill outline" disabled={!trackLink.trim() || trackLinkBusy} on:click={addExisting}>
+                {#if trackLinkBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.add')}
               </button>
             </div>
-          {/if}
-          {#if versionError}<p class="error-text">{versionError}</p>{/if}
-          <small>{$t('upload.versionHint')}</small>
-        </div>
-      </div>
-    </section>
+            {#if trackLinkError}<p class="error-text">{trackLinkError}</p>{/if}
+            <small>{$t('upload.addExistingHint')}</small>
+          </div>
+        </section>
 
-    <section class="tracks">
-      <h2>{$t('upload.tracks')} <b>*</b>{#if rows.length}<span class="count">{rows.length}</span>{/if}</h2>
-      <TrackRows
-        bind:rows
-        releaseArtists={artists}
-        invalid={bad('tracks')}
-        invalidTitles={bad('track_titles')}
-        on:files={(e) => addFiles(e.detail)}
-        on:rejected={() => toast($t('upload.notAudio'), 'error')}
-        on:retry={(e) => retryRow(e.detail)}
-        on:remove={(e) => removeRow(e.detail)}
-        on:replace={(e) => replaceAudio(e.detail)}
-      />
-      <div class="field existing">
-        <label class="label" for="existing-track">{$t('upload.addExisting')}</label>
-        <div class="link-row">
-          <input id="existing-track" type="text" bind:value={trackLink} placeholder={$t('edit.trackLink')}
-            on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), addExisting())} />
-          <button type="button" class="pill outline" disabled={!trackLink.trim() || trackLinkBusy} on:click={addExisting}>
-            {#if trackLinkBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.add')}
-          </button>
-        </div>
-        {#if trackLinkError}<p class="error-text">{trackLinkError}</p>{/if}
-        <small>{$t('upload.addExistingHint')}</small>
+        <section class="card">
+          <h2>{$t('edit.versionOf')} <span class="optional">{$t('upload.optional')}</span></h2>
+          <div class="field">
+            {#if versionOf}
+              <div class="linked">
+                {#if versionOf.cover_url}<img src={sized(versionOf.cover_url, 64)} alt="" />{/if}
+                <span class="linked-title">{versionOf.title}</span>
+                <button type="button" class="icon-btn" title={$t('edit.unlinkVersion')} aria-label={$t('edit.unlinkVersion')} on:click={() => (versionOf = null)}><X size={18} /></button>
+              </div>
+            {:else}
+              <div class="link-row">
+                <input type="text" bind:value={versionLink} placeholder={$t('edit.albumLink')} aria-label={$t('edit.versionOf')}
+                  on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), linkVersion())} />
+                <button type="button" class="pill outline" disabled={!versionLink.trim() || versionBusy} on:click={linkVersion}>
+                  {#if versionBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('edit.linkVersion')}
+                </button>
+              </div>
+            {/if}
+            {#if versionError}<p class="error-text">{versionError}</p>{/if}
+            <small>{$t('upload.versionHint')}</small>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   {/if}
 </div>
 
@@ -539,9 +569,11 @@
 
 <style>
   .upload {
+    --upload-w: 1120px;
     padding-top: 16px;
     padding-bottom: 32px;
-    max-width: 980px;
+    max-width: calc(var(--upload-w) + 64px); /* + поля page-pad */
+    margin: 0 auto;
   }
   .back {
     display: inline-flex;
@@ -561,42 +593,95 @@
   }
   .head {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    margin-top: 12px;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px 24px;
+    margin: 16px 0 28px;
+  }
+  .head-text {
+    min-width: 0;
   }
   h1 {
-    font-size: 30px;
+    font-size: 32px;
     min-width: 0;
     overflow-wrap: anywhere;
   }
+  .legend {
+    margin: 8px 0 0;
+    max-width: 640px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-faint);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+    padding-top: 6px;
+  }
   .state {
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 999px;
     background: var(--bg-press);
     font-size: 13px;
     color: var(--text-dim);
+    white-space: nowrap;
   }
   .state.live {
     background: rgba(30, 215, 96, 0.15);
     color: var(--ok);
   }
-  .legend {
-    margin: 8px 0 24px;
-    font-size: 13px;
-    color: var(--text-dim);
-  }
   b {
     color: var(--danger);
     font-weight: 700;
   }
-  .release {
+
+  /* --- раскладка: обложка слева, разделы справа --- */
+  .layout {
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
-    gap: 28px;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
   }
-  .cover-col,
+  .side {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sections {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 24px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  h2 {
+    font-size: 18px;
+    line-height: 1.3;
+  }
+  .count {
+    margin-left: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-dim);
+  }
+  .optional {
+    margin-left: 4px;
+    font: 500 13px var(--font);
+    color: var(--text-faint);
+  }
   .field {
     display: flex;
     flex-direction: column;
@@ -607,17 +692,31 @@
     font-size: 14px;
     font-weight: 600;
   }
-  small {
-    font-size: 12px;
-    line-height: 1.4;
+  .label.sub {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     color: var(--text-dim);
   }
+  small {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-faint);
+  }
+
+  /* --- обложка и сводка --- */
   .cover {
-    width: 220px;
+    width: 100%;
     aspect-ratio: 1;
-    border-radius: 6px;
+    border-radius: 8px;
     border: 2px dashed #4a4a4a;
     overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .cover.filled {
+    border-style: solid;
+    border-color: transparent;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   }
   .cover.over {
     border-color: var(--text);
@@ -665,30 +764,61 @@
     .cover-btn:hover .cover-overlay {
       opacity: 1;
     }
+    .cover:not(.filled):hover {
+      border-color: #6a6a6a;
+    }
   }
   .cover-busy {
     background: rgba(0, 0, 0, 0.6);
     color: var(--text);
   }
-  .fields {
+  .summary {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 14px;
     min-width: 0;
   }
+  .summary-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .kind {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  .sum-title {
+    font: 700 17px/1.3 var(--font-display);
+    overflow-wrap: anywhere;
+  }
+  .sum-artists,
+  .sum-meta {
+    font-size: 13px;
+    color: var(--text-dim);
+    overflow-wrap: anywhere;
+  }
+  .sum-meta {
+    color: var(--text-faint);
+  }
+
+  /* --- поля --- */
   .row2 {
     display: grid;
-    grid-template-columns: auto minmax(160px, 220px);
+    grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
     gap: 20px;
     align-items: start;
   }
   input[type='text'],
   input[type='date'] {
-    height: 40px;
-    padding: 0 10px;
-    border-radius: 4px;
+    height: 42px;
+    padding: 0 12px;
+    border-radius: 6px;
     border: 1px solid transparent;
-    background: #3e3e3e;
+    background: #3a3a3a;
     color: var(--text);
     font-size: 15px;
     font-family: inherit;
@@ -708,11 +838,11 @@
     gap: 4px;
     padding: 4px;
     border-radius: 999px;
-    background: var(--bg-card);
+    background: rgba(0, 0, 0, 0.25);
     width: fit-content;
   }
   .segmented button {
-    padding: 6px 14px;
+    padding: 7px 14px;
     border-radius: 999px;
     font-size: 14px;
     color: var(--text-dim);
@@ -720,9 +850,6 @@
   .segmented button.active {
     background: var(--text);
     color: var(--bg);
-  }
-  .tracks {
-    margin-top: 36px;
   }
   .link-row {
     display: flex;
@@ -732,18 +859,27 @@
     flex: 1;
     min-width: 0;
   }
+  .link-row .pill {
+    height: 42px;
+    padding: 0 18px;
+    font-weight: 700;
+  }
+  .existing {
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
   .linked {
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    padding: 4px 4px 4px 6px;
-    border-radius: 6px;
-    background: var(--bg-card);
+    gap: 12px;
+    min-height: 56px;
+    padding: 6px 6px 6px 8px;
+    border-radius: 8px;
+    background: #2e2e2e;
   }
   .linked img {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 4px;
     object-fit: cover;
     flex-shrink: 0;
@@ -756,22 +892,8 @@
     white-space: nowrap;
     font-size: 15px;
   }
-  .existing {
-    margin-top: 20px;
-  }
-  h2 {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 22px;
-    margin-bottom: 12px;
-  }
-  .count {
-    margin-left: 6px;
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-dim);
-  }
+
+  /* --- панель сохранения --- */
   .savebar {
     position: sticky;
     bottom: 0;
@@ -793,7 +915,8 @@
     gap: 16px;
     padding-top: 12px;
     padding-bottom: 12px;
-    max-width: 980px;
+    max-width: calc(1120px + 64px);
+    margin: 0 auto;
   }
   .status {
     flex: 1;
@@ -829,20 +952,62 @@
   .pill:disabled {
     opacity: 0.5;
   }
-  @media (max-width: 720px) {
-    .release {
+
+  /* На телефоне панель — над нижним меню и мини-плеером (App.svelte),
+     а не под ними. */
+  @media (max-width: 768px) {
+    .savebar {
+      bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    }
+    :global(.shell.with-player) .savebar {
+      bottom: calc(var(--tabbar-h) + 76px + env(safe-area-inset-bottom));
+    }
+  }
+
+  /* Узко: обложка со сводкой — строкой над разделами. */
+  @media (max-width: 900px) {
+    .layout {
       grid-template-columns: minmax(0, 1fr);
       gap: 20px;
     }
-    .cover,
-    .cover-col {
-      width: min(220px, 100%);
+    .side {
+      position: static;
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      gap: 8px 16px;
+      align-items: start;
+    }
+    .side > .label {
+      grid-column: 1 / -1;
+    }
+    .summary-card {
+      padding-top: 0;
+      border-top: 0;
+      order: -1;
+    }
+  }
+  @media (max-width: 720px) {
+    .head {
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .chips {
+      justify-content: flex-start;
+      padding-top: 0;
+    }
+    h1 {
+      font-size: 24px;
+    }
+    .card {
+      padding: 16px;
+      gap: 18px;
     }
     .row2 {
       grid-template-columns: minmax(0, 1fr);
     }
-    h1 {
-      font-size: 24px;
+    .side {
+      grid-template-columns: 120px minmax(0, 1fr);
     }
     .savebar-in {
       flex-wrap: wrap;

@@ -25,6 +25,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import X from '@lucide/svelte/icons/x';
+  import Link2 from '@lucide/svelte/icons/link-2';
 
   export let rows = [];
   export let releaseArtists = [];
@@ -208,8 +209,10 @@
             {/if}
           </div>
           {#if row.other}
-            {#if row.explicit}<span class="e on" title={$t('upload.explicitHint')}>E</span>{/if}
+            <!-- те же колонки, что у своих: E, длительность, значок -->
+            <span class="e on" class:ghost={!row.explicit} title={row.explicit ? $t('upload.explicitHint') : null}>E</span>
             <span class="dur num">{formatTime((row.durationMs || 0) / 1000)}</span>
+            <span class="ok linked" title={$t('edit.otherRelease')}><Link2 size={16} /></span>
           {:else if row.id}
             <button
               type="button"
@@ -462,8 +465,12 @@
     color: var(--ok);
     flex-shrink: 0;
   }
-  .ok.busy {
+  .ok.busy,
+  .ok.linked {
     color: var(--text-dim);
+  }
+  .e.ghost {
+    visibility: hidden;
   }
   .details {
     display: flex;
