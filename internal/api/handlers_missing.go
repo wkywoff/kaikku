@@ -15,7 +15,7 @@ import (
 // нашлось подходящего видео. Админ может указать видео ссылкой, загрузить
 // свой файл (PUT /api/tracks/deezer/{id}/audio) или повторить поиск.
 // Воркер и сам повторяет упавшее раз в сутки, до трёх попыток
-// (ingest.Housekeep).
+// (ingest.Housekeep); исчерпавшие попытки в списке не показываются.
 
 type missingTrack struct {
 	JobID         int64     `json:"job_id"`
@@ -41,9 +41,9 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(j.cover_url, ''), j.duration_ms, COALESCE(j.error, ''), j.attempts, COALESCE(u.username, ''),
 		       COALESCE(j.manual_video_id, ''), j.updated_at
 		  FROM ingest_jobs j LEFT JOIN users u ON u.id = j.requested_by
-		 WHERE j.status = 'failed' AND j.source_ref LIKE 'deezer:%'
+		 WHERE j.status = 'failed' AND j.source_ref LIKE 'deezer:%' AND j.attempts < $1
 		 ORDER BY j.updated_at DESC
-		 LIMIT 500`)
+		 LIMIT 500`, ingest.MaxAttempts)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "query failed")
 		return

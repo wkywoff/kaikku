@@ -18,12 +18,15 @@ func TestMissing_ListVideoAndUpload(t *testing.T) {
 		`INSERT INTO ingest_jobs (source_ref, title, artist_name, artist_deezer_id, album_artist_name, album_artist_deezer_id,
 		                          album_title, album_deezer_id, duration_ms, status, error, attempts)
 		 VALUES ('deezer:12345', 'Test Song', 'Test Artist', '1', 'Test Artist', '1', 'Test Album', '9', 200000, 'failed',
-		         'match: "Test Artist Test Song": youtube search returned no results', 2)`); err != nil {
+		         'match: "Test Artist Test Song": youtube search returned no results', 2),
+		        ('deezer:12346', 'Gave Up', 'Test Artist', '1', 'Test Artist', '1', 'Test Album', '9', 200000, 'failed',
+		         'match: "Test Artist Gave Up": youtube search returned no results', 3)`); err != nil {
 		t.Fatal(err)
 	}
 	user := invitedUser(t, router, admin, "missing-user")
 	call(t, router, "GET", "/api/admin/missing", user, "", http.StatusForbidden)
 
+	// Исчерпавший попытки (12346) в списке не показывается.
 	var list struct{ Tracks []missingTrack }
 	json.Unmarshal(call(t, router, "GET", "/api/admin/missing", admin, "", http.StatusOK), &list)
 	if len(list.Tracks) != 1 || list.Tracks[0].DeezerID != "12345" || list.Tracks[0].Kind != "not_found" || list.Tracks[0].Attempts != 2 {

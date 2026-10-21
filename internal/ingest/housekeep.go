@@ -11,7 +11,7 @@ import (
 // Housekeep — уборка воркера (раз в час, cmd/worker):
 //
 //   - упавшие задачи повторяются раз в сутки, пока попыток меньше
-//     maxAttempts (YouTube или yt-dlp могли починиться, ролик — появиться);
+//     MaxAttempts (YouTube или yt-dlp могли починиться, ролик — появиться);
 //   - мёртвые задачи удаляются: готовые, чей трек удалили, и безнадёжно
 //     упавшие, на которые никто не ссылается;
 //   - аудио, которое никто не включал keep, удаляется с диска (evictAudio);
@@ -19,7 +19,7 @@ import (
 func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 	if res, err := db.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, updated_at = now()
-		  WHERE status = 'failed' AND attempts < $1 AND updated_at < now() - interval '20 hours'`, maxAttempts,
+		  WHERE status = 'failed' AND attempts < $1 AND updated_at < now() - interval '20 hours'`, MaxAttempts,
 	); err != nil {
 		log.Printf("housekeep: retry: %v", err)
 	} else if n, _ := res.RowsAffected(); n > 0 {
@@ -34,7 +34,7 @@ func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 		         AND j.updated_at < now() - interval '7 days')
 		     OR (j.status = 'failed' AND j.attempts >= $1 AND j.updated_at < now() - interval '90 days'
 		         AND NOT EXISTS (SELECT 1 FROM liked_tracks l WHERE 'deezer:' || l.deezer_id = j.source_ref)
-		         AND NOT EXISTS (SELECT 1 FROM playlist_items p WHERE 'deezer:' || p.deezer_id = j.source_ref))`, maxAttempts,
+		         AND NOT EXISTS (SELECT 1 FROM playlist_items p WHERE 'deezer:' || p.deezer_id = j.source_ref))`, MaxAttempts,
 	); err != nil {
 		log.Printf("housekeep: prune: %v", err)
 	} else if n, _ := res.RowsAffected(); n > 0 {
@@ -48,9 +48,10 @@ func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 	}
 }
 
-// maxAttempts — сколько раз задача может упасть, прежде чем Housekeep
-// перестанет её повторять (дальше — только админ: «не нашлось»).
-const maxAttempts = 3
+// MaxAttempts — сколько раз задача может упасть, прежде чем Housekeep
+// перестанет её повторять. Такие пропадают и из «не нашлось»: ссылку или
+// свой файл для них админ даёт из правки трека на странице альбома.
+const MaxAttempts = 3
 
 // evictAudioBatch — сколько треков за проход: удаление файлов не должно
 // надолго занимать воркер.
