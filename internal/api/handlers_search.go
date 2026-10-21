@@ -55,7 +55,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	s.overlayFor(artistPtrs(artists), albumPtrs(albums), tracks)
 	tracks = append(own.tracks, visibleTracks(r, tracks)...)
 	artists = append(own.artists, artists...)
-	albums = append(own.albums, visibleAlbums(r, albums)...)
+	albums = append(visibleAlbums(r, own.albums), visibleAlbums(r, albums)...) // версии — на странице основного
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": tracks, "artists": artists, "albums": albums,
 		"users": s.searchPeople(currentUser(r), q)})
 }

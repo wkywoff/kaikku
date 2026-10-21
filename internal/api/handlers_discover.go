@@ -186,7 +186,7 @@ func (s *Server) handleDiscoverAlbum(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"album": album, "tracks": tracks, "versions": []deezer.Album{},
+			"album": album, "tracks": tracks, "versions": s.albumVersions(r, album),
 			// Карандаш на странице релиза — только в режиме админа (как вся
 			// правка на страницах); автор правит свои релизы из медиатеки.
 			"draft": rel.draft, "editable": v.adminMode,

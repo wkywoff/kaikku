@@ -176,6 +176,58 @@ func TestUploads_SaveAndPublish(t *testing.T) {
 	call(t, router, "GET", "/api/discover/albums/"+id, listener, "", http.StatusNotFound)
 }
 
+// Релиз привязывается версией к другому и пропадает из дискографии,
+// оставаясь в «Других версиях». Mock: релиз 9 — артиста 1.
+func TestUploads_Version(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	srv.StorageDir = t.TempDir()
+	listener := invitedUser(t, router, admin, "ears")
+	id, tracks := newDraft(t, db, router, admin, 1)
+	if rec := adminRequest(router, "PUT", "/api/uploads/releases/"+id+"/cover", admin, testJPEG(t), "image/jpeg"); rec.Code != http.StatusOK {
+		t.Fatalf("cover: %d %s", rec.Code, rec.Body.String())
+	}
+	body := func(version string) string {
+		return `{"title":"Deluxe","artists":["1"],"record_type":"album","release_date":"2026-10-20",
+			"tracks":[{"id":"` + tracks[0] + `","title":"Bonus"}],"version_of":` + version + `,"published":true}`
+	}
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`"`+id+`"`), http.StatusBadRequest) // сам себе
+
+	var st struct {
+		VersionOf *struct{ ID, Title string } `json:"version_of"`
+	}
+	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`"9"`), http.StatusOK), &st)
+	if st.VersionOf == nil || st.VersionOf.ID != "9" || st.VersionOf.Title != "Test Album" {
+		t.Errorf("version_of = %+v", st.VersionOf)
+	}
+
+	var page struct {
+		Album struct {
+			VersionOf string `json:"version_of"`
+		}
+		Versions []pageAlbum
+	}
+	getJSON(t, router, "/api/discover/albums/"+id, listener, false, &page)
+	if page.Album.VersionOf != "9" || !slices.Equal(albumIDs(page.Versions), []string{"9"}) {
+		t.Errorf("release page = %+v", page)
+	}
+	getJSON(t, router, "/api/discover/albums/9", listener, false, &page)
+	if !slices.Equal(albumIDs(page.Versions), []string{id}) {
+		t.Errorf("main release versions = %+v", page.Versions)
+	}
+	var disco struct{ Albums []pageAlbum }
+	getJSON(t, router, "/api/discover/artists/1/albums", listener, false, &disco)
+	if slices.Contains(albumIDs(disco.Albums), id) {
+		t.Errorf("a version must leave the discography: %v", albumIDs(disco.Albums))
+	}
+
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`""`), http.StatusOK)
+	var n int
+	db.QueryRow(`SELECT count(*) FROM albums WHERE deezer_id = $1 AND version_of IS NULL`, id).Scan(&n)
+	if n != 1 {
+		t.Error("the version link must be cleared")
+	}
+}
+
 // Релиз правят только автор и админ; чужой черновик не виден вовсе.
 func TestUploads_Permissions(t *testing.T) {
 	db, router, admin := newTestRouter(t)

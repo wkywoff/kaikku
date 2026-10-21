@@ -64,7 +64,7 @@ type albumEdit struct {
 	Artists    []string `json:"artists"`     // Deezer ID исполнителей, основной первый; нет — не менять
 	Hidden     *bool    `json:"hidden"`
 	Tracklist  []string `json:"tracklist"`  // Deezer ID треков по порядку (tracklist.go); нет — не менять
-	VersionOf  *string  `json:"version_of"` // Deezer ID основного релиза (versions.go), "" — отвязать; нет — не менять
+	VersionOf  *string  `json:"version_of"` // ID основного релиза (versions.go), "" — отвязать; нет — не менять
 }
 
 var recordTypes = map[string]bool{"album": true, "ep": true, "single": true, "compile": true}
@@ -107,7 +107,7 @@ func (s *Server) handleUpdateAlbum(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.VersionOf != nil {
-		if err := s.saveVersionOf(r.PathValue("id"), *req.VersionOf); err != nil {
+		if err := s.saveVersionOf(viewerOf(r), r.PathValue("id"), *req.VersionOf); err != nil {
 			writeSaveError(w, err)
 			return
 		}

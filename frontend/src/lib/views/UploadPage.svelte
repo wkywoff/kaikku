@@ -6,6 +6,8 @@
   // есть (то же проверяет сервер), и открывает страницу релиза. Пустые поля
   // заполняются из тегов первого файла: название альбома, дата, исполнитель
   // (его остаётся выбрать в подсказках), обложка.
+  // Релиз можно привязать версией к другому (делюкс, clean): он уйдёт из
+  // дискографии в «Другие версии» основного.
   import { onMount, onDestroy, tick } from 'svelte';
   import { api } from '../api.js';
   import { t } from '../i18n.js';
@@ -16,6 +18,8 @@
   import { pageTint } from '../stores/theme.js';
   import { clearPageCaches } from '../lru.js';
   import { toSquareJpeg } from '../image.js';
+  import { sized } from '../imageproxy.js';
+  import { albumIdFrom, isShortDeezerLink } from '../links.js';
   import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue } from '../uploads.js';
   import ArtistPicker from '../components/upload/ArtistPicker.svelte';
   import TrackRows from '../components/upload/TrackRows.svelte';
@@ -26,6 +30,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import EyeOff from '@lucide/svelte/icons/eye-off';
   import ExternalLink from '@lucide/svelte/icons/external-link';
+  import X from '@lucide/svelte/icons/x';
 
   pageTint().none();
   const id = $navStore.id;
@@ -52,6 +57,10 @@
   let coverInput;
   let coverOver = false;
   let showMissing = false; // нажали «Опубликовать», а чего-то не хватает — подсветить
+  let versionOf = null; // { id, title, cover_url } основного релиза или null
+  let versionLink = '';
+  let versionError = '';
+  let versionBusy = false;
 
   const ref = (a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null });
 
@@ -82,6 +91,7 @@
     coverUrl = st.cover_url || '';
     draft = st.draft;
     owner = st.owner || '';
+    versionOf = st.version_of || null;
     const pending = rows.filter((r) => !r.id);
     rows = [...st.tracks.map((tr) => rowFrom(tr, rows.find((r) => r.id === tr.id))), ...pending];
     recordType = st.record_type || recordTypeFor(rows);
@@ -91,6 +101,7 @@
       artists: st.artists.map((a) => String(a.id)),
       record_type: recordType,
       release_date: st.release_date || '',
+      version_of: st.version_of ? String(st.version_of.id) : '',
       tracks: st.tracks.map((tr) => trackBody(rowFrom(tr))),
     };
   }
@@ -103,6 +114,7 @@
     artists: artists.map((a) => a.id),
     record_type: recordType,
     release_date: releaseDate,
+    version_of: versionOf ? String(versionOf.id) : '',
     tracks: rows.filter((r) => r.id).map(trackBody),
   });
   $: lyricsDirty = rows.some((r) => r.lyrics !== undefined && r.lyrics !== r.lyricsInitial);
@@ -218,6 +230,25 @@
     } finally {
       row.busy = false;
       rows = rows;
+    }
+  }
+
+  // --- версия ---
+  async function linkVersion() {
+    versionError = '';
+    if (isShortDeezerLink(versionLink)) return (versionError = $t('edit.shortLink'));
+    const dz = albumIdFrom(versionLink);
+    if (!dz) return (versionError = $t('edit.badAlbumLink'));
+    if (dz === id) return (versionError = $t('upload.versionSelf'));
+    versionBusy = true;
+    try {
+      const { album } = await api.discoverAlbum(dz);
+      versionOf = album;
+      versionLink = '';
+    } catch (e) {
+      versionError = e.message;
+    } finally {
+      versionBusy = false;
     }
   }
 
@@ -396,6 +427,26 @@
             <span class="label">{$t('upload.date')} <b>*</b></span>
             <input type="date" class:invalid={bad('release_date')} bind:value={releaseDate} on:input={() => (touched.releaseDate = true)} />
           </label>
+        </div>
+        <div class="field">
+          <label class="label" for="release-version">{$t('edit.versionOf')}</label>
+          {#if versionOf}
+            <div class="linked">
+              {#if versionOf.cover_url}<img src={sized(versionOf.cover_url, 64)} alt="" />{/if}
+              <span class="linked-title">{versionOf.title}</span>
+              <button type="button" class="icon-btn" title={$t('edit.unlinkVersion')} aria-label={$t('edit.unlinkVersion')} on:click={() => (versionOf = null)}><X size={18} /></button>
+            </div>
+          {:else}
+            <div class="link-row">
+              <input id="release-version" type="text" bind:value={versionLink} placeholder={$t('edit.albumLink')}
+                on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), linkVersion())} />
+              <button type="button" class="pill outline" disabled={!versionLink.trim() || versionBusy} on:click={linkVersion}>
+                {#if versionBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('edit.linkVersion')}
+              </button>
+            </div>
+          {/if}
+          {#if versionError}<p class="error-text">{versionError}</p>{/if}
+          <small>{$t('upload.versionHint')}</small>
         </div>
       </div>
     </section>
@@ -630,6 +681,38 @@
   }
   .tracks {
     margin-top: 36px;
+  }
+  .link-row {
+    display: flex;
+    gap: 8px;
+  }
+  .link-row input {
+    flex: 1;
+    min-width: 0;
+  }
+  .linked {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 4px 4px 4px 6px;
+    border-radius: 6px;
+    background: var(--bg-card);
+  }
+  .linked img {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .linked-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
   }
   h2 {
     display: flex;

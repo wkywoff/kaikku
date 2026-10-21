@@ -23,6 +23,7 @@ import (
 // (uploads_audio.go), заполняются название, исполнители, тип, дата и
 // обложка, и он публикуется — тогда его видят все, как релиз Deezer
 // (local.go). ID у своих артистов, релизов и треков — «k…» (helpers.go).
+// Релиз можно привязать версией к другому (versions.go).
 //
 // Загружать может любой пользователь (canUpload), править релиз — его автор
 // и админ, своего артиста (имя, фото) — тот, кто его завёл, и админ.
@@ -161,6 +162,7 @@ type releaseState struct {
 	CoverURL    string             `json:"cover_url"`
 	Draft       bool               `json:"draft"`
 	Owner       string             `json:"owner,omitempty"` // кто загрузил, если правит не он (админ)
+	VersionOf   *deezer.Album      `json:"version_of"`      // карточка основного релиза (versions.go) или null
 	Tracks      []uploadTrack      `json:"tracks"`
 }
 
@@ -202,6 +204,11 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 		}
 		st.Tracks = append(st.Tracks, ut)
 	}
+	if album.VersionOf != "" {
+		if st.VersionOf = s.albumCard(album.VersionOf); st.VersionOf == nil {
+			st.VersionOf = &deezer.Album{ID: album.VersionOf, Title: album.VersionOf}
+		}
+	}
 	return st, nil
 }
 
@@ -226,6 +233,7 @@ type releaseEdit struct {
 	RecordType  string             `json:"record_type"`
 	ReleaseDate string             `json:"release_date"` // YYYY-MM-DD или ""
 	Tracks      []releaseTrackEdit `json:"tracks"`       // все треки релиза, по порядку
+	VersionOf   *string            `json:"version_of"`   // ID основного релиза (versions.go), "" — отвязать; нет — не менять
 	Published   *bool              `json:"published"`    // true — опубликовать, false — снять; нет — не менять
 }
 
@@ -291,6 +299,13 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "track artists: "+err.Error())
 				return
 			}
+		}
+	}
+
+	if req.VersionOf != nil {
+		if err := s.saveVersionOf(viewerOf(r), rel.libraryID, *req.VersionOf); err != nil {
+			writeSaveError(w, err)
+			return
 		}
 	}
 

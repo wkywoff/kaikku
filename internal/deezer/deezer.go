@@ -140,8 +140,8 @@ type Album struct {
 	Explicit bool `json:"explicit,omitempty"`
 	// Hidden — релиз скрыт админом (ставит API, не Deezer).
 	Hidden bool `json:"hidden,omitempty"`
-	// VersionOf — Deezer ID основного релиза, если админ привязал этот к нему
-	// как версию (делюкс, clean); ставит API.
+	// VersionOf — ID основного релиза (Deezer или свой k…), если этот
+	// привязан к нему как версия (делюкс, clean); ставит API.
 	VersionOf string `json:"version_of,omitempty"`
 }
 
