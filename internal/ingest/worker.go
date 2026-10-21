@@ -363,10 +363,10 @@ func finishJob(db *sql.DB, job *Job, rawPath, storageDir string) (string, error)
 
 	if job.ReplaceAudio {
 		trackID, err := replaceAudio(db, job, storageDir, storageKey, lufs, gainDB)
-		if err != nil {
-			os.Remove(dstPath)
-		}
 		if err != sql.ErrNoRows {
+			if err != nil {
+				os.Remove(dstPath)
+			}
 			return trackID, err
 		}
 		// Трек успели удалить — заводится заново, как обычное скачивание.

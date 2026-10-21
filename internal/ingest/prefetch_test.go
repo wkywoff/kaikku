@@ -159,6 +159,31 @@ func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	}
 }
 
+// Трек удалили, пока шла перекачка: он заводится заново — на новый файл,
+// который при этом не должен пропасть.
+func TestProcessJob_ReplaceAudioOfDeletedTrack(t *testing.T) {
+	db := openTestDB(t)
+	staging, storage := t.TempDir(), t.TempDir()
+	var jobID int64
+	db.QueryRow(`INSERT INTO ingest_jobs (source_ref, title, artist_name, album_artist_name, album_title, duration_ms, status, replace_audio)
+	             VALUES ('deezer:777', 'Song', 'Artist', 'Artist', 'Album', 3000, 'processing', true) RETURNING id`).Scan(&jobID)
+	prefetchAudio(t, staging, jobID)
+
+	ProcessJob(db, &Job{ID: jobID, SourceRef: "deezer:777", Title: "Song", ArtistName: "Artist", ArtistDeezerID: str("1"),
+		AlbumArtistName: "Artist", AlbumArtistDeezerID: str("1"), AlbumTitle: "Album", AlbumDeezerID: str("9"), DurationMs: 3000,
+		ReplaceAudio: true}, staging, storage)
+
+	var status, key string
+	db.QueryRow(`SELECT j.status, COALESCE(t.storage_key, '') FROM ingest_jobs j LEFT JOIN tracks t ON t.id = j.result_track_id
+	             WHERE j.id = $1`, jobID).Scan(&status, &key)
+	if status != "done" || key == "" {
+		t.Fatalf("status %q, key %q", status, key)
+	}
+	if _, err := os.Stat(filepath.Join(storage, key)); err != nil {
+		t.Errorf("the new track's file: %v", err)
+	}
+}
+
 // prefetchAudio puts a short DASH file where the API leaves a streamed
 // download for the job, so ProcessJob skips YouTube, and leaves only
 // ffmpeg/ffprobe in PATH.
