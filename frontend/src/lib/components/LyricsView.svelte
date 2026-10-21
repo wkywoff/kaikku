@@ -34,7 +34,9 @@
   let active = -1; // индекс текущей строки
   let gap = -1; // индекс строки, перед которой сейчас проигрыш с точками
 
-  const SOURCES = { deezer: 'Deezer', netease: 'NetEase Cloud Music', lrclib: 'LRCLIB' };
+  const SOURCES = { lrcred: 'lrc.red', deezer: 'Deezer', netease: 'NetEase Cloud Music', lrclib: 'LRCLIB' };
+  // lrc.red просит ссылку на себя рядом со своим текстом.
+  const SOURCE_LINKS = { lrcred: 'https://lrc.red' };
   const LEAD = 0.12; // с; строка загорается чуть раньше голоса, как в Apple Music
   const GAP_MIN = 3; // с; короче — без точек
   const ACTIVE_AT = 0.22; // доля высоты сверху, где стоит текущая строка, как в Apple Music
@@ -89,6 +91,8 @@
 
   $: synced = lyrics && lyrics.sync !== 'none';
   $: lines = lyrics?.lines || [];
+  // «Текст: {source}» — по краям от названия источника (оно может быть ссылкой).
+  $: credit = $t('lyrics.source', { source: '\n' }).split('\n');
 
   // Проигрыш перед строкой i: от конца прошлой (или начала трека) до её начала.
   function gapBefore(i) {
@@ -247,7 +251,9 @@
     {/each}
     <div class="credit">
       {#if lyrics.writers}<p>{$t('lyrics.writers', { names: lyrics.writers })}</p>{/if}
-      <p>{$t('lyrics.source', { source: SOURCES[lyrics.source] || lyrics.source })}</p>
+      <p>
+        {credit[0]}{#if SOURCE_LINKS[lyrics.source]}<a href={SOURCE_LINKS[lyrics.source]} target="_blank" rel="noopener">{SOURCES[lyrics.source]}</a>{:else}{SOURCES[lyrics.source] || lyrics.source}{/if}{credit[1] || ''}
+      </p>
     </div>
     <div class="pad-bottom"></div>
   {/if}
@@ -417,6 +423,10 @@
     padding: 0 8px;
     font-size: 13px;
     color: rgba(255, 255, 255, 0.55);
+  }
+  .credit a {
+    color: inherit;
+    text-decoration: underline;
   }
   /* На компьютере дальние строки чуть размыты, как в Apple Music; на
      телефоне без размытия — дорого для видеокарты при прокрутке. */

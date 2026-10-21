@@ -61,6 +61,7 @@ services:
       DEEZER_PROXY: ${DEEZER_PROXY:-}
       LASTFM_API_KEY: ${LASTFM_API_KEY:-}
       LASTFM_API_SECRET: ${LASTFM_API_SECRET:-}
+      LRCRED_CONTACT: ${LRCRED_CONTACT:-}
       YTDLP_UPDATE_HOURS: ${YTDLP_UPDATE_HOURS:-24}
     # DEEZER_PROXY=socks5://host.docker.internal:… reaches a proxy on the host.
     extra_hosts:

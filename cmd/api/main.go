@@ -88,7 +88,8 @@ func main() {
 		FrontendIndex: os.Getenv("FRONTEND_INDEX"),
 		PublicURL:     os.Getenv("MEDIA_BASE_URL"),
 	}
-	srv.EnableLyrics()
+	// lrc.red просит email для связи в User-Agent; без него источник выключен.
+	srv.EnableLyrics(os.Getenv("LRCRED_CONTACT"))
 	srv.SweepUploads()
 	handler := api.NewRouter(srv)
 

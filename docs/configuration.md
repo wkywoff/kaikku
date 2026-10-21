@@ -17,6 +17,7 @@ reads from the repository folder. Start from
 |---|---|---|
 | `MEDIA_BASE_URL` | `http://localhost:8080` | The site's public address, e.g. `https://music.example.com`, no trailing slash. Used for full links in link previews and for artwork in Subsonic apps. Tracks play without it. |
 | `LASTFM_API_KEY`, `LASTFM_API_SECRET` | off | A Last.fm app ([create one](https://www.last.fm/api/account/create), callback `<site>/lastfm`). Turns on scrobbling, genres and genre pages, genre mixes and Last.fm artist bios. |
+| `LRCRED_CONTACT` | off | Your email for [lrc.red](https://lrc.red/api), a lyrics source with word and syllable timing, backing vocals and duet voices, found by ISRC. Its terms ask apps to send a contact in the User-Agent and to credit lrc.red where its lyrics are shown (the lyrics view links to it). |
 | `AUDIO_KEEP_DAYS` | `3` | Days (1–14) to keep audio nobody plays. It's downloaded again on the next play; uploads and files an admin replaced are kept. |
 | `WORKER_CONCURRENCY` | `3` | Downloads at the same time. |
 | `DEEZER_PROXY` | off | A second way to Deezer, e.g. Cloudflare WARP as a SOCKS5 proxy. Another IP doubles Deezer's per-IP limit. A proxy on the host is `socks5://host.docker.internal:40000`; it must listen on the Docker bridge (172.17.0.1) or 0.0.0.0, not only on 127.0.0.1. |

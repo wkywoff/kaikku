@@ -13,7 +13,8 @@ import (
 const (
 	// Не нашли нигде — спросим снова через неделю (тексты добавляют).
 	retryMissing = 7 * 24 * time.Hour
-	// Нашли без тайминга по словам — через месяц: могли появиться лучше.
+	// Нашли без тайминга по словам (или по словам, но не у lrc.red) — через
+	// месяц: могли появиться лучше.
 	retryBasic = 30 * 24 * time.Hour
 	// Сколько ждать источники (вместе с повтором в do).
 	findTimeout = 8 * time.Second
@@ -92,8 +93,9 @@ func (s *Service) Get(ctx context.Context, t Track) (*Lyrics, error) {
 
 // find опрашивает все источники сразу (по очереди три источника по 6 с не
 // укладывались в тогдашние 15 с WriteTimeout API: ответ обрывался, хотя текст
-// потом находился): первый с таймингом по словам или подробнее — сразу ответ,
-// иначе лучший из найденного (better). Ошибка — только если ничего не
+// потом находился): текст с таймингом по словам или подробнее — сразу ответ,
+// если источники выше по порядку уже ответили; иначе лучший из найденного
+// (better). Ошибка — только если ничего не
 // нашлось, а какой-то источник был недоступен (тогда не запоминаем «текста
 // нет»).
 //
@@ -110,7 +112,9 @@ func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete boo
 		err  error
 	}
 	results := make(chan result, len(s.Providers))
+	pending := map[string]bool{}
 	for _, p := range s.Providers {
+		pending[p.Name()] = true
 		go func(p Provider) {
 			l, err := p.Find(ctx, t)
 			results <- result{p.Name(), l, err}
@@ -120,6 +124,7 @@ func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete boo
 	var failed []string
 	for range s.Providers {
 		r := <-results
+		delete(pending, r.name)
 		if r.err != nil {
 			log.Printf("lyrics: %s %s: %v", r.name, t.DeezerID, r.err)
 			errs = append(errs, r.err)
@@ -133,7 +138,7 @@ func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete boo
 		if best == nil || better(r.l, best) {
 			best = r.l
 		}
-		if best.Sync.Rank() >= SyncWord.Rank() {
+		if best.Sync.Rank() >= SyncWord.Rank() && !outranked(best, pending) {
 			break
 		}
 	}
@@ -144,25 +149,40 @@ func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete boo
 		return nil, true, nil
 	}
 	complete = true
-	if best.Sync.Rank() < SyncWord.Rank() {
-		for _, name := range failed {
-			if best.Sync == SyncNone || sourceOrder[name] > sourceOrder[best.Source] {
-				complete = false
-				log.Printf("lyrics: %s from %s, not saved: %s did not answer", t.DeezerID, best.Source, name)
-			}
+	for _, name := range failed {
+		if best.Sync == SyncNone || outranked(best, map[string]bool{name: true}) {
+			complete = false
+			log.Printf("lyrics: %s from %s, not saved: %s did not answer", t.DeezerID, best.Source, name)
 		}
 	}
 	return best, complete, nil
 }
 
-// Порядок источников: Deezer, потом LRCLIB, потом NetEase. Текст со временем
-// (по словам или строкам) важнее текста без времени — его не прокрутить в
-// такт; дальше решает порядок.
-var sourceOrder = map[string]int{"deezer": 3, "lrclib": 2, "netease": 1}
+// outranked: кто-то из sources выше по порядку, чем источник l.
+func outranked(l *Lyrics, sources map[string]bool) bool {
+	for name := range sources {
+		if sourceOrder[name] > sourceOrder[l.Source] {
+			return true
+		}
+	}
+	return false
+}
+
+// Порядок источников: lrc.red, Deezer, потом LRCLIB, потом NetEase. Текст со
+// временем (по словам или строкам) важнее текста без времени — его не
+// прокрутить в такт, по словам — важнее, чем по строкам; дальше решает
+// порядок.
+var sourceOrder = map[string]int{"lrcred": 4, "deezer": 3, "lrclib": 2, "netease": 1}
+
+// topSource — лучший источник: его текст по словам не перепроверяется.
+const topSource = "lrcred"
 
 func better(a, b *Lyrics) bool {
 	if sa, sb := a.Sync != SyncNone, b.Sync != SyncNone; sa != sb {
 		return sa
+	}
+	if wa, wb := a.Sync.Rank() >= SyncWord.Rank(), b.Sync.Rank() >= SyncWord.Rank(); wa != wb {
+		return wa
 	}
 	if oa, ob := sourceOrder[a.Source], sourceOrder[b.Source]; oa != ob {
 		return oa > ob
@@ -195,7 +215,9 @@ func (s *Service) load(ctx context.Context, t Track) (*Lyrics, bool, error) {
 	if err := json.Unmarshal(body, &l); err != nil {
 		return nil, false, nil // испорчено — найдём заново
 	}
-	return &l, Sync(sync).Rank() >= SyncWord.Rank() || age < retryBasic, nil
+	// По словам от источника ниже lrc.red — тоже раз в месяц: у lrc.red
+	// мог найтись подробнее (слоги, подпевки, дуэт).
+	return &l, Sync(sync).Rank() >= SyncWord.Rank() && l.Source == topSource || age < retryBasic, nil
 }
 
 func (s *Service) save(ctx context.Context, t Track, l *Lyrics) error {

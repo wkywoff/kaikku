@@ -1,11 +1,13 @@
 // Package lyrics finds song lyrics, preferably time-synced, and keeps what
 // it found in the database.
 //
-// Sources (Service.Providers), none of them needs a token: Deezer (exact
-// by Deezer ID; word or line timing for some songs, otherwise text),
-// NetEase Cloud Music and LRCLIB (line timing, found by artist, title and
-// length). Word timing wins at once; otherwise the best timing found, with
-// NetEase and LRCLIB preferred over Deezer's line timing (Service.better).
+// Sources (Service.Providers), none of them needs a token: lrc.red (exact
+// by ISRC; word or syllable timing with backing vocals and duet voices for
+// many songs; on only when LRCRED_CONTACT is set), Deezer (exact by Deezer
+// ID; word or line timing for some songs, otherwise text), NetEase Cloud
+// Music and LRCLIB (line timing, found by artist, title and length). Word
+// timing wins over line timing, lrc.red over Deezer; among line timing
+// NetEase and LRCLIB are preferred over Deezer's (Service.better).
 package lyrics
 
 import (
@@ -17,7 +19,7 @@ import (
 type Sync string
 
 const (
-	SyncSyllable Sync = "syllable" // по слогам (сейчас ни один источник не даёт)
+	SyncSyllable Sync = "syllable" // по слогам (lrc.red у части песен)
 	SyncWord     Sync = "word"     // по словам
 	SyncLine     Sync = "line"     // по строкам
 	SyncNone     Sync = "none"     // текст без времени
@@ -58,7 +60,7 @@ type Line struct {
 }
 
 type Lyrics struct {
-	Source  string `json:"source"` // deezer | netease | lrclib
+	Source  string `json:"source"` // lrcred | deezer | netease | lrclib | upload
 	Sync    Sync   `json:"sync"`
 	Lines   []Line `json:"lines"`
 	Writers string `json:"writers,omitempty"`

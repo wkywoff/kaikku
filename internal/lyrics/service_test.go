@@ -230,3 +230,53 @@ func TestService_RecheckThatFindsNothingKeepsOldLyrics(t *testing.T) {
 		t.Error("kept lyrics must be marked as checked now")
 	}
 }
+
+// lrc.red выше Deezer: его по словам ждём, даже если Deezer ответил по
+// словам раньше; его по строкам — хуже Deezer по словам. Не ответил —
+// текст Deezer не запоминается.
+func TestService_LRCRedOutranksDeezerWords(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	dz := func() *fakeProvider { return &fakeProvider{name: "deezer", l: lines(SyncWord)} }
+	s := &Service{DB: db, Providers: []Provider{dz(), &fakeProvider{name: "lrcred", l: lines(SyncWord), delay: 200 * time.Millisecond}}}
+	if l, _ := s.Get(ctx, Track{DeezerID: "test-lyrics-40"}); l == nil || l.Source != "lrcred" {
+		t.Fatalf("lrcred words: %+v", l)
+	}
+	s = &Service{DB: db, Providers: []Provider{dz(), &fakeProvider{name: "lrcred", l: lines(SyncLine)}}}
+	if l, _ := s.Get(ctx, Track{DeezerID: "test-lyrics-41"}); l == nil || l.Source != "deezer" {
+		t.Fatalf("deezer words over lrcred lines: %+v", l)
+	}
+	down := &fakeProvider{name: "lrcred", err: errors.New("HTTP 429")}
+	s = &Service{DB: db, Providers: []Provider{dz(), down}}
+	for i := 0; i < 2; i++ {
+		if l, err := s.Get(ctx, Track{DeezerID: "test-lyrics-42"}); err != nil || l == nil || l.Source != "deezer" {
+			t.Fatalf("got %+v, %v", l, err)
+		}
+	}
+	if down.calls.Load() != 2 {
+		t.Errorf("lrcred asked %d times, want 2 (deezer result not saved)", down.calls.Load())
+	}
+}
+
+// Текст по словам не от lrc.red перепроверяется через месяц, от lrc.red —
+// нет.
+func TestService_OldDeezerWordsAreRechecked(t *testing.T) {
+	db := openTestDB(t)
+	for id, source := range map[string]string{"test-lyrics-43": "deezer", "test-lyrics-44": "lrcred"} {
+		old := lines(SyncWord)
+		old.Source = source
+		body, _ := json.Marshal(old)
+		if _, err := db.Exec(`INSERT INTO lyrics (deezer_id, source, sync, body, fetched_at)
+			VALUES ($1, $2, 'word', $3, now() - interval '40 days')`, id, source, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &fakeProvider{name: "lrcred", l: lines(SyncWord)}
+	s := &Service{DB: db, Providers: []Provider{p}}
+	if l, _ := s.Get(context.Background(), Track{DeezerID: "test-lyrics-43"}); l == nil || l.Source != "lrcred" {
+		t.Fatalf("old deezer words: %+v", l)
+	}
+	if l, _ := s.Get(context.Background(), Track{DeezerID: "test-lyrics-44"}); l == nil || p.calls.Load() != 1 {
+		t.Fatalf("lrcred words must stay: %+v, calls %d", l, p.calls.Load())
+	}
+}

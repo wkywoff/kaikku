@@ -6,10 +6,15 @@ import (
 	"kaikku/internal/lyrics"
 )
 
-// EnableLyrics включает тексты песен (internal/lyrics): Deezer, LRCLIB и
-// NetEase — в этом порядке предпочтения, без токенов.
-func (s *Server) EnableLyrics() {
-	s.Lyrics = &lyrics.Service{DB: s.DB, Providers: []lyrics.Provider{&lyrics.Deezer{}, lyrics.LRCLIB{}, lyrics.NetEase{}}}
+// EnableLyrics включает тексты песен (internal/lyrics): lrc.red, Deezer,
+// LRCLIB и NetEase — в этом порядке предпочтения, без токенов. lrc.red
+// требует адрес для связи в User-Agent: без lrcredContact он не спрашивается.
+func (s *Server) EnableLyrics(lrcredContact string) {
+	providers := []lyrics.Provider{&lyrics.Deezer{}, lyrics.LRCLIB{}, lyrics.NetEase{}}
+	if lrcredContact != "" {
+		providers = append([]lyrics.Provider{lyrics.LRCRed{Contact: lrcredContact}}, providers...)
+	}
+	s.Lyrics = &lyrics.Service{DB: s.DB, Providers: providers}
 }
 
 // GET /api/lyrics/{id} — текст трека Deezer: {"lyrics": {...}} или {"lyrics": null}.
