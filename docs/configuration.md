@@ -30,7 +30,7 @@ reads from the repository folder. Start from
 | `HTTP_BIND` | `127.0.0.1` | Where the site listens on the host: `127.0.0.1` for this machine only (behind a reverse proxy), `0.0.0.0` for your network too. |
 | `HTTP_PORT` | `8080` | The port on the host. |
 | `POSTGRES_PASSWORD` | `kaikku` | The database password inside Docker's network (the database isn't exposed). It's set when the database is created: changing it in `.env` later locks the app out, so change it in Postgres first (`ALTER USER kaikku PASSWORD '…'`). |
-| `KAIKKU_VERSION` | `latest` | Image version from ghcr.io: `latest` or a release tag such as `v1.2.0`. |
+| `KAIKKU_VERSION` | `latest` | Image version from ghcr.io: `latest`, or a release without the `v`, such as `0.2.0` or `0.2` (the newest 0.2.x). |
 | `YTDLP_UPDATE_HOURS` | `24` | How often the API checks for a new yt-dlp; `0` checks on start only. |
 
 ## Outside Docker
