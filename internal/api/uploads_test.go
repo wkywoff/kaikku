@@ -216,6 +216,26 @@ func TestUploads_Version(t *testing.T) {
 	if !slices.Equal(albumIDs(page.Versions), []string{id}) {
 		t.Errorf("main release versions = %+v", page.Versions)
 	}
+	// Карточка версии — explicit, если explicit хоть один трек: свой или
+	// добавленный с Deezer (mock: 888 — explicit).
+	for _, c := range []struct {
+		tracks string
+		want   bool
+	}{
+		{`{"id":"` + tracks[0] + `","title":"Bonus"}`, false},
+		{`{"id":"` + tracks[0] + `","title":"Bonus","explicit":true}`, true},
+		{`{"id":"` + tracks[0] + `","title":"Bonus"},{"id":"888"}`, true},
+	} {
+		call(t, router, "PUT", "/api/uploads/releases/"+id, admin, `{"title":"Deluxe","artists":["1"],"record_type":"album",
+			"release_date":"2026-10-20","tracks":[`+c.tracks+`],"version_of":"9","published":true}`, http.StatusOK)
+		var p struct {
+			Versions []struct{ Explicit bool }
+		}
+		getJSON(t, router, "/api/discover/albums/9", listener, false, &p)
+		if len(p.Versions) != 1 || p.Versions[0].Explicit != c.want {
+			t.Errorf("tracks %s: versions = %+v, want explicit %v", c.tracks, p.Versions, c.want)
+		}
+	}
 	var disco struct{ Albums []pageAlbum }
 	getJSON(t, router, "/api/discover/artists/1/albums", listener, false, &disco)
 	if slices.Contains(albumIDs(disco.Albums), id) {

@@ -180,17 +180,19 @@ func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list 
 // localAlbumCards — свои релизы карточками (дискография, медиатека), в
 // порядке ids; чего нет — пропускается. Черновики помечены скрытыми
 // (overlay.go), списки каталога их отбрасывают сами. Треки, добавленные с
-// других релизов (arrangeOwn), идут в число треков и длительность.
+// других релизов (arrangeOwn), идут в число треков, длительность и метку
+// explicit (как на странице релиза: хоть один трек explicit).
 func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	rows, err := s.DB.Query(
 		`SELECT a.deezer_id, a.title, coalesce(to_char(a.released_at, 'YYYY-MM-DD'), ''), coalesce(a.record_type, ''),
-		        coalesce(a.cover_key, ''), count(t.id), coalesce(sum(t.duration_ms), 0),
+		        coalesce(a.cover_key, ''), count(t.id), coalesce(sum(t.duration_ms), 0), coalesce(bool_or(e.explicit), false),
 		        ARRAY(SELECT x FROM unnest(a.tracklist) x
 		               WHERE NOT EXISTS (SELECT 1 FROM tracks o WHERE o.album_id = a.id AND o.deezer_id = x))
 		   FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
+		        LEFT JOIN track_overrides e ON e.deezer_id = t.deezer_id
 		  WHERE a.deezer_id = ANY($1)
 		  GROUP BY a.id`, pq.Array(ids))
 	if err != nil {
@@ -205,7 +207,7 @@ func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 		var cover string
 		var ms int
 		var other []string
-		if err := rows.Scan(&a.ID, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, &a.NbTracks, &ms, pq.Array(&other)); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.ReleaseDate, &a.RecordType, &cover, &a.NbTracks, &ms, &a.Explicit, pq.Array(&other)); err != nil {
 			return nil, err
 		}
 		if cover != "" {
@@ -222,10 +224,12 @@ func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	}
 	if len(all) > 0 {
 		dur := s.trackDurations(all)
+		explicit := s.explicitTracks(all)
 		for id, other := range added {
 			a := byID[id]
 			for _, t := range other {
 				a.DurationSec += dur[t] / 1000
+				a.Explicit = a.Explicit || explicit[t]
 			}
 			byID[id] = a
 		}
@@ -261,6 +265,33 @@ func (s *Server) trackDurations(ids []string) map[string]int {
 		}
 		if t, err := s.Deezer.GetTrack(id); err == nil {
 			out[id] = t.DurationMs
+		}
+	}
+	return out
+}
+
+// explicitTracks — какие из треков explicit: правка (track_overrides), иначе
+// метка Deezer (кеш). Своему треку без правки метки нет.
+func (s *Server) explicitTracks(ids []string) map[string]bool {
+	out := map[string]bool{}
+	edited := map[string]bool{}
+	rows, err := s.DB.Query(`SELECT deezer_id, explicit FROM track_overrides WHERE deezer_id = ANY($1) AND explicit IS NOT NULL`, pq.Array(ids))
+	if err == nil {
+		for rows.Next() {
+			var id string
+			var explicit bool
+			if rows.Scan(&id, &explicit) == nil {
+				out[id], edited[id] = explicit, true
+			}
+		}
+		rows.Close()
+	}
+	for _, id := range ids {
+		if edited[id] || isLocalID(id) {
+			continue
+		}
+		if t, err := s.Deezer.GetTrack(id); err == nil {
+			out[id] = t.Explicit
 		}
 	}
 	return out
