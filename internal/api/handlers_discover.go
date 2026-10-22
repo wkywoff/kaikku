@@ -81,10 +81,17 @@ func (s *Server) artistTopByPlays(id string) ([]deezer.Track, error) {
 	// могли поменять (правка админа, автор своего релиза убрал фит).
 	// Остаются треки, где артист есть сейчас.
 	s.overlayFor(nil, nil, out)
-	out = slices.DeleteFunc(out, func(t deezer.Track) bool {
+	out = creditedTo(id, out)
+	return out[:min(len(out), topLimit)], nil
+}
+
+// creditedTo keeps the tracks the artist is credited on after the overlay
+// was applied: трек, перенесённый правкой к другому артисту, из «Популярного»
+// прежнего уходит.
+func creditedTo(id string, tracks []deezer.Track) []deezer.Track {
+	return slices.DeleteFunc(tracks, func(t deezer.Track) bool {
 		return t.ArtistID != id && !slices.ContainsFunc(t.Contributors, func(c deezer.ArtistRef) bool { return c.ID == id })
 	})
-	return out[:min(len(out), topLimit)], nil
 }
 
 // popularTracks: сначала слушаемое здесь, потом топ Deezer без повторов.
@@ -145,8 +152,12 @@ func (s *Server) handleDiscoverArtist(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("artist %s: top by plays: %v", id, err)
 	}
-	albums, top = s.creditedDiscography(id, cloneAlbums(albums)), popularTracks(played, cloneTracks(top))
-	s.overlayFor([]*deezer.Artist{&artist}, albumPtrs(albums), top)
+	// Топ Deezer — по его исполнителям; правка могла перенести трек к
+	// другому артисту, такие отсеиваем так же, как в топе по прослушиваниям.
+	top = cloneTracks(top)
+	s.overlayFor(nil, nil, top)
+	albums, top = s.creditedDiscography(id, cloneAlbums(albums)), popularTracks(played, creditedTo(id, top))
+	s.overlayFor([]*deezer.Artist{&artist}, albumPtrs(albums), nil)
 	writeJSON(w, http.StatusOK, map[string]any{"artist": artist, "albums": visibleAlbums(r, albums), "top": visibleTracks(r, top)})
 }
 

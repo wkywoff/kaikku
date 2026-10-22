@@ -93,6 +93,12 @@ func TestAlbumCredits_MoveReleaseToAnotherArtist(t *testing.T) {
 	if tr := page.Tracks[0]; tr.ArtistID != "2" || tr.Artist != "Other Artist" {
 		t.Errorf("track of the moved release: %+v", tr)
 	}
+	// Хит 888 из топа Deezer артиста 1 — с этого релиза: у 1 его больше нет.
+	var artist struct{ Top []pageTrack }
+	getJSON(t, router, "/api/discover/artists/1", token, false, &artist)
+	if len(artist.Top) != 0 {
+		t.Errorf("artist 1 top after the move: %+v", artist.Top)
+	}
 
 	put(t, router, "/api/albums/"+id, token, `{"title":"Test Album","artists":["1"]}`, http.StatusOK)
 	var ids sql.NullString
