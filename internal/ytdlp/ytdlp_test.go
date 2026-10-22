@@ -250,7 +250,9 @@ func TestNormalize(t *testing.T) {
 	cases := map[string]string{
 		"Song (Sped-Up)": "song sped up",
 		"  Касания  болезненны!": "касания болезненны",
-		"": "",
+		"\u0441olitis imh":       "colitis imh", // кириллическая «с»
+		"KICKЭСС":                "kickэcc",
+		"":                       "",
 	}
 	for in, want := range cases {
 		if got := normalize(in); got != want {
@@ -294,5 +296,28 @@ func TestPickBestMatch_SharedWordIsNotTheSong(t *testing.T) {
 	jp := Want{Artist: "Hakari Hanazono", Title: "Love Love Moso Parade", DurationMs: 200000}
 	if got, err := pickBestMatch([]candidate{{ID: "jp", Title: "Love Love 妄想パレード", Channel: "Hakari Hanazono (CV: Kaede Hondo) - Topic", DurationMs: 200000}}, jp, 4000); got != "jp" {
 		t.Fatalf("original-script topic title: got %q, %v", got, err)
+	}
+}
+
+// Реальный случай (WARYKID — вой): на YouTube названия с кириллической
+// первой буквой, «оverblood» и «сolitis imh», а в Deezer — латиницей.
+func TestPickBestMatch_CyrillicLookalikes(t *testing.T) {
+	candidates := []candidate{
+		{ID: "3aPo29NgcLk", Title: "WARYKID — вой СТРИМ ft. WARYKID & UMSY", Channel: "записи стримов декмы", DurationMs: 21970000},
+		{ID: "sTwu6OOejWg", Title: "\u043everblood", Channel: "WARYKID", DurationMs: 109000},
+		{ID: "bKxd1LPRy2A", Title: "Type Beat Dekma, Takizava - overblood (prod. creepymore)", Channel: "creepymore", DurationMs: 97000},
+	}
+	got, err := pickBestMatch(candidates, Want{Artist: "WARYKID", Title: "overblood", Album: "вой", DurationMs: 108000}, 4000)
+	if err != nil || got != "sTwu6OOejWg" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	music := []candidate{{ID: "O9Kzz833dPc", Title: "\u0441olitis imh", Channel: "WARYKID", DurationMs: 114000, Music: true}}
+	if ranked, err := rankMusic(music, Want{Artist: "WARYKID", Title: "colitis imh", Album: "вой", DurationMs: 114000}, 4000); err != nil || ranked[0].ID != "O9Kzz833dPc" {
+		t.Fatalf("youtube music: %+v, %v", ranked, err)
+	}
+	// Смешанное слово и в Deezer: та же запись на YouTube находится.
+	mixed := []candidate{{ID: "kick", Title: "KICKЭСС", Channel: "Artist", DurationMs: 150000}}
+	if got, err := pickBestMatch(mixed, Want{Artist: "Artist", Title: "KICKЭСС", DurationMs: 150000}, 4000); got != "kick" {
+		t.Fatalf("mixed title on both sides: got %q, %v", got, err)
 	}
 }

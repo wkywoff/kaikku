@@ -400,6 +400,7 @@ func otherVersionMarker(title, wantTitle string) string {
 
 // normalize lowercases and turns everything that isn't a letter or digit
 // into single spaces, so "Song (Sped-Up)" and "song sped up" compare equal.
+// Cyrillic look-alikes in mixed-script words become Latin (foldLookalikes).
 func normalize(s string) string {
 	var b strings.Builder
 	space := true
@@ -412,7 +413,39 @@ func normalize(s string) string {
 			space = true
 		}
 	}
-	return strings.TrimSpace(b.String())
+	return foldLookalikes(strings.TrimSpace(b.String()))
+}
+
+// Кириллические буквы (после ToLower), которые выглядят как латинские — в
+// строчном или в заглавном виде.
+var lookalikes = map[rune]rune{
+	'а': 'a', 'в': 'b', 'е': 'e', 'і': 'i', 'ј': 'j', 'к': 'k', 'м': 'm', 'н': 'h',
+	'о': 'o', 'р': 'p', 'с': 'c', 'ѕ': 's', 'т': 't', 'у': 'y', 'х': 'x',
+}
+
+// foldLookalikes переводит кириллических двойников в латиницу в словах, где
+// смешаны обе азбуки: на YouTube название пишут «оverblood» с кириллической
+// «о», и оно не совпадает с «overblood» из Deezer. Обе стороны сравнения
+// проходят через normalize, поэтому смешанное и в Deezer («KICKЭСС»)
+// совпадает с таким же на YouTube. Чисто кириллические слова не трогаются.
+func foldLookalikes(s string) string {
+	words := strings.Split(s, " ")
+	for i, w := range words {
+		var latin, cyrillic bool
+		for _, r := range w {
+			latin = latin || unicode.Is(unicode.Latin, r)
+			cyrillic = cyrillic || unicode.Is(unicode.Cyrillic, r)
+		}
+		if latin && cyrillic {
+			words[i] = strings.Map(func(r rune) rune {
+				if l, ok := lookalikes[r]; ok {
+					return l
+				}
+				return r
+			}, w)
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // containsWord reports whether phrase occurs in normalized s on word
