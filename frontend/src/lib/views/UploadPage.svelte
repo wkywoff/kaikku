@@ -917,10 +917,21 @@
     /* Фон и линия сверху — во всю ширину, хотя панель в колонке страницы
        (App.svelte): тени без размытия продолжают их в стороны, clip-path
        оставляет только высоту панели и линию над ней. */
-    box-shadow:
-      0 0 0 100vmax rgba(18, 18, 18, 0.94),
-      0 -1px 0 100vmax var(--border);
+    box-shadow: 0 0 0 100vmax rgba(18, 18, 18, 0.94);
     clip-path: inset(-1px -100vmax 0);
+  }
+  /* Линия — отдельным слоем высотой 1 px: тенью под фоном она просвечивала
+     сквозь его прозрачность полосами по бокам, где страница шире колонки. */
+  .savebar::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border);
+    box-shadow: 0 0 0 100vmax var(--border);
+    clip-path: inset(0 -100vmax);
   }
   .savebar-in {
     display: flex;
