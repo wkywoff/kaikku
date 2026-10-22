@@ -20,6 +20,11 @@
 #     webpage, configs, initial_data с visitor_data из того же конфига:
 #     1.35 → 0.45 с. Без visitor_data YouTube просит подтвердить, что это не
 #     бот, поэтому только вместе. Не вышло — обычное извлечение, как раньше.
+#   - клиент YouTube (замер 2026-10-22, yt-dlp 2026.10.21): штатные
+#     tv_samsung + visionos, и ради первого yt-dlp решает JS-проверку плеера
+#     в Deno — ~3 с на ролик на 1 vCPU, извлечение 4–6 с. visionos один
+#     отдаёт формат 140 без проверки: 1.0–1.5 с, быстрым путём 0.1–0.5 с;
+#     ссылки качаются так же. Не вышло — штатные клиенты.
 import copy
 import json
 import sys
@@ -33,6 +38,7 @@ sys.stdout = sys.stderr  # stdout — только для протокола
 import yt_dlp  # noqa: E402
 
 YTCFG_TTL = 30 * 60
+QUICK_CLIENTS = ['visionos']
 
 
 class Quiet:
@@ -109,17 +115,21 @@ def options(kind, visitor=None):
         opts.update(extract_flat='in_playlist', ignoreerrors=True)
     else:  # как `yt-dlp -j -f 140`
         opts.update(format='140')
+    args = {}
+    if kind == 'quick':
+        args['player_client'] = QUICK_CLIENTS
     if visitor:
-        opts['extractor_args'] = {'youtube': {
-            'player_skip': ['webpage', 'configs', 'initial_data'],
-            'visitor_data': [visitor],
-        }}
+        args.update(player_skip=['webpage', 'configs', 'initial_data'],
+                    visitor_data=[visitor])
+    if args:
+        opts['extractor_args'] = {'youtube': args}
     return opts
 
 
 def ydl(kind, visitor=None):
     # Свой YoutubeDL на поток: объект не потокобезопасен, а повторное
     # использование сохраняет загруженный JS плеера между запросами.
+    # kind: search, quick (QUICK_CLIENTS) или extract (штатные клиенты).
     key = kind if visitor is None else kind + ':fast'
     d = getattr(local, key, None)
     if d is None or (visitor is not None and local.__dict__.get(key + ':visitor') != visitor):
@@ -135,13 +145,19 @@ def extract(video):
     visitor = visitor_data()
     if visitor:
         try:
-            i = ydl('extract', visitor).extract_info(url, download=False)
+            i = ydl('quick', visitor).extract_info(url, download=False)
             if i.get('url'):
                 return i
         except Exception as e:
             if 'bot' in str(e):
                 forget_ytcfg()  # сессия стала подозрительной — новый конфиг в следующий раз
             print('fast extract %s: %s' % (video, e), file=sys.stderr)
+    try:
+        i = ydl('quick').extract_info(url, download=False)
+        if i.get('url'):
+            return i
+    except Exception as e:
+        print('quick extract %s: %s' % (video, e), file=sys.stderr)
     return ydl('extract').extract_info(url, download=False)
 
 
