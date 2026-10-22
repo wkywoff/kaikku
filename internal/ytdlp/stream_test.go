@@ -28,9 +28,11 @@ import (
 //	flaky*   — fails like gone* on the first call, then like ok*;
 //	partial* — `-o -` prints some audio, then fails;
 //	expired* — the direct URL answers 403 (yt-dlp's own download works);
-//	hls*     — format 140 is HLS, not a plain file.
+//	hls*     — format 140 is HLS, not a plain file;
+//	noquick* — fails with the quick client (quickClientArgs), works without.
 //
-// Searches (--flat-playlist) print searchResults.
+// Searches (--flat-playlist) print searchResults. `-o <template>` writes
+// the audio to the template with ext m4a.
 func fakeYtDlp(t *testing.T, searchResults string) *[]string {
 	t.Helper()
 	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +87,16 @@ func TestHelperProcess(t *testing.T) {
 			os.WriteFile(state, nil, 0o644)
 			fail()
 		}
+	case strings.HasPrefix(id, "noquick") && slices.Contains(args, quickClientArgs):
+		fmt.Fprintf(os.Stderr, "ERROR: [youtube] %s: Requested format is not available\n", id)
+		os.Exit(1)
+	}
+	if i := slices.Index(args, "-o"); i >= 0 && args[i+1] != "-" {
+		if err := os.WriteFile(strings.ReplaceAll(args[i+1], "%(ext)s", "m4a"), []byte("audio:"+id), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 	if slices.Contains(args, "-j") { // извлечение без скачивания
 		protocol := "https"
@@ -474,5 +486,49 @@ func TestWarm_RecyclesGrownHelperBetweenRequests(t *testing.T) {
 	openOK(t, want)
 	if countCalls(*calls, "-c ") != 2 || countCalls(*calls, "-j --no-warnings") != 0 {
 		t.Errorf("calls %q: want 2 helper starts and no yt-dlp fallback", *calls)
+	}
+}
+
+func downloadOK(t *testing.T, videoID string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path, err := Download(context.Background(), videoID, dir, "track")
+	if err != nil {
+		t.Fatalf("Download(%s): %v", videoID, err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "audio:"+videoID {
+		t.Fatalf("downloaded %q = %q, %v", path, data, err)
+	}
+	if left, _ := os.ReadDir(dir); len(left) != 1 {
+		t.Errorf("staging has %d files, want only the track", len(left))
+	}
+	return path
+}
+
+func TestDownload_UsesQuickClient(t *testing.T) {
+	calls := fakeYtDlp(t, "")
+	downloadOK(t, "okVideo")
+	if len(*calls) != 1 || !strings.Contains((*calls)[0], quickClientArgs+" -f 140 ") {
+		t.Errorf("calls %q: want one yt-dlp run with the quick client and format 140", *calls)
+	}
+}
+
+func TestDownload_FallsBackToDefaultClients(t *testing.T) {
+	calls := fakeYtDlp(t, "")
+	downloadOK(t, "noquickVideo")
+	if len(*calls) != 2 || strings.Contains((*calls)[1], "--extractor-args") || !strings.Contains((*calls)[1], "-f 140/bestaudio") {
+		t.Errorf("calls %q: want the quick client, then the default clients with 140/bestaudio", *calls)
+	}
+}
+
+func TestDownload_UnavailableVideoFailsAfterAllAttempts(t *testing.T) {
+	calls := fakeYtDlp(t, "")
+	dir := t.TempDir()
+	_, err := Download(context.Background(), "goneVideo", dir, "track")
+	if err == nil || !strings.Contains(err.Error(), "Video unavailable") {
+		t.Fatalf("Download(unavailable) error = %v, want yt-dlp's output in it", err)
+	}
+	if len(*calls) != 3 {
+		t.Errorf("calls %q: want the quick client and two default attempts", *calls)
 	}
 }

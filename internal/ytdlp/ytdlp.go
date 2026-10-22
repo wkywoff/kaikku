@@ -461,6 +461,12 @@ func abs(n int) int {
 	return n
 }
 
+// quickClientArgs: клиент YouTube, ссылки которого не требуют JS-проверки
+// плеера. Штатные клиенты yt-dlp 2026.10.21 (tv_samsung + visionos) решают
+// её в Deno — ~3 с процессора на ролик на 1 vCPU (замер 2026-10-22);
+// visionos один отдаёт формат 140 без неё. helper.py делает так же.
+const quickClientArgs = "youtube:player_client=visionos"
+
 // Download fetches the audio for videoID into stagingDir as
 // "<basename>.<ext>". Format 140 (AAC ~128k in m4a) is preferred: AAC plays
 // everywhere including iOS Safari, so internal/ingest only has to remux it,
@@ -480,22 +486,26 @@ func Download(ctx context.Context, videoID, stagingDir, basename string) (path s
 		}
 	}()
 
-	// YouTube периодически отдаёт 403 на сам поток, хотя повторный запуск
-	// (с новой экстракцией ссылок) проходит — поэтому одна повторная попытка.
-	const attempts = 2
-	for attempt := 1; ; attempt++ {
-		cmd := execCommand(ctx, "yt-dlp",
-			"--no-warnings",
-			"-f", "140/bestaudio",
-			"-o", outputTemplate,
-			watchURL,
-		)
+	// Сначала быстрый клиент (quickClientArgs), только формат 140. Не вышло —
+	// штатные клиенты, дважды: YouTube периодически отдаёт 403 на сам поток,
+	// хотя повторный запуск (с новой экстракцией ссылок) проходит.
+	attempts := [][]string{
+		{"--extractor-args", quickClientArgs, "-f", "140"},
+		{"-f", "140/bestaudio"},
+		{"-f", "140/bestaudio"},
+	}
+	for i, extra := range attempts {
+		args := append([]string{"--no-warnings"}, extra...)
+		cmd := execCommand(ctx, "yt-dlp", append(args, "-o", outputTemplate, watchURL)...)
 		out, runErr := cmd.CombinedOutput()
 		if runErr == nil {
 			break
 		}
-		if attempt == attempts || ctx.Err() != nil {
+		if i == len(attempts)-1 || ctx.Err() != nil {
 			return "", fmt.Errorf("yt-dlp download: %w (output: %s)", runErr, truncate(string(out), 1500))
+		}
+		if i == 0 {
+			log.Printf("yt-dlp %s: %s failed, trying the default clients: %s", videoID, quickClientArgs, truncate(strings.TrimSpace(string(out)), 300))
 		}
 		leftovers, _ := filepath.Glob(pattern)
 		for _, f := range leftovers {
