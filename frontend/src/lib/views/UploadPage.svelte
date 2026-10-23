@@ -231,6 +231,10 @@
       rows = rows.filter((r) => r !== row);
       return;
     }
+    // Последний трек опубликованного релиза сервер не удалит, а добавленные
+    // с других релизов он увидит только после сохранения.
+    const rest = trackRows.filter((r) => r !== row);
+    if (!draft && rest.length && !server.tracks.some((tr) => tr.id !== row.id)) return toast($t('upload.saveFirst'));
     if (!confirm($t('upload.deleteTrackConfirm', { title: row.title }))) return;
     try {
       await api.deleteUploadTrack(row.id);

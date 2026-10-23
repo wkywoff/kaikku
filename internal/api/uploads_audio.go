@@ -275,7 +275,8 @@ func (s *Server) handleReplaceTrackAudio(w http.ResponseWriter, r *http.Request)
 
 // handleDeleteOwnTrack убирает трек из релиза (и из медиатеки слушателей).
 // Последний трек опубликованного релиза удалить нельзя — релиз без треков
-// был бы пустой страницей; удаляется весь релиз.
+// был бы пустой страницей; удаляется весь релиз. Треки с других релизов в
+// его треклисте тоже считаются: свой можно заменить официальным.
 func (s *Server) handleDeleteOwnTrack(w http.ResponseWriter, r *http.Request) {
 	rel, trackID, ok := s.ownTrackFor(w, r)
 	if !ok {
@@ -283,7 +284,10 @@ func (s *Server) handleDeleteOwnTrack(w http.ResponseWriter, r *http.Request) {
 	}
 	if !rel.draft {
 		var n int
-		s.DB.QueryRow(`SELECT count(*) FROM tracks WHERE album_id = $1`, rel.libraryID).Scan(&n)
+		s.DB.QueryRow(
+			`SELECT count(*) FROM (SELECT deezer_id FROM tracks WHERE album_id = $1
+			                       UNION SELECT unnest(tracklist) FROM albums WHERE id = $1) t`,
+			rel.libraryID).Scan(&n)
 		if n <= 1 {
 			writeError(w, http.StatusConflict, "a published release needs at least one track")
 			return

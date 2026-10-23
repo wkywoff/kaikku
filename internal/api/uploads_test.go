@@ -318,6 +318,16 @@ func TestUploads_OtherTracks(t *testing.T) {
 	if n != 1 {
 		t.Error("the tracklist must be cleared")
 	}
+
+	// Последний свой трек опубликованного релиза не удалить, но если в нём
+	// есть добавленный — можно: свой заменили официальным.
+	call(t, router, "DELETE", "/api/uploads/tracks/"+tracks[0], admin, "", http.StatusConflict)
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`{"id":"12345"},`+own), http.StatusOK)
+	call(t, router, "DELETE", "/api/uploads/tracks/"+tracks[0], admin, "", http.StatusNoContent)
+	getJSON(t, router, "/api/discover/albums/"+id, listener, false, &page)
+	if trackIDs(page.Tracks) != "12345 " {
+		t.Errorf("after deleting the own track: %+v", page.Tracks)
+	}
 }
 
 // Диски своего релиза: номер трека — место на своём диске, и у треков с
