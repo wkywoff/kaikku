@@ -90,7 +90,7 @@
   async function playTop() {
     if (!rows.length) return;
     await refresh(rows.map((r) => r.deezerId));
-    playRows(rows, 0, null);
+    playRows(rows, null, null);
   }
 
   async function saveTop() {

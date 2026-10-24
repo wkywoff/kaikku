@@ -142,7 +142,7 @@
   function onPlay() {
     if (unavailable) return;
     if (playingHere) return player.toggle();
-    if (rows.length) playRows(rows, 0, context);
+    if (rows.length) playRows(rows, null, context);
   }
 
   function moreMenu(e) {

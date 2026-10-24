@@ -60,7 +60,7 @@
 
   function onPlay() {
     if (playingHere) return player.toggle();
-    if (rows.length) playRows(rows, 0, LIKED);
+    if (rows.length) playRows(rows, null, LIKED);
   }
 </script>
 

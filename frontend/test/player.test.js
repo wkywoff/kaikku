@@ -321,6 +321,28 @@ test('shuffle keeps the current track playing and restores the original order', 
   assert.equal(s.index, 2);
 });
 
+test('with shuffle on, Play of a whole album starts from a random track, a picked track plays first', async () => {
+  const tracks = ['r1', 'r2', 'r3', 'r4'].map((id) => ({ id, title: id }));
+  const random = Math.random;
+  Math.random = () => 0; // Fisher–Yates с нулём: r1 уезжает в конец
+  try {
+    await player.playQueue([{ id: 'r0', title: 'r0' }], 0);
+    player.toggleShuffle();
+    let s;
+    await player.playQueue(tracks, null);
+    player.subscribe((v) => (s = v))();
+    assert.equal(s.queue[s.index].id, 'r2');
+    assert.deepEqual([...s.queue.map((t) => t.id)].sort(), ['r1', 'r2', 'r3', 'r4']);
+
+    await player.playQueue(tracks, 0);
+    player.subscribe((v) => (s = v))();
+    assert.equal(s.queue[s.index].id, 'r1', 'выбранный трек играет первым');
+  } finally {
+    Math.random = random;
+    player.toggleShuffle();
+  }
+});
+
 test('repeat all wraps next() to the start; repeat one restarts on end', async () => {
   const tracks = [{ id: 'w1', title: 'W1' }, { id: 'w2', title: 'W2' }];
   await player.playQueue(tracks, 1);

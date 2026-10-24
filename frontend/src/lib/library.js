@@ -63,7 +63,8 @@ export function playerEntry(row, trackId, context = null) {
 }
 
 /**
- * Играть rows начиная с index. В очередь встают все строки списка:
+ * Играть rows начиная с index (null — с начала, а с перемешиванием — со
+ * случайного трека: Play альбома). В очередь встают все строки списка:
  * скачанные играют из медиатеки, остальные — потоком, пока сервер их
  * скачивает, так что переходы между треками работают по всему списку.
  */
@@ -81,7 +82,8 @@ export function playRows(rows, index, context = null, { chosen = true } = {}) {
     if (i === index) start = entries.length;
     entries.push(playerEntry(r, id, context));
   });
-  if (start < 0) return;
+  if (index === null) start = entries.length ? null : -1;
+  if (start === -1) return;
   return player.playQueue(entries, start, { chosen });
 }
 
@@ -110,7 +112,7 @@ export async function playFrom(kind, id, loadRows) {
   const rows = await loadRows();
   if (!rows.length) return;
   await refresh(rows.map((r) => r.deezerId));
-  return playRows(rows, 0, { kind, id }, { chosen: false });
+  return playRows(rows, null, { kind, id }, { chosen: false });
 }
 
 export const playAlbum = (id) =>
@@ -186,7 +188,7 @@ export async function playWithSimilar(row) {
 /** «Радио»: на странице артиста — его радио; из меню трека — этот трек и радио его исполнителя. */
 export async function playArtistRadio(artistId, firstRow = null) {
   const rows = await radioRows(artistId, new Set(firstRow ? [firstRow.deezerId] : []));
-  return playRows(firstRow ? [firstRow, ...rows] : rows, 0, { kind: 'artist', id: artistId }, { chosen: false });
+  return playRows(firstRow ? [firstRow, ...rows] : rows, firstRow ? 0 : null, { kind: 'artist', id: artistId }, { chosen: false });
 }
 
 // Радио, чарт и поиск Deezer отдают у трека только основного исполнителя —

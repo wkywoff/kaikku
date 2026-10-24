@@ -55,7 +55,7 @@
 
   function onPlay() {
     if (playingHere) return player.toggle();
-    if (rows.length) playRows(rows, 0, context, { chosen: false });
+    if (rows.length) playRows(rows, null, context, { chosen: false });
   }
 
   // Сохранить как плейлист: снимок микса на сегодня, дальше он не меняется

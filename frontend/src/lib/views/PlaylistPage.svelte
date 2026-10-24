@@ -82,7 +82,7 @@
 
   function onPlay() {
     if (playingHere) return player.toggle();
-    if (rows.length) playRows(rows, 0, { kind: 'playlist', id: playlist.id, title: playlist.title });
+    if (rows.length) playRows(rows, null, { kind: 'playlist', id: playlist.id, title: playlist.title });
   }
 
   // Перетащили трек: сразу на новом месте, на сервер — «встать перед

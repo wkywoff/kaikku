@@ -143,7 +143,7 @@
   function onPlay() {
     if (playingHere) return player.toggle();
     const first = top.findIndex((r) => trackIdOf(r, $libraryState));
-    playRows(top, first >= 0 ? first : 0, { kind: 'artist', id: artist.id, title: artist.name });
+    playRows(top, $shuffleOn ? null : first >= 0 ? first : null, { kind: 'artist', id: artist.id, title: artist.name });
   }
 </script>
 

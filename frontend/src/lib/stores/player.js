@@ -716,13 +716,15 @@ function createPlayerStore() {
   // трек не из медиатеки — { id: null, deezerId, source?: { url, gainDb } } (см. resolveSource)
   // chosen: false — включили не этот трек, а место целиком (Play альбома,
   // радио): не сыгравший трек тогда пропускается.
+  // startIndex null — трек не выбирали (Play альбома, плейлиста): играет
+  // первый, а с перемешиванием — случайный.
   async function playQueue(tracks, startIndex = 0, { chosen = true } = {}) {
     let queue = tracks;
-    let index = startIndex;
+    let index = startIndex ?? 0;
     if (get(state).shuffle) {
       // Выбранный трек играет первым, остальные — в случайном порядке.
       unshuffled = tracks;
-      queue = [tracks[startIndex], ...shuffled(tracks.filter((_, i) => i !== startIndex))];
+      queue = startIndex === null ? shuffled(tracks) : [tracks[startIndex], ...shuffled(tracks.filter((_, i) => i !== startIndex))];
       index = 0;
     } else {
       unshuffled = null;

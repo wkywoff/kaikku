@@ -44,7 +44,7 @@
   $: covers = [...new Set(all.map((r) => r.coverUrl).filter(Boolean))].slice(0, 4);
   $: playingCtx = $playerPlaying ? $playingContext : null;
   // Своего контекста у жанра нет: в истории это будут альбомы треков.
-  const play = () => all.length && playRows(all, 0, null, { chosen: false });
+  const play = () => all.length && playRows(all, null, null, { chosen: false });
 </script>
 
 {#if error}
