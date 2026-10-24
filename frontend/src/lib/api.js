@@ -171,6 +171,7 @@ export const api = {
   // поиск пачки треков в каталоге → { matches: [трек Deezer | null] }.
   importSpotify: (link) => request(`/import/spotify?link=${encodeURIComponent(link)}`),
   importMatch: (tracks) => request('/import/match', { method: 'POST', body: { tracks } }),
+  importAlbums: (tracks) => request('/import/albums', { method: 'POST', body: { tracks } }),
   removeFromPlaylist: (id, itemId) => request(`/playlists/${id}/tracks/${itemId}`, { method: 'DELETE' }),
   // Переставить трек: встать перед beforeItemId (null — в конец).
   movePlaylistItem: (id, itemId, beforeItemId) =>

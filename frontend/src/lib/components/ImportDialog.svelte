@@ -2,7 +2,8 @@
   // Импорт плейлиста: ссылка Spotify (первые 100 треков — больше
   // встраиваемый плеер Spotify не отдаёт), CSV-выгрузка (Exportify и т.п.)
   // или список «Исполнитель — Трек». Треки ищутся в каталоге пачками
-  // (internal/api/import.go), найденное становится новым плейлистом.
+  // (internal/api/import.go), затем треки одного исполнителя сводятся на
+  // один релиз (import_albums.go), найденное становится новым плейлистом.
   import { modal } from '../modal.js';
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
@@ -20,7 +21,7 @@
   // (40 запросов за 5 с на всех), 50 укладываются в несколько секунд.
   const ADD_CHUNK = 50;
 
-  let step = 'input'; // input | matching | done
+  let step = 'input'; // input | matching | settling | done
   let text = '';
   let error = '';
   let busy = false;
@@ -93,7 +94,23 @@
       matches = [...matches, ...(await matchBatch(batch))];
       done = Math.min(tracks.length, i + BATCH);
     }
+    if (cancelled) return;
+    if (matches.filter(Boolean).length > 1) {
+      step = 'settling';
+      matches = await settleAlbums(matches);
+    }
     if (!cancelled) step = 'done';
+  }
+
+  // Песни одного альбома — с одного релиза, а не вперемешку с делюкса,
+  // сингла и сборника. Не вышло — оставляем как нашлось.
+  async function settleAlbums(list) {
+    try {
+      const settled = (await api.importAlbums(list)).matches;
+      return settled?.length === list.length ? settled : list;
+    } catch {
+      return list;
+    }
   }
 
   // Deezer бывает занят (общий лимит запросов) — пачку пробуем ещё пару раз.
@@ -145,7 +162,7 @@
   <div class="dialog" transition:scale={{ start: 0.96, duration: 150 }}>
     <div class="head">
       <h2>{$t('import.title')}</h2>
-      <button type="button" class="icon-btn" on:click={close} aria-label={$t('album.close')} disabled={busy && step !== 'matching'}><X size={20} /></button>
+      <button type="button" class="icon-btn" on:click={close} aria-label={$t('album.close')} disabled={busy && step !== 'matching' && step !== 'settling'}><X size={20} /></button>
     </div>
 
     {#if step === 'input'}
@@ -163,6 +180,9 @@
     {:else if step === 'matching'}
       <p>{$t('import.matching', { done, total: tracks.length })}</p>
       <div class="bar"><div style="width: {(done / tracks.length) * 100}%"></div></div>
+    {:else if step === 'settling'}
+      <p>{$t('import.settling')}</p>
+      <div class="bar"><div style="width: 100%"></div></div>
     {:else}
       <p class="summary">{$t('import.found', { found: found.length, total: tracks.length })}</p>
       {#if source.truncated}<p class="hint warn">{$t('import.truncated')}</p>{/if}

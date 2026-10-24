@@ -177,6 +177,7 @@ func NewRouter(s *Server) http.Handler {
 
 	mux.Handle("GET /api/import/spotify", s.authed(s.handleImportSpotify))
 	mux.Handle("POST /api/import/match", s.authed(s.handleImportMatch))
+	mux.Handle("POST /api/import/albums", s.authed(s.handleImportAlbums))
 
 	mux.Handle("GET /api/discover/artists/{id}", s.authed(s.handleDiscoverArtist))
 	mux.Handle("GET /api/discover/artists/{id}/albums", s.authed(s.handleDiscoverArtistAlbums))
