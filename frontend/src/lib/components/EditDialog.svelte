@@ -25,6 +25,7 @@
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import ArtistPicker from './upload/ArtistPicker.svelte';
+  import { createNewArtists } from '../uploads.js';
   import Download from '@lucide/svelte/icons/download';
   import FileMusic from '@lucide/svelte/icons/file-music';
   import MicVocal from '@lucide/svelte/icons/mic-vocal';
@@ -278,6 +279,8 @@
     }
     busy = true;
     try {
+      // Новые артисты заводятся только при сохранении.
+      if (editCredits) [artists] = await createNewArtists([artists], api.createArtist);
       if (kind === 'artist') {
         await api.updateArtist(id, { name });
         if (newImage) await api.uploadArtistPicture(id, newImage);

@@ -2,7 +2,8 @@
   // Исполнители релиза или трека в окне загрузки. Чипы — выбранные, первый
   // — основной. Поле: имя — подсказки (свои артисты kaikku, потом Deezer)
   // и в конце «Создать артиста»; ссылка на артиста Deezer или kaikku —
-  // сразу этот артист.
+  // сразу этот артист. Созданный здесь — пока только имя (newArtist): его
+  // заводит на сервере сохранение релиза или правки (createNewArtists).
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
@@ -10,6 +11,7 @@
   import { sized } from '../../imageproxy.js';
   import { fansLabel } from '../../format.js';
   import { artistIdFrom, isShortDeezerLink, isLocalId } from '../../links.js';
+  import { newArtist, isNewArtist } from '../../uploads.js';
   import X from '@lucide/svelte/icons/x';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import UserRound from '@lucide/svelte/icons/user-round';
@@ -101,15 +103,8 @@
     }
   }
 
-  async function create() {
-    busy = true;
-    try {
-      add(await api.createArtist(name));
-    } catch (e) {
-      error = e.message;
-    } finally {
-      busy = false;
-    }
+  function create() {
+    add(newArtist(name));
   }
 
   function choose(opt) {
@@ -152,6 +147,7 @@
         <li class="chip">
           {#if a.picture_url}<img src={sized(a.picture_url, 64)} alt="" />{:else}<span class="ph"><UserRound size={14} /></span>{/if}
           <span class="cname">{a.name}</span>
+          {#if isNewArtist(a)}<span class="main">{$t('upload.newArtist')}</span>{/if}
           {#if i === 0 && artists.length > 1}<span class="main">{$t('edit.mainArtist')}</span>{/if}
           {#if i > 0}
             <button type="button" class="mini" title={$t('edit.makeMain')} aria-label={$t('edit.makeMain')} on:click={() => makeMain(i)}><ArrowUp size={14} /></button>

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recordTypeFor, missingForPublish, naturalCompare, fullDate, prefillFromTags, createQueue, isAudioFile, discsOf, withSeparators } from '../src/lib/uploads.js';
+import { recordTypeFor, missingForPublish, naturalCompare, fullDate, prefillFromTags, createQueue, isAudioFile, discsOf, withSeparators, newArtist, isNewArtist, createNewArtists } from '../src/lib/uploads.js';
 
 const min = 60 * 1000;
 const tracks = (n, each = 3 * min) => Array.from({ length: n }, () => ({ durationMs: each }));
@@ -97,4 +97,19 @@ test('createQueue uploads one at a time and retries a busy server', async () => 
   assert.deepEqual(q.items.map((i) => i.state), ['done', 'done', 'error']);
   assert.equal(q.items[2].error, 'not audio');
   assert.equal(q.items[1].result.track.id, 'k-b');
+});
+
+test('createNewArtists creates each new artist once, at save', async () => {
+  const names = [];
+  const create = async (name) => {
+    names.push(name);
+    return { id: `k${names.length}`, name };
+  };
+  const old = { id: '27', name: 'Daft Punk', picture_url: 'x' };
+  const [release, own, asRelease] = await createNewArtists([[newArtist('Scapegoat'), old], [newArtist('Scapegoat'), newArtist('Dekma')], null], create);
+  assert.deepEqual(names, ['Scapegoat', 'Dekma']);
+  assert.deepEqual(release, [{ id: 'k1', name: 'Scapegoat', picture_url: null }, old]);
+  assert.deepEqual(own.map((a) => a.id), ['k1', 'k2']);
+  assert.equal(asRelease, null);
+  assert.ok(isNewArtist(newArtist('x')) && !isNewArtist(old));
 });

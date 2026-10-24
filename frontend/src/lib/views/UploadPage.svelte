@@ -24,7 +24,7 @@
   import { trackIdFrom, albumIdFrom, isShortDeezerLink } from '../links.js';
   import { lang } from '../stores/settings.js';
   import { recordTypeLabel, tracksCount, longDuration, year } from '../format.js';
-  import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue, discsOf, withSeparators } from '../uploads.js';
+  import { RECORD_TYPES, MAX_AUDIO_BYTES, recordTypeFor, missingForPublish, prefillFromTags, createQueue, discsOf, withSeparators, createNewArtists } from '../uploads.js';
   import ArtistPicker from '../components/upload/ArtistPicker.svelte';
   import TrackRows from '../components/upload/TrackRows.svelte';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -340,6 +340,13 @@
           r.lyricsInitial = r.lyrics;
         }
       }
+      // Новые артисты заводятся только теперь, вместе с релизом.
+      const own = rows.filter((r) => !r.sep && r.artists);
+      const [release, ...lists] = await createNewArtists([artists, ...own.map((r) => r.artists)], api.createArtist);
+      artists = release;
+      own.forEach((r, i) => (r.artists = lists[i]));
+      rows = rows;
+      await tick(); // current — уже с их ID
       const st = await api.saveRelease(id, body(published));
       fill(st);
       clearPageCaches();

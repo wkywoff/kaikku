@@ -183,3 +183,26 @@ export function createQueue(run, onChange, { maxRetries = 5, wait = (ms) => new 
     },
   };
 }
+
+// Новый артист из ArtistPicker — пока только имя (ID `new:<имя>`): на
+// сервере его заводят при сохранении, а не по клику «Создать артиста»,
+// чтобы брошенный выбор не оставлял лишних артистов.
+const NEW_ARTIST = 'new:';
+export const newArtist = (name) => ({ id: NEW_ARTIST + name, name, picture_url: null });
+export const isNewArtist = (a) => a.id.startsWith(NEW_ARTIST);
+
+/**
+ * Заводит новых артистов из списков (релиз, треки; null пропускаются) через
+ * create(name) → { id, name, picture_url } и возвращает списки с ними.
+ * Один и тот же новый артист в разных списках заводится один раз.
+ */
+export async function createNewArtists(lists, create) {
+  const made = new Map();
+  for (const a of lists.flatMap((list) => list || [])) {
+    if (isNewArtist(a) && !made.has(a.id)) {
+      const got = await create(a.name);
+      made.set(a.id, { id: String(got.id), name: got.name, picture_url: got.picture_url || null });
+    }
+  }
+  return lists.map((list) => list && list.map((a) => made.get(a.id) || a));
+}
