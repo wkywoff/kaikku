@@ -1029,6 +1029,28 @@ test('the lock screen knows whether music plays and gets the cover in several si
   assert.equal(mediaSession.playbackState, 'paused');
 });
 
+test('the system player gets the position on jumps, not on every tick', async () => {
+  const sent = [];
+  mediaSession.setPositionState = (p) => sent.push(p.position);
+  try {
+    await player.playQueue([{ id: 'pos1', title: 'Pos' }], 0);
+    const el = FakeAudio.instances.find((e) => e.src.includes('pos1'));
+    el.duration = 200;
+    el.currentTime = 0;
+    el.play();
+    el.dispatch('playing');
+    for (const time of [12, 12.25, 12.5, 12.75]) {
+      el.currentTime = time;
+      el.dispatch('timeupdate');
+    }
+    el.currentTime = 90;
+    el.dispatch('seeked');
+    assert.deepEqual(sent, [0, 90]);
+  } finally {
+    mediaSession.setPositionState = () => {};
+  }
+});
+
 test('a swipe back always goes to the previous song, the button restarts after 3 s', async () => {
   await player.playQueue([{ id: 'sw1', title: 'A' }, { id: 'sw2', title: 'B' }], 1);
   const el = FakeAudio.instances.find((e) => e.src.includes('sw2'));

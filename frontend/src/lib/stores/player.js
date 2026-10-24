@@ -300,7 +300,6 @@ function createPlayerStore() {
       if (slot !== activeSlot) return; // тихий (неактивный) элемент не должен трогать видимое состояние
       state.update((s) => ({ ...s, currentTime: el.currentTime }));
       maybeSleep(); // на случай, если таймер в фоне сработал не вовремя
-      updatePositionState(el);
       trackListen(el);
       maybeReportPlay(el);
       maybeStartPreload(el);
@@ -316,6 +315,15 @@ function createPlayerStore() {
       if (slot !== activeSlot) return;
       state.update((s) => ({ ...s, duration: el.duration }));
     });
+    // Позиция для системного плеера — только на скачках (старт, пауза,
+    // перемотка, новая длина); между ними система досчитывает её сама.
+    // Слать её на каждый timeupdate нельзя: KDE ведёт время по своим часам
+    // и на каждой новой точке откатывался назад — 12 → 13 → 12.
+    for (const type of ['playing', 'pause', 'seeked', 'durationchange']) {
+      el.addEventListener(type, () => {
+        if (slot === activeSlot) updatePositionState(el);
+      });
+    }
     el.addEventListener('play', () => {
       if (slot !== activeSlot) return;
       state.update((s) => ({ ...s, isPlaying: true }));
@@ -548,6 +556,7 @@ function createPlayerStore() {
       isLoading: false,
     }));
     updateMediaSession(track);
+    updatePositionState(elements[newSlot]); // его 'playing' пришёл, пока слот был неактивным
   }
 
   // cancelPendingCrossfade — глушит и сбрасывает неактивный слот. Нужно на
