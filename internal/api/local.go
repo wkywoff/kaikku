@@ -495,7 +495,8 @@ func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id stri
 		return
 	}
 	top := popularTracks(played, own)
-	s.overlayFor(nil, nil, top)
+	// Релизы Deezer, перенесённые к нему, — с правками, как у артиста Deezer.
+	s.overlayFor(nil, albumPtrs(albums), top)
 	if albums == nil {
 		albums = []deezer.Album{}
 	}

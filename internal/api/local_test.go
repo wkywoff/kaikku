@@ -215,6 +215,30 @@ func TestOwnArtistPage(t *testing.T) {
 	call(t, router, "GET", "/api/discover/artists/k999999/info", other, "", http.StatusNotFound)
 }
 
+// Релиз Deezer, перенесённый к своему артисту, на его странице — с
+// правками, а не как у Deezer.
+func TestOwnArtistPage_MovedDeezerReleaseKeepsEdits(t *testing.T) {
+	db, router, admin := newTestRouter(t)
+	rel := seedOwnRelease(t, db, "", false)
+	var id string
+	if err := json.Unmarshal(postJSON(router, "/api/albums/deezer/9/claim", "", admin).Body.Bytes(), &struct{ ID *string }{&id}); err != nil || id == "" {
+		t.Fatalf("claim: %v", err)
+	}
+	put(t, router, "/api/albums/"+id, admin, `{"title":"Renamed","record_type":"compile","artists":["`+rel.artist+`"]}`, http.StatusOK)
+
+	type card struct {
+		ID         string `json:"id"`
+		Title      string `json:"title"`
+		RecordType string `json:"record_type"`
+	}
+	var page struct{ Albums []card }
+	getJSON(t, router, "/api/discover/artists/"+rel.artist, admin, false, &page)
+	i := slices.IndexFunc(page.Albums, func(a card) bool { return a.ID == "9" })
+	if i < 0 || page.Albums[i].Title != "Renamed" || page.Albums[i].RecordType != "compile" {
+		t.Errorf("albums = %+v", page.Albums)
+	}
+}
+
 // Прослушивания черновика не попадают в «Популярное» артиста Deezer.
 func TestOwnRelease_DraftPlaysNotPopular(t *testing.T) {
 	db, router, admin := newTestRouter(t)
