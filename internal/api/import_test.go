@@ -14,8 +14,8 @@ import (
 const spotifyEmbedPage = `<!DOCTYPE html><html><head></head><body><div id="__next"></div>
 <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"state":{"data":{"entity":{
 "type":"playlist","name":"Road &amp; Trip","trackList":[
-{"uri":"spotify:track:1","title":"Get Lucky (feat. Pharrell Williams and Nile Rodgers) - Radio Edit","subtitle":"Daft Punk, Pharrell Williams, Nile Rodgers","duration":248000},
-{"uri":"spotify:track:2","title":"Выше","subtitle":"rokma","duration":150000},
+{"uri":"spotify:track:1","title":"Get Lucky (feat. Pharrell Williams and Nile Rodgers) - Radio Edit","subtitle":"Daft Punk, Pharrell Williams, Nile Rodgers","duration":248000,"isExplicit":false},
+{"uri":"spotify:track:2","title":"Выше","subtitle":"rokma","duration":150000,"isExplicit":true},
 {"uri":"spotify:track:3","title":"","subtitle":"Nobody","duration":1000}
 ]}}}}}}</script></body></html>`
 
@@ -33,6 +33,9 @@ func TestParseSpotifyEmbed(t *testing.T) {
 	first := list.Tracks[0]
 	if first.DurationMs != 248000 || len(first.Artists) != 3 || first.Artists[1] != "Pharrell Williams" {
 		t.Errorf("first track: %+v", first)
+	}
+	if first.Explicit == nil || *first.Explicit || list.Tracks[1].Explicit == nil || !*list.Tracks[1].Explicit {
+		t.Errorf("explicit marks: %v, %v", first.Explicit, list.Tracks[1].Explicit)
 	}
 	if _, err := parseSpotifyEmbed([]byte("<html>nothing here</html>")); err == nil {
 		t.Error("a page without data must be an error")
@@ -68,6 +71,8 @@ func TestBestImportMatch(t *testing.T) {
 	tr := func(id, title, artist string, sec int) deezer.Track {
 		return deezer.Track{ID: id, Title: title, Artist: artist, DurationMs: sec * 1000}
 	}
+	explicit := func(t deezer.Track) deezer.Track { t.Explicit = true; return t }
+	yes, no := true, false
 	cases := []struct {
 		name  string
 		want  importTrack
@@ -98,9 +103,18 @@ func TestBestImportMatch(t *testing.T) {
 		{"a name with a comma, split by the source",
 			importTrack{Title: "EARFQUAKE", Artists: []string{"Tyler", "The Creator"}, DurationMs: 190000},
 			[]deezer.Track{tr("t", "EARFQUAKE", "Tyler, The Creator", 190)}, "t"},
+		{"an explicit song is not swapped for its clean version",
+			importTrack{Title: "HUMBLE.", Artists: []string{"Kendrick Lamar"}, DurationMs: 177000, Explicit: &yes},
+			[]deezer.Track{tr("clean", "HUMBLE.", "Kendrick Lamar", 177), explicit(tr("e", "HUMBLE.", "Kendrick Lamar", 177))}, "e"},
+		{"and a clean one is not swapped for the explicit",
+			importTrack{Title: "HUMBLE.", Artists: []string{"Kendrick Lamar"}, DurationMs: 177000, Explicit: &no},
+			[]deezer.Track{explicit(tr("e", "HUMBLE.", "Kendrick Lamar", 177)), tr("clean", "HUMBLE.", "Kendrick Lamar", 177)}, "clean"},
+		{"the other version is better than nothing",
+			importTrack{Title: "HUMBLE.", Artists: []string{"Kendrick Lamar"}, DurationMs: 177000, Explicit: &yes},
+			[]deezer.Track{tr("clean", "HUMBLE.", "Kendrick Lamar", 177)}, "clean"},
 	}
 	for _, c := range cases {
-		got := bestImportMatch(c.want, c.found)
+		got, _ := bestImportMatch(c.want, c.found)
 		id := ""
 		if got != nil {
 			id = got.ID

@@ -1,10 +1,11 @@
 // Разбор списка треков для импорта плейлиста (кроме ссылки Spotify — её
 // разбирает сервер, internal/api/import.go):
 //   - CSV из Exportify, TuneMyMusic и похожих: заголовок с «Track Name» и
-//     «Artist Name(s)» (берём название, исполнителей и длительность);
+//     «Artist Name(s)» (берём название, исполнителей, длительность и пометку
+//     Explicit — чтобы не взять clean-версию вместо обычной);
 //   - строки «Исполнитель — Трек» (дефис или тире; номера «1.» не мешают),
 //     строка без тире — просто название.
-// → [{ title, artists: [...], duration_ms? }], не больше MAX_IMPORT.
+// → [{ title, artists: [...], duration_ms?, explicit? }], не больше MAX_IMPORT.
 
 export const MAX_IMPORT = 300;
 
@@ -78,11 +79,17 @@ function parseCsvList(text) {
   const title = col(/track name/);
   const artist = col(/artist name/);
   const duration = col(/duration/);
+  const explicit = col(/^\s*explicit\s*$/);
+  const flag = (v) => {
+    const s = String(v ?? '').trim().toLowerCase();
+    return s === 'true' ? true : s === 'false' ? false : undefined;
+  };
   return rows
     .map((r) => ({
       title: (r[title] || '').trim(),
       artists: splitArtists(r[artist] || ''),
       ...(duration >= 0 && Number(r[duration]) > 0 ? { duration_ms: Math.round(Number(r[duration])) } : {}),
+      ...(explicit >= 0 && flag(r[explicit]) !== undefined ? { explicit: flag(r[explicit]) } : {}),
     }))
     .filter((t) => t.title);
 }

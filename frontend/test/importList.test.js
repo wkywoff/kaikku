@@ -16,14 +16,16 @@ Just A Title`);
   ]);
 });
 
-test('an Exportify CSV: quoted fields, commas inside quotes, durations', () => {
-  const csv = `"Track URI","Track Name","Album Name","Artist Name(s)","Release Date","Duration (ms)"
-"spotify:track:1","Get Lucky (feat. Pharrell Williams, Nile Rodgers)","Random Access Memories","Daft Punk,Pharrell Williams,Nile Rodgers","2013-05-17","369626"
-"spotify:track:2","Say ""Hi""","X","Someone","2020","1000"
+test('an Exportify CSV: quoted fields, commas inside quotes, durations, explicit marks', () => {
+  const csv = `"Track URI","Track Name","Album Name","Artist Name(s)","Release Date","Duration (ms)","Popularity","Explicit"
+"spotify:track:1","Get Lucky (feat. Pharrell Williams, Nile Rodgers)","Random Access Memories","Daft Punk,Pharrell Williams,Nile Rodgers","2013-05-17","369626","80","false"
+"spotify:track:2","Say ""Hi""","X","Someone","2020","1000","1","true"
+"spotify:track:3","Unknown","X","Someone","2020","1000","1",""
 `;
   assert.deepEqual(parseTrackList(csv), [
-    { title: 'Get Lucky (feat. Pharrell Williams, Nile Rodgers)', artists: ['Daft Punk', 'Pharrell Williams', 'Nile Rodgers'], duration_ms: 369626 },
-    { title: 'Say "Hi"', artists: ['Someone'], duration_ms: 1000 },
+    { title: 'Get Lucky (feat. Pharrell Williams, Nile Rodgers)', artists: ['Daft Punk', 'Pharrell Williams', 'Nile Rodgers'], duration_ms: 369626, explicit: false },
+    { title: 'Say "Hi"', artists: ['Someone'], duration_ms: 1000, explicit: true },
+    { title: 'Unknown', artists: ['Someone'], duration_ms: 1000 },
   ]);
   assert.deepEqual(parseCsv('a,"b\nc",d\r\n1,2,3'), [['a', 'b\nc', 'd'], ['1', '2', '3']]);
 });

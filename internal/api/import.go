@@ -26,8 +26,8 @@ import (
 //     приложения, поэтому его не используем. Текстовый список и CSV разбирает
 //     фронт (lib/importList.js).
 //  2. Фронт шлёт треки пачками в handleImportMatch, сервер ищет каждый в
-//     Deezer и выбирает лучший вариант по названию, исполнителю и
-//     длительности. Пачками — чтобы показывать прогресс и не занимать
+//     Deezer и выбирает лучший вариант по названию, исполнителю,
+//     длительности и версии (explicit или clean). Пачками — чтобы показывать прогресс и не занимать
 //     общий лимит Deezer надолго.
 //  3. Найденное фронт сохраняет обычным плейлистом (без фонового
 //     скачивания: сотня треков разом — лишняя нагрузка на YouTube; трек
@@ -48,6 +48,10 @@ type importTrack struct {
 	Title      string   `json:"title"`
 	Artists    []string `json:"artists"`
 	DurationMs int      `json:"duration_ms,omitempty"`
+	// Explicit — версия с ненормативной лексикой; nil — источник не знает
+	// (текстовый список). У Deezer clean- и explicit-версии — разные треки с
+	// одинаковыми названием и длительностью.
+	Explicit *bool `json:"explicit,omitempty"`
 }
 
 type importList struct {
@@ -119,9 +123,10 @@ func parseSpotifyEmbed(page []byte) (*importList, error) {
 							Name      string `json:"name"`
 							Title     string `json:"title"`
 							TrackList []struct {
-								Title    string `json:"title"`
-								Subtitle string `json:"subtitle"`
-								Duration int    `json:"duration"`
+								Title      string `json:"title"`
+								Subtitle   string `json:"subtitle"`
+								Duration   int    `json:"duration"`
+								IsExplicit *bool  `json:"isExplicit"`
 							} `json:"trackList"`
 						} `json:"entity"`
 					} `json:"data"`
@@ -147,7 +152,7 @@ func parseSpotifyEmbed(page []byte) (*importList, error) {
 				artists = append(artists, a)
 			}
 		}
-		list.Tracks = append(list.Tracks, importTrack{Title: html.UnescapeString(t.Title), Artists: artists, DurationMs: t.Duration})
+		list.Tracks = append(list.Tracks, importTrack{Title: html.UnescapeString(t.Title), Artists: artists, DurationMs: t.Duration, Explicit: t.IsExplicit})
 	}
 	if len(list.Tracks) == 0 {
 		return nil, errors.New("no tracks in the embed data")
@@ -217,24 +222,37 @@ func (s *Server) matchImportTrack(it importTrack) (*deezer.Track, error) {
 		artist := strings.ReplaceAll(it.Artists[0], `"`, "")
 		queries = []string{fmt.Sprintf(`track:"%s" %s`, clean, artist), artist + " " + clean}
 	}
+	// Нашлась не та версия (clean вместо explicit или наоборот) — пробуем
+	// следующий запрос: нужная могла не попасть в выдачу первого.
+	var best *deezer.Track
+	bestRank := 0.0
 	for _, q := range queries {
 		importLimit.Wait()
 		found, err := s.Deezer.Search(q, 25)
 		if err != nil {
 			return nil, err
 		}
-		if best := bestImportMatch(it, found); best != nil {
-			return best, nil
+		if c, rank := bestImportMatch(it, found); c != nil && rank > bestRank {
+			best, bestRank = c, rank
+		}
+		if best != nil && sameVersion(it, best) {
+			break
 		}
 	}
-	return nil, nil
+	return best, nil
+}
+
+// sameVersion: explicit у кандидата такой же, как в источнике (или
+// источник этого не знает).
+func sameVersion(it importTrack, c *deezer.Track) bool {
+	return it.Explicit == nil || *it.Explicit == c.Explicit
 }
 
 // bestImportMatch scores the candidates; the best one wins if the title and
-// the artist really match (and the length, when known, is close).
-func bestImportMatch(it importTrack, found []deezer.Track) *deezer.Track {
-	var best *deezer.Track
-	bestScore := 0.0
+// the artist really match (and the length, when known, is close). rank —
+// его оценка с учётом версии: clean вместо explicit (и наоборот) годится,
+// только если нужной версии нет.
+func bestImportMatch(it importTrack, found []deezer.Track) (best *deezer.Track, rank float64) {
 	for i := range found {
 		c := &found[i]
 		ts := titleScore(it.Title, c.Title)
@@ -247,14 +265,17 @@ func bestImportMatch(it importTrack, found []deezer.Track) *deezer.Track {
 			continue
 		}
 		score := 0.5*ts + 0.3*as + 0.2*ds
-		if score > bestScore {
-			best, bestScore = c, score
+		if score < 0.7 {
+			continue
+		}
+		if !sameVersion(it, c) {
+			score -= 0.2
+		}
+		if score > rank {
+			best, rank = c, score
 		}
 	}
-	if bestScore < 0.7 {
-		return nil
-	}
-	return best
+	return best, rank
 }
 
 // Диакритика латиницы — без пакета нормализации Unicode (лишняя зависимость
