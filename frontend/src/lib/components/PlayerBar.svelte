@@ -36,6 +36,8 @@
   import { sleepMenuItems, sleepLabel } from '../sleepMenu.js';
   import { wheelVolume } from '../wheelVolume.js';
 
+  const smoothTime = player.smoothTime; // полоса прогресса плавная, цифры — по секундам
+
   export let queueOpen = false;
 
   const dispatch = createEventDispatcher();
@@ -110,7 +112,7 @@
       </div>
       <div class="progress">
         <span class="num time">{formatTime(s.currentTime)}</span>
-        <Slider value={s.currentTime} max={s.duration || 0} step={0.1} label={$t('player.position')} on:change={(e) => player.seek(e.detail)} />
+        <Slider value={$smoothTime} max={s.duration || 0} step={0.1} label={$t('player.position')} on:change={(e) => player.seek(e.detail)} />
         <span class="num time">{formatTime(s.duration)}</span>
       </div>
     </div>
@@ -135,7 +137,7 @@
     </div>
 
     <!-- Тонкая полоса прогресса над мини-плеером на телефоне. -->
-    <div class="mobile-progress" style="--pct: {s.duration ? (s.currentTime / s.duration) * 100 : 0}%"></div>
+    <div class="mobile-progress" style="--pct: {s.duration ? ($smoothTime / s.duration) * 100 : 0}%"></div>
   </footer>
 {/if}
 

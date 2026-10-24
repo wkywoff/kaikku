@@ -1162,6 +1162,36 @@ function createPlayerStore() {
     return el && !restoredPending ? el.currentTime : get(state).currentTime;
   }
 
+  // Позиция для полосы прогресса: пока трек играет — на каждом кадре, иначе
+  // полоса двигалась бы рывками 4 раза в секунду. Кадры идут, только пока
+  // на неё кто-то подписан и вкладка видна.
+  const smoothTime = readable(0, (set) => {
+    let frame = 0;
+    let last = 0;
+    const tick = () => {
+      let time = position();
+      // currentTime в браузере иногда чуть отступает назад — полоса не должна дрожать.
+      if (time < last && last - time < 0.25) time = last;
+      last = time;
+      set(time);
+      frame = requestAnimationFrame(tick);
+    };
+    const unsubscribe = state.subscribe((s) => {
+      if (s.isPlaying && typeof requestAnimationFrame === 'function') {
+        if (!frame) frame = requestAnimationFrame(tick);
+        return;
+      }
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      last = s.currentTime;
+      set(s.currentTime);
+    });
+    return () => {
+      unsubscribe();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  });
+
   function setVolume(v) {
     const clamped = Math.min(1, Math.max(0, v));
     if (gains[activeSlot]) gains[activeSlot].gain.value = clamped * trackGain(activeSlot);
@@ -1195,6 +1225,7 @@ function createPlayerStore() {
     prev,
     seek,
     position,
+    smoothTime,
     setVolume,
     toggleShuffle,
     cycleRepeat,

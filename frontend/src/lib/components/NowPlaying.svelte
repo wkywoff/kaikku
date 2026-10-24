@@ -39,6 +39,8 @@
   import { rowFromEntry } from '../library.js';
   import { focusTrap } from '../focusTrap.js';
 
+  const smoothTime = player.smoothTime; // полоса прогресса плавная, цифры — по секундам
+
   export let browserFullscreen = false;
 
   const dispatch = createEventDispatcher();
@@ -321,7 +323,7 @@
 
           <div class="dock" bind:this={dock} bind:clientHeight={dockH}>
             <div class="progress">
-              <Slider value={s.currentTime} max={s.duration || 0} step={0.1} label={$t('player.position')} on:change={(e) => player.seek(e.detail)} />
+              <Slider value={$smoothTime} max={s.duration || 0} step={0.1} label={$t('player.position')} on:change={(e) => player.seek(e.detail)} />
               <div class="times num"><span>{formatTime(s.currentTime)}</span><span>{formatTime(s.duration)}</span></div>
             </div>
 
