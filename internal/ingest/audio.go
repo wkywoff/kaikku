@@ -47,12 +47,21 @@ func PrepareAudio(ctx context.Context, srcPath, dstPath string) (lufs, gainDB fl
 	} else {
 		args = append(args, "-c:a", "aac", "-b:a", fallbackBitrate)
 	}
+	clipped := codec != "aac" && peak > 0
+	if clipped {
+		args = append(args, "-af", clipOversFilter)
+	}
 	tmpPath := dstPath + ".part"
 	defer os.Remove(tmpPath) // no-op после успешного rename
 	// -f ipod — то, что ffmpeg выбирает для .m4a; по расширению .part сам не выведет.
 	args = append(args, "-movflags", "+faststart", "-f", "ipod", tmpPath)
 	if out, err := exec.CommandContext(ctx, "ffmpeg", args...).CombinedOutput(); err != nil {
 		return 0, 0, fmt.Errorf("ffmpeg: %w (output: %s)", err, truncate(string(out), 2000))
+	}
+	if clipped { // громкость теперь у среза, а не у исходника
+		if lufs, peak, err = measureLoudness(ctx, tmpPath); err != nil {
+			return 0, 0, err
+		}
 	}
 	if err := os.Rename(tmpPath, dstPath); err != nil {
 		return 0, 0, fmt.Errorf("moving audio into place: %w", err)
@@ -71,6 +80,15 @@ func playbackGain(lufs, peakDB float64) float64 {
 	gain = math.Max(minGainDB, math.Min(maxGainDB, gain))
 	return math.Round(gain*10) / 10
 }
+
+// clipOversFilter goes before the AAC encoder when the peak is over full
+// scale. MP3, Opus and float WAV decode to floats that can go past 0 dBFS
+// (an overdriven master reaches +8), and ffmpeg's encoder loses 3–6 dB on
+// such passages, by a different amount every second. Any player cuts those
+// peaks at 0 dBFS anyway, so the file gets the same cut, as loud as the
+// track has always sounded, and 1 dB of room the encoder needs to stay
+// accurate.
+const clipOversFilter = "asoftclip=type=hard,volume=-1dB"
 
 func probeCodec(ctx context.Context, path string) (string, error) {
 	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0",

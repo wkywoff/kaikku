@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,6 +91,36 @@ func TestPrepareUpload(t *testing.T) {
 	out, _ = exec.Command("ffprobe", "-v", "error", "-show_entries", "stream=codec_name,width,height", "-of", "csv=p=0", jpg).Output()
 	if got := strings.TrimSpace(string(out)); got != "mjpeg,200,200" {
 		t.Errorf("cover = %q, want a 200×200 JPEG", got)
+	}
+
+	// Float WAV с пиками +12 dBFS: без среза кодер терял ~1 дБ сверх того,
+	// что срезал бы плеер, и громкость файла расходилась с gain_db.
+	hot := filepath.Join(dir, "hot.wav")
+	run("-f", "lavfi", "-i", "anoisesrc=d=5:c=pink:a=0.5:r=44100", "-af", "volume=12dB", "-c:a", "pcm_f32le", hot)
+	hotInfo, err := ProbeUpload(ctx, hot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hotDst := filepath.Join(dir, "hot.m4a")
+	lufs, gain, _, err := PrepareUpload(ctx, hot, hotDst, hotInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cut := filepath.Join(dir, "cut.wav") // то же, но без сжатия
+	run("-i", hot, "-af", clipOversFilter, "-c:a", "pcm_f32le", cut)
+	wantLufs, _, err := measureLoudness(ctx, cut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotLufs, _, err := measureLoudness(ctx, hotDst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(gotLufs-wantLufs) > 0.3 || math.Abs(gotLufs-lufs) > 0.1 {
+		t.Errorf("encoded file: %v LUFS, want %v; reported %v LUFS", gotLufs, wantLufs, lufs)
+	}
+	if math.Abs(gotLufs+gain-targetLUFS) > 0.3 {
+		t.Errorf("gain %v brings %v LUFS to %v, want %v", gain, gotLufs, gotLufs+gain, targetLUFS)
 	}
 
 	playlist := filepath.Join(dir, "evil.flac")

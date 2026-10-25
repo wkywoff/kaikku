@@ -191,8 +191,9 @@ func PrepareUpload(ctx context.Context, srcPath, dstPath string, info *UploadInf
 	args = append(args, "-i", srcPath, "-map", "0:a:0", "-vn", "-map_metadata", "-1")
 	resample := info.SampleRate > 48000
 	downmix := info.Channels > 2
+	copied := info.Codec == "aac" && !resample && !downmix
 	switch {
-	case info.Codec == "aac" && !resample && !downmix:
+	case copied:
 		args = append(args, "-c:a", "copy")
 	default:
 		bitrate := fallbackBitrate
@@ -207,6 +208,10 @@ func PrepareUpload(ctx context.Context, srcPath, dstPath string, info *UploadInf
 			args = append(args, "-ac", "2")
 		}
 	}
+	clipped := !copied && peak > 0
+	if clipped {
+		args = append(args, "-af", clipOversFilter)
+	}
 	tmpPath := dstPath + ".part"
 	defer os.Remove(tmpPath)
 	args = append(args, "-movflags", "+faststart", "-f", "ipod", tmpPath)
@@ -216,6 +221,11 @@ func PrepareUpload(ctx context.Context, srcPath, dstPath string, info *UploadInf
 	durationMs, err = probeDurationMs(ctx, tmpPath)
 	if err != nil {
 		return 0, 0, 0, err
+	}
+	if clipped { // громкость теперь у среза, а не у исходника
+		if lufs, peak, err = measureLoudness(ctx, tmpPath); err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	if err := os.Rename(tmpPath, dstPath); err != nil {
 		return 0, 0, 0, fmt.Errorf("moving audio into place: %w", err)
