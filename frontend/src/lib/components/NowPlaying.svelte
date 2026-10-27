@@ -48,6 +48,7 @@
   $: s = $player;
   // Соседние треки — их обложки лежат по бокам большой и видны, пока её
   // тянут пальцем (swipe.js): следующая въезжает на место, как в Spotify.
+  // В маленькой обложке над текстом (телефон) соседние — вплотную.
   const PEEK_GAP = 24; // px, как .peek в стилях
   $: nextEntry =
     s.index + 1 < s.queue.length ? s.queue[s.index + 1] : s.repeat !== 'off' && s.queue.length > 1 ? s.queue[0] : null;
@@ -283,28 +284,30 @@
 
     {#if track}
       <div class="body" class:with-side={side} class:queue-mode={showQueue} style="--dock-h: {dockH}px">
-        <div
-          class="art"
-          use:swipeTrack={{
-            onNext: () => player.next(),
-            onPrev: () => player.prev({ always: true }),
-            canNext: player.canGoNext(s, $settings.autoplay),
-            canPrev: !!prevEntry,
-            slide: PEEK_GAP,
-          }}
-        >
-          {#if prevEntry}
-            <div class="peek prev" aria-hidden="true">
-              {#if prevEntry.coverUrl}<img src={sized(prevEntry.coverUrl, 640)} alt="" decoding="async" />{:else}<div class="placeholder"><Disc3 size={96} /></div>{/if}
-            </div>
-          {/if}
-          {#if track.coverUrl}<img src={sized(track.coverUrl, 640)} alt="" decoding="async" />{:else}<div class="placeholder"><Disc3 size={96} /></div>{/if}
-          {#if nextEntry}
-            <div class="peek next" aria-hidden="true">
-              {#if nextEntry.coverUrl}<img src={sized(nextEntry.coverUrl, 640)} alt="" decoding="async" />{:else}<div class="placeholder"><Disc3 size={96} /></div>{/if}
-            </div>
-          {/if}
-          {#if side}<button class="art-back" on:click={backToCover} aria-label={$t('player.backToCover')}></button>{/if}
+        <div class="art">
+          <div
+            class="art-slide"
+            use:swipeTrack={{
+              onNext: () => player.next(),
+              onPrev: () => player.prev({ always: true }),
+              canNext: player.canGoNext(s, $settings.autoplay),
+              canPrev: !!prevEntry,
+              slide: side && narrow.matches ? 0 : PEEK_GAP,
+            }}
+          >
+            {#if prevEntry}
+              <div class="peek prev" aria-hidden="true">
+                {#if prevEntry.coverUrl}<img src={sized(prevEntry.coverUrl, 640)} alt="" decoding="async" />{:else}<div class="placeholder"><Disc3 size={96} /></div>{/if}
+              </div>
+            {/if}
+            {#if track.coverUrl}<img src={sized(track.coverUrl, 640)} alt="" decoding="async" />{:else}<div class="placeholder"><Disc3 size={96} /></div>{/if}
+            {#if nextEntry}
+              <div class="peek next" aria-hidden="true">
+                {#if nextEntry.coverUrl}<img src={sized(nextEntry.coverUrl, 640)} alt="" decoding="async" />{:else}<div class="placeholder"><Disc3 size={96} /></div>{/if}
+              </div>
+            {/if}
+            {#if side}<button class="art-back" on:click={backToCover} aria-label={$t('player.backToCover')}></button>{/if}
+          </div>
         </div>
 
         <div class="panel">
@@ -410,10 +413,14 @@
     aspect-ratio: 1;
     flex-shrink: 0;
     border-radius: 8px;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    --art-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   }
-  .art {
+  /* Тянется пальцем (swipe.js) вместе с соседними обложками и тенью. */
+  .art-slide {
     position: relative;
+    height: 100%;
+    border-radius: inherit;
+    box-shadow: var(--art-shadow);
   }
   /* Соседние обложки — по бокам, видны только во время свайпа. */
   .peek {
@@ -432,7 +439,7 @@
   .peek.prev {
     right: calc(100% + 24px);
   }
-  .art:global(.swiping) .peek {
+  .art-slide:global(.swiping) .peek {
     opacity: 1;
   }
   /* Кнопка поверх маленькой обложки — только на телефоне. */
@@ -636,7 +643,7 @@
   }
   /* Под обложкой — название: длинная тень темнила бы его полосой. */
   .with-side .art {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --art-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     width: min(42vh, 30vw);
     grid-column: 1;
     grid-row: 1;
@@ -731,7 +738,7 @@
     .art {
       width: var(--art-w);
       margin-top: var(--art-top);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); /* короткая: под ней название */
+      --art-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); /* короткая: под ней название */
     }
     .panel {
       flex: 1;
@@ -794,6 +801,20 @@
       margin: 0;
       border-radius: 6px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    }
+    /* Маленькая обложка — окошко: соседние при свайпе въезжают внутри
+       него, вплотную, а не поверх названия справа. */
+    .with-side .art {
+      overflow: hidden;
+    }
+    .with-side .art-slide {
+      box-shadow: none;
+    }
+    .with-side .peek.next {
+      left: 100%;
+    }
+    .with-side .peek.prev {
+      right: 100%;
     }
     .with-side .art-back {
       display: block;

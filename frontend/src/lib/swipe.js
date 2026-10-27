@@ -72,6 +72,11 @@ export function swipeTrack(node, handlers) {
     }
     e.preventDefault();
     dx = t.clientX - start.x;
+    // Со slide дальше соседней обложки не тянется: за ней пусто.
+    if (handlers.slide !== undefined) {
+      const max = (node.offsetWidth || 0) + handlers.slide;
+      dx = Math.max(-max, Math.min(max, dx));
+    }
     if (blocked(dx)) dx *= 0.25;
     if (!frame) frame = requestAnimationFrame(apply);
   };
