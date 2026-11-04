@@ -8,6 +8,7 @@
   import { t } from '../i18n.js';
   import LogOut from '@lucide/svelte/icons/log-out';
   import { api } from '../api.js';
+  import { markLastfmLink, takeLastfmLink } from '../lastfmLink.js';
   import { toast } from '../stores/toast.js';
   import { me as meStore } from '../stores/me.js';
   import { directAudio } from '../stores/player.js';
@@ -100,7 +101,7 @@
   if (location.pathname === '/lastfm') {
     const token = new URLSearchParams(location.search).get('token');
     navigate(paths.settings(), { replace: true });
-    loadLastfm().then(() => token && linkLastfm(token));
+    loadLastfm().then(() => token && takeLastfmLink() && linkLastfm(token));
   } else {
     loadLastfm();
   }
@@ -275,7 +276,7 @@
           {#if lastfmBusy}
             <span class="muted"><LoaderCircle class="spin" size={18} /></span>
           {:else}
-            <a class="pill outline" href={lastfm.auth_url}>{$t('lastfm.connect')}</a>
+            <a class="pill outline" href={lastfm.auth_url} on:click={() => markLastfmLink()}>{$t('lastfm.connect')}</a>
           {/if}
         </div>
       {/if}
