@@ -6,8 +6,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"kaikku/internal/deezer"
 )
 
 const ogIndex = `<!doctype html><html><head><title>kaikku</title><!--og--><meta property="og:title" content="kaikku" /><!--/og--></head><body></body></html>`
@@ -65,5 +70,53 @@ func TestOG_OffWithoutIndex(t *testing.T) {
 	_, router, _, _ := newTestServer(t)
 	if code, _ := ogPage(t, router, "/album/9"); code != http.StatusNotFound {
 		t.Fatalf("without FRONTEND_INDEX the API has no pages: %d", code)
+	}
+}
+
+func ogFloodServer(t *testing.T) (http.Handler, *Server) {
+	t.Helper()
+	_, _, _, srv := newTestServer(t)
+	index := filepath.Join(t.TempDir(), "index.html")
+	if err := os.WriteFile(index, []byte(ogIndex), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv.FrontendIndex = index
+	return NewRouter(srv), srv
+}
+
+// Перебор ID в превью не вытесняет общий кеш страниц.
+func TestOG_FloodKeepsSharedCache(t *testing.T) {
+	router, srv := ogFloodServer(t)
+	loads := 0
+	load := func() (string, error) { loads++; return "v", nil }
+	cached(&srv.cache, "sentinel", time.Hour, load)
+	for i := 0; i <= ttlCacheMaxEntries; i++ {
+		if code, _ := ogPage(t, router, "/album/x"+strconv.Itoa(i)); code != http.StatusOK {
+			t.Fatalf("preview: %d", code)
+		}
+	}
+	cached(&srv.cache, "sentinel", time.Hour, load)
+	if loads != 1 {
+		t.Errorf("shared cache entry loaded %d times, want 1", loads)
+	}
+}
+
+// Промахи превью ограничены, а страница без подробностей всё равно отдаётся.
+func TestOG_MissesSpendLimitedDeezer(t *testing.T) {
+	router, srv := ogFloodServer(t)
+	var hits atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Write([]byte(`{"error":{"type":"DataException","message":"no data","code":800}}`))
+	}))
+	t.Cleanup(up.Close)
+	srv.Deezer = deezer.NewClientWithBaseURL(up.URL)
+	for i := range ogMissesPerMinute + 5 {
+		if code, _ := ogPage(t, router, "/album/9000"+strconv.Itoa(i)); code != http.StatusOK {
+			t.Fatalf("preview %d: %d", i, code)
+		}
+	}
+	if n := int(hits.Load()); n == 0 || n > ogMissesPerMinute {
+		t.Errorf("%d Deezer requests from %d previews, limit %d", n, ogMissesPerMinute+5, ogMissesPerMinute)
 	}
 }

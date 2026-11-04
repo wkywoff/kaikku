@@ -52,6 +52,9 @@ type Server struct {
 	cache          ttlCache   // ответы Deezer для подсказок и чартов (cache.go)
 	logins         loginGuard // неудачные попытки входа на сайт (loginguard.go)
 	subsonicLogins loginGuard // то же для приложений: /rest/ без лимита nginx и без дорогого хеша
+
+	ogCache  ttlCache     // превью ссылок (og.go)
+	ogMisses ogMissBudget // сколько превью идут за данными (og.go)
 }
 
 type ctxKey string

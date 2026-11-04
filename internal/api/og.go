@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"html"
 	"log"
 	"net/http"
@@ -28,6 +29,33 @@ import (
 
 const ogTTL = 10 * time.Minute
 
+// ogMissesPerMinute — сколько превью в минуту идут за данными (Deezer, база).
+// Страницы открыты без входа, а бюджет Deezer общий: подбор ID не должен
+// тормозить каталог всем. Сверх лимита — страница без подробностей.
+const ogMissesPerMinute = 30
+
+var errOGBusy = errors.New("too many link previews")
+
+// ogMissBudget считает промахи в текущей минуте; нулевое значение готово к работе.
+type ogMissBudget struct {
+	mu    sync.Mutex
+	start time.Time
+	used  int
+}
+
+func (b *ogMissBudget) take(now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if now.Sub(b.start) >= time.Minute {
+		b.start, b.used = now, 0
+	}
+	if b.used >= ogMissesPerMinute {
+		return false
+	}
+	b.used++
+	return true
+}
+
 type ogMeta struct {
 	Title, Description, Image, Type string
 }
@@ -42,7 +70,13 @@ func (s *Server) handleOG(kind string) http.HandlerFunc {
 			return
 		}
 		id := r.PathValue("id")
-		meta, err := cached(&s.cache, "og:"+kind+":"+id, ogTTL, func() (ogMeta, error) { return s.ogMetaFor(kind, id), nil })
+		// Кеш свой: перебор ID не должен вытеснять общий кеш страниц (s.cache).
+		meta, err := cached(&s.ogCache, kind+":"+id, ogTTL, func() (ogMeta, error) {
+			if !s.ogMisses.take(time.Now()) {
+				return ogMeta{}, errOGBusy // ошибка не кешируется: потом превью будет с данными
+			}
+			return s.ogMetaFor(kind, id), nil
+		})
 		if err != nil || meta.Title == "" {
 			meta = ogMeta{}
 		}
