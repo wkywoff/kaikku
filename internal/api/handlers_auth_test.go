@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -279,6 +280,24 @@ func TestLoginGuard_PauseGrows(t *testing.T) {
 	}
 	if attempts > 110 {
 		t.Errorf("%d attempts in a day", attempts)
+	}
+}
+
+// Наводнение выдуманными именами не снимает уже заработанную паузу.
+func TestLoginGuard_FloodKeepsPause(t *testing.T) {
+	var g loginGuard
+	t0 := time.Now()
+	for i := 0; i < loginFreeAttempts; i++ {
+		g.failed("victim", t0)
+	}
+	for i := 0; i < 2*loginMaxTracked; i++ {
+		g.failed("made-up-"+strconv.Itoa(i), t0)
+	}
+	if w := g.wait("victim", t0); w != loginPauseFirst {
+		t.Errorf("after the flood: wait %v, want %v", w, loginPauseFirst)
+	}
+	if len(g.m) > loginMaxTracked {
+		t.Errorf("%d names tracked, limit %d", len(g.m), loginMaxTracked)
 	}
 }
 

@@ -76,8 +76,9 @@ func (g *loginGuard) succeeded(name string) {
 	delete(g.m, name)
 }
 
-// prune drops forgotten failures; if the map is still full (a flood of
-// made-up names), it starts over.
+// prune drops forgotten failures, then names that have no pause yet (a flood
+// of made-up names must not lift a pause someone has earned); if the map is
+// still full, it starts over.
 func (g *loginGuard) prune(now time.Time) {
 	if g.m == nil {
 		g.m = map[string]*loginFailures{}
@@ -86,6 +87,13 @@ func (g *loginGuard) prune(now time.Time) {
 	for name, f := range g.m {
 		if now.Sub(f.last) > loginWindow {
 			delete(g.m, name)
+		}
+	}
+	if len(g.m) >= loginMaxTracked {
+		for name, f := range g.m {
+			if f.count < loginFreeAttempts {
+				delete(g.m, name)
+			}
 		}
 	}
 	if len(g.m) >= loginMaxTracked {
