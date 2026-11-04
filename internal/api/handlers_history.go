@@ -101,6 +101,16 @@ func (s *Server) asTracklistOf(albumID string, track *deezer.Track) {
 	}
 }
 
+// albumVisibleTo: чужой черновик albumCard отдал бы как есть, поэтому там, где
+// ID называет клиент, сначала проверяем это.
+func (s *Server) albumVisibleTo(v viewer, id string) bool {
+	if !isLocalID(id) {
+		return true
+	}
+	_, err := s.catalogAlbum(v, id)
+	return err == nil
+}
+
 // albumCard — the album's card fields (title, cover, artist) with the
 // admin's edits; nil if Deezer doesn't answer.
 func (s *Server) albumCard(id string) *deezer.Album {
@@ -131,7 +141,7 @@ func (s *Server) resolvePlayContext(r *http.Request, userID string, c playContex
 	case "liked":
 		return playContext{Kind: "liked", ID: ""}, nil
 	case "album":
-		if validCatalogID(c.ID) {
+		if validCatalogID(c.ID) && s.albumVisibleTo(viewerOf(r), c.ID) {
 			return c, nil
 		}
 	case "playlist":

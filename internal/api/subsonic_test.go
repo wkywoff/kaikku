@@ -697,3 +697,32 @@ func TestSubsonicAppPasswordOffAfterPasswordChange(t *testing.T) {
 	}
 	newSubClient(t, router, fresh.Token).get("ping", nil) // включается заново
 }
+
+func TestSubsonicHidesStrangersDraftCover(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	srv.StorageDir = t.TempDir()
+	ownerToken := invitedUser(t, router, admin, "cover-owner")
+	var owner string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'cover-owner'`).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	rel := seedOwnRelease(t, db, owner, true)
+	const key = "covers/custom/00112233445566778899aabbccddeeff.jpg"
+	os.MkdirAll(filepath.Dir(filepath.Join(srv.StorageDir, key)), 0o755)
+	if err := os.WriteFile(filepath.Join(srv.StorageDir, key), []byte("DRAFT-COVER"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if body := newSubClient(t, router, ownerToken).raw("getCoverArt", url.Values{"id": {subAlbum + rel.album}}).Body.String(); !strings.Contains(body, "DRAFT-COVER") {
+		t.Error("control: the owner does not get their own cover")
+	}
+	c := newSubClient(t, router, invitedUser(t, router, admin, "cover-stranger"))
+	if body := c.raw("getCoverArt", url.Values{"id": {subAlbum + rel.album}}).Body.String(); strings.Contains(body, "DRAFT-COVER") {
+		t.Error("getCoverArt served a stranger's draft cover")
+	}
+	if body := c.raw("getAlbumInfo2", url.Values{"id": {subAlbum + rel.album}, "f": {"json"}}).Body.String(); strings.Contains(body, "00112233445566778899aabbccddeeff") {
+		t.Error("getAlbumInfo2 returned a stranger's draft cover link")
+	}
+	if code := subErrorCode(t, c.raw("getSimilarSongs", url.Values{"id": {subAlbum + rel.album}, "f": {"json"}})); code != subErrNotFound {
+		t.Errorf("getSimilarSongs on a stranger's draft: code %d", code)
+	}
+}

@@ -99,12 +99,20 @@ func subsonicCoverArt(c *subCtx) error {
 	return nil
 }
 
+// albumCard — карточка альбома, если он виден этому пользователю.
+func (c *subCtx) albumCard(id string) *deezer.Album {
+	if !c.s.albumVisibleTo(viewerOf(c.r), id) {
+		return nil
+	}
+	return c.s.albumCard(id)
+}
+
 // coverURL — картинка объекта, какой её видят на сайте (с правками).
 func (c *subCtx) coverURL(id string) (string, error) {
 	kind, raw := parseSubID(id)
 	switch {
 	case kind == subAlbum && validCatalogID(raw):
-		if a := c.s.albumCard(raw); a != nil {
+		if a := c.albumCard(raw); a != nil {
 			return a.CoverURL, nil
 		}
 	case kind == subTrack && validCatalogID(raw):
@@ -113,7 +121,7 @@ func (c *subCtx) coverURL(id string) (string, error) {
 			return "", subFail(subErrNotFound, "song not found")
 		}
 		if t.AlbumID != "" {
-			if a := c.s.albumCard(t.AlbumID); a != nil {
+			if a := c.albumCard(t.AlbumID); a != nil {
 				return a.CoverURL, nil
 			}
 		}

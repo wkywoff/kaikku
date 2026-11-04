@@ -503,3 +503,30 @@ func TestArtistTopOmitsDraftTrack(t *testing.T) {
 		t.Error("a withdrawn track is still in Popular")
 	}
 }
+
+// Контекст прослушивания с чужим черновиком не копирует его в снимок и итоги года.
+func TestRecordPlay_StrangersDraftContext(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	invitedUser(t, router, admin, "ctx-owner")
+	var owner string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'ctx-owner'`).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	draft := seedOwnRelease(t, db, owner, true)
+	pub := seedOwnRelease(t, db, owner, false)
+	if _, err := db.Exec(`UPDATE albums SET title = 'Secret Draft', tracklist = $1 WHERE deezer_id = $2`, "{"+pub.tracks[0]+"}", draft.album); err != nil {
+		t.Fatal(err)
+	}
+	stranger := invitedUser(t, router, admin, "ctx-stranger")
+	call(t, router, "POST", "/api/me/plays", stranger, `{"deezer_id":"`+pub.tracks[0]+`","context":{"kind":"album","id":"`+draft.album+`"}}`, http.StatusOK)
+	var meta, ctx string
+	if err := db.QueryRow(`SELECT meta::text, context_id FROM plays ORDER BY id DESC LIMIT 1`).Scan(&meta, &ctx); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(meta, "Secret Draft") || strings.Contains(meta, draft.album) || ctx == draft.album {
+		t.Errorf("the play took a stranger's draft: context %s, meta %s", ctx, meta)
+	}
+	if body := call(t, router, "GET", "/api/me/wrapped", stranger, "", http.StatusOK); strings.Contains(string(body), "Secret Draft") {
+		t.Error("the year in review shows a stranger's draft")
+	}
+}

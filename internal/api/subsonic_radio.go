@@ -50,7 +50,7 @@ func subsonicSimilar(c *subCtx, key string) error {
 		}
 		artist = t.ArtistID
 	case subAlbum:
-		a := c.s.albumCard(raw)
+		a := c.albumCard(raw)
 		if a == nil {
 			return subFail(subErrNotFound, "album not found")
 		}
