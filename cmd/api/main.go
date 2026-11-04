@@ -39,6 +39,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("media signer: %v", err)
 	}
+	uploadQuota, err := loadUploadQuota()
+	if err != nil {
+		log.Fatalf("upload quota: %v", err)
+	}
 	// Адрес сайта — для полных ссылок в превью и картинок в приложениях.
 	// Треки играют и без него: ссылки на аудио относительные.
 	if os.Getenv("MEDIA_BASE_URL") == "" {
@@ -85,8 +89,9 @@ func main() {
 		// Скробблинг: без ключа приложения Last.fm выключен.
 		Lastfm: lastfm.New(os.Getenv("LASTFM_API_KEY"), os.Getenv("LASTFM_API_SECRET")),
 		// Превью ссылок: index.html фронта (в Docker — /app/frontend/index.html).
-		FrontendIndex: os.Getenv("FRONTEND_INDEX"),
-		PublicURL:     os.Getenv("MEDIA_BASE_URL"),
+		FrontendIndex:    os.Getenv("FRONTEND_INDEX"),
+		PublicURL:        os.Getenv("MEDIA_BASE_URL"),
+		UploadQuotaBytes: uploadQuota,
 	}
 	// lrc.red просит email для связи в User-Agent; без него источник выключен.
 	srv.EnableLyrics(os.Getenv("LRCRED_CONTACT"))
@@ -197,4 +202,18 @@ func loadMediaSigner() (*media.Signer, error) {
 		ttlSeconds = n
 	}
 	return &media.Signer{Secret: secret, TTL: time.Duration(ttlSeconds) * time.Second}, nil
+}
+
+// loadUploadQuota — UPLOAD_QUOTA_MB: сколько своих файлов может лежать у
+// одного пользователя, по умолчанию 5 ГБ; 0 — без ограничения.
+func loadUploadQuota() (uint64, error) {
+	mb := uint64(5120)
+	if v := os.Getenv("UPLOAD_QUOTA_MB"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("UPLOAD_QUOTA_MB must be a non-negative integer: %w", err)
+		}
+		mb = n
+	}
+	return mb << 20, nil
 }

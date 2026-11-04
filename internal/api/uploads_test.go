@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -678,5 +679,61 @@ func TestUploads_Lyrics(t *testing.T) {
 	json.Unmarshal(call(t, router, "GET", "/api/lyrics/"+rel.tracks[0], fan, "", http.StatusOK), &got)
 	if got.Lyrics != nil {
 		t.Errorf("lyrics after clearing = %+v", got.Lyrics)
+	}
+}
+
+func TestUploads_QuotaPerUser(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	srv.StorageDir = t.TempDir()
+	srv.UploadQuotaBytes = 1000
+	freeSpace = func(string) (uint64, error) { return 50 << 30, nil }
+	t.Cleanup(func() { freeSpace = statFree })
+
+	fan := invitedUser(t, router, admin, "quota-fan")
+	id, tracks := newDraft(t, db, router, fan, 1)
+	var key string
+	if err := db.QueryRow(`SELECT storage_key FROM tracks WHERE deezer_id = $1`, tracks[0]).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(srv.StorageDir, "uploads"), 0o755)
+	if err := os.WriteFile(filepath.Join(srv.StorageDir, key), make([]byte, 900), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := uploadAudio(router, fan, "/api/uploads/releases/"+id+"/audio?name=a.wav", make([]byte, 200)); rec.Code != http.StatusInsufficientStorage {
+		t.Errorf("over the quota: %d %s", rec.Code, rec.Body.String())
+	}
+	other := invitedUser(t, router, admin, "quota-other")
+	otherID, _ := newDraft(t, db, router, other, 0)
+	if rec := uploadAudio(router, other, "/api/uploads/releases/"+otherID+"/audio?name=a.wav", make([]byte, 200)); rec.Code == http.StatusInsufficientStorage {
+		t.Errorf("another user's quota was used: %s", rec.Body.String())
+	}
+	adminID, _ := newDraft(t, db, router, admin, 0)
+	if rec := uploadAudio(router, admin, "/api/uploads/releases/"+adminID+"/audio?name=a.wav", make([]byte, 2000)); rec.Code == http.StatusInsufficientStorage {
+		t.Errorf("the admin has no quota: %s", rec.Body.String())
+	}
+}
+
+// Параллельные загрузки не проходят проверку места все разом.
+func TestUploads_SpaceReservedAcrossRequests(t *testing.T) {
+	srv := &Server{StorageDir: t.TempDir()}
+	freeSpace = func(string) (uint64, error) { return minFreeSpace + 2*100, nil }
+	t.Cleanup(func() { freeSpace = statFree })
+	request := func() *http.Request {
+		r := httptest.NewRequest("POST", "/", bytes.NewReader(make([]byte, 100)))
+		return r.WithContext(context.WithValue(r.Context(), userIDCtxKey, "u"))
+	}
+	release, ok := srv.reserveUpload(httptest.NewRecorder(), request())
+	if !ok {
+		t.Fatal("the first upload was refused")
+	}
+	rec := httptest.NewRecorder()
+	if _, ok := srv.reserveUpload(rec, request()); ok || rec.Code != http.StatusInsufficientStorage {
+		t.Errorf("second upload during the first: ok %v, status %d", ok, rec.Code)
+	}
+	release()
+	if release2, ok := srv.reserveUpload(httptest.NewRecorder(), request()); !ok {
+		t.Error("refused after the first upload ended")
+	} else {
+		release2()
 	}
 }

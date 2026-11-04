@@ -44,6 +44,9 @@ type Server struct {
 	// FrontendIndex — index.html собранного фронта: в него вставляются
 	// og-теги для превью ссылок (og.go). Пусто — превью выключены.
 	FrontendIndex string
+	// UploadQuotaBytes — сколько своих файлов может лежать у одного
+	// пользователя (кроме админа); 0 — без ограничения.
+	UploadQuotaBytes uint64
 	// PublicURL — адрес сайта (https://…) для абсолютных ссылок в превью
 	// и картинок в Subsonic-приложениях (MEDIA_BASE_URL).
 	PublicURL  string
@@ -53,9 +56,10 @@ type Server struct {
 	logins         loginGuard // неудачные попытки входа на сайт (loginguard.go)
 	subsonicLogins loginGuard // то же для приложений: /rest/ без лимита nginx и без дорогого хеша
 
-	ogCache      ttlCache         // превью ссылок (og.go)
-	ogMisses     ogMissBudget     // сколько превью идут за данными (og.go)
-	streamStarts streamStartLimit // новые скачивания на пользователя (stream.go)
+	ogCache       ttlCache         // превью ссылок (og.go)
+	ogMisses      ogMissBudget     // сколько превью идут за данными (og.go)
+	streamStarts  streamStartLimit // новые скачивания на пользователя (stream.go)
+	uploadsOnDisk uploadReserve    // место под загрузки, что ещё идут (uploads_audio.go)
 }
 
 type ctxKey string

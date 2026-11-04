@@ -22,6 +22,7 @@ reads from the repository folder. Start from
 | `WORKER_CONCURRENCY` | `3` | Downloads at the same time. |
 | `DEEZER_PROXY` | off | A second way to Deezer, e.g. Cloudflare WARP as a SOCKS5 proxy. Another IP doubles Deezer's per-IP limit. It is also required if Deezer does not serve the country of the server's IP (`https://api.deezer.com/infos` says `"open":false`). A proxy on the host is `socks5://host.docker.internal:40000`; it must listen on the Docker bridge (172.17.0.1) or 0.0.0.0, not only on 127.0.0.1. |
 | `MEDIA_TTL_SECONDS` | `600` | How long a link to an audio file works. The player renews it. |
+| `UPLOAD_QUOTA_MB` | `5120` | Own uploads per user, in MB; `0` means no limit. The admin has no limit. |
 
 ## Docker
 

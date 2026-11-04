@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -77,6 +78,85 @@ type receivedAudio struct {
 // receiveAudio принимает тело запроса во временный файл на диске, ждёт
 // очереди и перекодирует. Ответ при ошибке даёт сам. Вызвавший удаляет
 // a.src (os.Remove) и отпускает слот (releaseAudioSlot), если ok.
+// uploadReserve — место, обещанное загрузкам, что ещё идут. Свободное место
+// видит только уже записанное: без резерва параллельные запросы прошли бы
+// проверку все разом. Нулевое значение готово к работе.
+type uploadReserve struct {
+	mu     sync.Mutex
+	total  uint64
+	byUser map[string]uint64
+}
+
+// uploadedBytes — сколько занимают файлы релизов пользователя.
+func (s *Server) uploadedBytes(ctx context.Context, userID string) (uint64, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT DISTINCT t.storage_key FROM tracks t JOIN albums a ON a.id = t.album_id
+		 WHERE a.owner_id = $1 AND t.storage_key <> ''`, userID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var total uint64
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return 0, err
+		}
+		if st, err := os.Stat(filepath.Join(s.StorageDir, key)); err == nil {
+			total += uint64(st.Size())
+		}
+	}
+	return total, rows.Err()
+}
+
+// reserveUpload проверяет свободное место и квоту пользователя и занимает
+// место под этот файл; false — нельзя (ответ уже дан).
+func (s *Server) reserveUpload(w http.ResponseWriter, r *http.Request) (release func(), ok bool) {
+	size := uint64(maxAudioUpload) // размер неизвестен заранее — худший случай
+	if r.ContentLength >= 0 {
+		size = uint64(r.ContentLength)
+	}
+	userID := currentUser(r)
+	quota := s.UploadQuotaBytes
+	if admin, _ := r.Context().Value(isAdminCtxKey).(bool); admin {
+		quota = 0
+	}
+	var used uint64
+	if quota > 0 {
+		var err error
+		if used, err = s.uploadedBytes(r.Context(), userID); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not save audio")
+			return nil, false
+		}
+	}
+	free, freeErr := freeSpace(s.StorageDir)
+
+	u := &s.uploadsOnDisk
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if freeErr == nil && free < minFreeSpace+2*(size+u.total) {
+		writeError(w, http.StatusInsufficientStorage, "the server is running out of disk space")
+		return nil, false
+	}
+	if quota > 0 && used+size+u.byUser[userID] > quota {
+		writeError(w, http.StatusInsufficientStorage, "your upload quota is used up, delete something first")
+		return nil, false
+	}
+	if u.byUser == nil {
+		u.byUser = map[string]uint64{}
+	}
+	u.total += size
+	u.byUser[userID] += size
+	return func() {
+		u.mu.Lock()
+		defer u.mu.Unlock()
+		u.total -= size
+		if u.byUser[userID] -= size; u.byUser[userID] == 0 {
+			delete(u.byUser, userID)
+		}
+	}, true
+}
+
 func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receivedAudio, ok bool) {
 	if s.StorageDir == "" {
 		writeError(w, http.StatusServiceUnavailable, "storage is not configured")
@@ -86,10 +166,11 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 		writeError(w, http.StatusRequestEntityTooLarge, "audio must be at most 200 MB")
 		return a, false
 	}
-	if free, err := freeSpace(s.StorageDir); err == nil && free < minFreeSpace+2*uint64(max(r.ContentLength, 0)) {
-		writeError(w, http.StatusInsufficientStorage, "the server is running out of disk space")
+	release, ok := s.reserveUpload(w, r)
+	if !ok {
 		return a, false
 	}
+	defer release() // дальше файл уже на диске и виден в свободном месте
 	// Файл в сотни МБ, очередь и перекодирование — дольше общих таймаутов
 	// сервера (cmd/api); nginx ждёт /api/uploads/ 420 с.
 	rc := http.NewResponseController(w)
