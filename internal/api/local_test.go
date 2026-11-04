@@ -530,3 +530,16 @@ func TestRecordPlay_StrangersDraftContext(t *testing.T) {
 		t.Error("the year in review shows a stranger's draft")
 	}
 }
+
+// UUID в любом написании — та же строка: своя загрузка не проходит мимо проверки.
+func TestDeezerRowOnly_AnyUUIDSpelling(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	rel := seedOwnRelease(t, db, "", true)
+	var id string
+	if err := db.QueryRow(`SELECT id::text FROM albums WHERE deezer_id = $1`, rel.album).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	for _, spelling := range []string{id, strings.ToUpper(id), "{" + id + "}", strings.ReplaceAll(id, "-", "")} {
+		call(t, router, "GET", "/api/albums/"+spelling, admin, "", http.StatusBadRequest)
+	}
+}

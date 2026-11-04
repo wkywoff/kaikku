@@ -526,7 +526,7 @@ func (s *Server) localArtistRadio(w http.ResponseWriter, r *http.Request, id str
 // library alone): own uploads have their own editor and deletion
 // (uploads.go). table is one of the catalogue tables, never user input.
 func (s *Server) deezerRowOnly(table string, next http.HandlerFunc) http.HandlerFunc {
-	query := `SELECT deezer_id FROM ` + table + ` WHERE id::text = $1`
+	query := `SELECT deezer_id FROM ` + table + ` WHERE id = $1` // как в обработчиках: UUID в любом написании
 	return func(w http.ResponseWriter, r *http.Request) {
 		var dz string
 		if err := s.DB.QueryRow(query, r.PathValue("id")).Scan(&dz); err == nil && isLocalID(dz) {
