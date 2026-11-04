@@ -163,6 +163,25 @@ func TestSubsonicLoginThrottled(t *testing.T) {
 	}
 }
 
+// Неудачи приложений считаются отдельно от входа на сайт, а имя длиннее
+// возможного в счётчик не попадает.
+func TestSubsonicLoginOwnCounter(t *testing.T) {
+	_, router, token, s := newTestServer(t)
+	c := newSubClient(t, router, token)
+	c.raw("ping", url.Values{"f": {"json"}, "p": {"wrong"}})
+	if len(s.subsonicLogins.m) != 1 || len(s.logins.m) != 0 {
+		t.Errorf("after a wrong app password: subsonic %d names, site %d", len(s.subsonicLogins.m), len(s.logins.m))
+	}
+
+	long := &subClient{t: t, router: router, user: strings.Repeat("x", 4*maxUsernameLen+1), pass: "x"}
+	if code := subErrorCode(t, long.raw("ping", url.Values{"f": {"json"}})); code != subErrWrongCreds {
+		t.Errorf("name over the limit: code %d, want 40", code)
+	}
+	if len(s.subsonicLogins.m) != 1 {
+		t.Errorf("name over the limit was tracked: %d names", len(s.subsonicLogins.m))
+	}
+}
+
 func TestSubsonicEnvelope(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	c := newSubClient(t, router, token)

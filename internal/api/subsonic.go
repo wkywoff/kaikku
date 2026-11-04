@@ -129,10 +129,14 @@ func (c *subCtx) login() error {
 	if name == "" {
 		return subMissing("u")
 	}
-	// Подбор — как у входа на сайт (loginguard.go), но счёт свой.
-	key := "subsonic:" + name
+	// Такого имени быть не может, а в счётчик оно попало бы целиком.
+	if len(name) > 4*maxUsernameLen {
+		return subFail(subErrWrongCreds, "wrong username or app password")
+	}
+	// Подбор — как у входа на сайт (loginguard.go), но счётчик отдельный:
+	// наводнение выдуманными именами здесь не должно задевать вход на сайт.
 	now := time.Now()
-	if c.s.logins.wait(key, now) > 0 {
+	if c.s.subsonicLogins.wait(name, now) > 0 {
 		return subFail(subErrWrongCreds, "too many failed attempts, try again later")
 	}
 	var id string
@@ -168,10 +172,10 @@ func (c *subCtx) login() error {
 		return subMissing("p")
 	}
 	if !ok || password == "" {
-		c.s.logins.failed(key, now)
+		c.s.subsonicLogins.failed(name, now)
 		return subFail(subErrWrongCreds, "wrong username or app password")
 	}
-	c.s.logins.succeeded(key)
+	c.s.subsonicLogins.succeeded(name)
 	c.userID, c.user, c.admin = id, name, admin
 	ctx := context.WithValue(c.r.Context(), userIDCtxKey, id)
 	c.r = c.r.WithContext(context.WithValue(ctx, isAdminCtxKey, admin))

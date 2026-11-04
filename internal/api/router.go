@@ -49,8 +49,9 @@ type Server struct {
 	PublicURL  string
 	frontIndex fileCache
 
-	cache  ttlCache   // ответы Deezer для подсказок и чартов (cache.go)
-	logins loginGuard // неудачные попытки входа (loginguard.go)
+	cache          ttlCache   // ответы Deezer для подсказок и чартов (cache.go)
+	logins         loginGuard // неудачные попытки входа на сайт (loginguard.go)
+	subsonicLogins loginGuard // то же для приложений: /rest/ без лимита nginx и без дорогого хеша
 }
 
 type ctxKey string
