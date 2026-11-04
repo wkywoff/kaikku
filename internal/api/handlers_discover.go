@@ -59,6 +59,10 @@ func (s *Server) artistTopByPlays(id string) ([]deezer.Track, error) {
 		  FROM plays
 		 WHERE played_at > now() - $3::interval
 		   AND (meta->>'artist_id' = $1 OR meta->'contributors' @> jsonb_build_array(jsonb_build_object('id', $1::text)))
+		   -- В снимке альбом может быть чужим (трек слушали в треклисте другого
+		   -- релиза), поэтому черновик смотрим по самому треку.
+		   AND NOT EXISTS (SELECT 1 FROM tracks t JOIN albums a ON a.id = t.album_id
+		                    WHERE t.deezer_id = plays.deezer_id AND a.draft)
 		 GROUP BY deezer_id
 		 ORDER BY count(*) DESC, max(played_at) DESC
 		 LIMIT $2`, id, 2*topLimit, topWindow) // с запасом: часть отсеется ниже

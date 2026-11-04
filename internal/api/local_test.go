@@ -471,3 +471,35 @@ func TestPopular_FollowsCurrentCredits(t *testing.T) {
 		t.Errorf("own artist popular = %+v", page.Top)
 	}
 }
+
+// Трек из черновика не попадает в «Популярное», даже если его слушали в
+// треклисте опубликованного релиза.
+func TestArtistTopOmitsDraftTrack(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	invitedUser(t, router, admin, "top-owner")
+	var owner string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'top-owner'`).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	own := seedOwnRelease(t, db, owner, false)
+	host := seedOwnRelease(t, db, owner, false)
+	track := own.tracks[0]
+	if _, err := db.Exec(`UPDATE albums SET tracklist = $1 WHERE deezer_id = $2`, "{"+host.tracks[0]+","+track+"}", host.album); err != nil {
+		t.Fatal(err)
+	}
+	listener := invitedUser(t, router, admin, "top-listener")
+	call(t, router, "POST", "/api/me/plays", listener, `{"deezer_id":"`+track+`","context":{"kind":"album","id":"`+host.album+`"}}`, http.StatusOK)
+	stranger := invitedUser(t, router, admin, "top-stranger")
+	top := func() string {
+		return string(call(t, router, "GET", "/api/discover/artists/1", stranger, "", http.StatusOK))
+	}
+	if !strings.Contains(top(), track) {
+		t.Fatal("control: a published track is missing from Popular")
+	}
+	if _, err := db.Exec(`UPDATE albums SET draft = true WHERE deezer_id = $1`, own.album); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(top(), track) {
+		t.Error("a withdrawn track is still in Popular")
+	}
+}
