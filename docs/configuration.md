@@ -20,7 +20,7 @@ reads from the repository folder. Start from
 | `LRCRED_CONTACT` | off | Your email for [lrc.red](https://lrc.red/api), a lyrics source with word and syllable timing, backing vocals and duet voices, found by ISRC. Its terms ask apps to send a contact in the User-Agent and to credit lrc.red where its lyrics are shown (the lyrics view links to it). |
 | `AUDIO_KEEP_DAYS` | `3` | Days (1–14) to keep audio nobody plays. It's downloaded again on the next play; uploads and files an admin replaced are kept. |
 | `WORKER_CONCURRENCY` | `3` | Downloads at the same time. |
-| `DEEZER_PROXY` | off | A second way to Deezer, e.g. Cloudflare WARP as a SOCKS5 proxy. Another IP doubles Deezer's per-IP limit. A proxy on the host is `socks5://host.docker.internal:40000`; it must listen on the Docker bridge (172.17.0.1) or 0.0.0.0, not only on 127.0.0.1. |
+| `DEEZER_PROXY` | off | A second way to Deezer, e.g. Cloudflare WARP as a SOCKS5 proxy. Another IP doubles Deezer's per-IP limit. It is also required if Deezer does not serve the country of the server's IP (`https://api.deezer.com/infos` says `"open":false`). A proxy on the host is `socks5://host.docker.internal:40000`; it must listen on the Docker bridge (172.17.0.1) or 0.0.0.0, not only on 127.0.0.1. |
 | `MEDIA_TTL_SECONDS` | `600` | How long a link to an audio file works. The player renews it. |
 
 ## Docker

@@ -251,25 +251,32 @@ func (e *APIError) overQuota() bool { return e.Code == 4 || e.Code == 700 }
 // get fetches path into out, keeping to the rate limit and retrying a few
 // times when Deezer says the quota is exceeded. Если через прокси Deezer не
 // ответил (соединение, таймаут, не тот ответ) или ответил «квота», запрос
-// сразу повторяется напрямую.
+// сразу повторяется напрямую — если прямой выход открыт (egress.go).
 func (c *Client) get(path string, out any) error {
 	var avoid *egress
+	var proxyErr error
 	for attempt := 0; ; attempt++ {
 		e, waited := c.pick(avoid)
 		c.waits.waited(waited)
+		if e == nil {
+			if proxyErr != nil {
+				return proxyErr
+			}
+			return errNoEgress
+		}
 		err := c.getOnce(e, path, out)
 		var apiErr *APIError
 		isAPIErr := errors.As(err, &apiErr)
 		if e.proxy {
 			e.done(err)
 			if err != nil && !isAPIErr && avoid == nil {
-				avoid = e
+				avoid, proxyErr = e, err
 				continue
 			}
 		}
 		if isAPIErr && apiErr.overQuota() {
 			c.waits.overQuota()
-			if e.proxy && avoid == nil {
+			if e.proxy && avoid == nil && c.openOther(e) {
 				avoid = e
 				continue
 			}

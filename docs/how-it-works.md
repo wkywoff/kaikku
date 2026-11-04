@@ -34,6 +34,14 @@ tracklists and artist pages are cached in the `deezer_cache` table, so the
 cache survives restarts. `DEEZER_PROXY` adds a second IP and doubles the
 limit.
 
+Deezer withholds lists (discographies, top tracks, search) from IPs in
+countries it doesn't serve, with answers that look like empty results. The API
+asks `/infos` about each way out at start and every 5 minutes, and doesn't use
+a closed one. If the server's own IP is closed, the catalogue depends on
+`DEEZER_PROXY`; with no open way out, requests fail instead of showing empty
+pages. Changes are logged as `deezer: direct is closed`. The worker only looks
+up single tracks, which Deezer still serves, so it stays on the direct IP.
+
 ## Downloads
 
 Jobs live in `ingest_jobs` (`pending → processing → done/failed`), one per

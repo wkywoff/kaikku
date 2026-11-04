@@ -116,6 +116,7 @@ func main() {
 	// закрываем, плеер перезапросит ссылку.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
+	dz.WatchRegions(ctx)
 	srv.StartLastfm(ctx)
 	srv.StartTagger(ctx)
 	stopped := make(chan struct{})

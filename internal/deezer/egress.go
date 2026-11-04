@@ -1,6 +1,7 @@
 package deezer
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -16,6 +17,19 @@ import (
 // дольше, до 10 минут. После паузы через него идёт один пробный запрос,
 // остальные — напрямую, пока проба не пройдёт: у WARP часто открыт порт при
 // мёртвом туннеле, и иначе раз в минуту десятки запросов ждали бы таймаута.
+//
+// Ещё Deezer смотрит на страну IP: там, где он не работает (/infos отвечает
+// open:false), списки приходят пустыми, с виду как настоящие — {"data":[],
+// "total":0} — и попали бы в кеш как «у артиста нет релизов». Через такой
+// выход запросы не идут; закрыты все — запрос кончается ошибкой, а она не
+// кешируется.
+
+// regionCheckEvery — как часто спрашивать /infos. Страна IP меняется редко,
+// но на это время пустые ответы успеют попасть в кеш, так что не реже.
+const regionCheckEvery = 5 * time.Minute
+
+// errNoEgress — ни одного выхода, через который Deezer сейчас ответит.
+var errNoEgress = errors.New("deezer: no open way out")
 
 type egress struct {
 	name    string
@@ -27,25 +41,100 @@ type egress struct {
 	fails     int       // сбоев подряд; 0 — работает
 	downUntil time.Time // пауза после сбоя
 	probing   bool      // пробный запрос в пути
+	closed    bool      // Deezer не работает в стране этого IP
 }
 
 var proxyDownFor = time.Minute // первая пауза; переменная для тестов
 
 const proxyDownMax = 10 * time.Minute
 
-// up — выход работает (не на паузе и не на пробе).
+// up — выход работает (не закрыт, не на паузе и не на пробе).
 func (e *egress) up() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.fails == 0
+	return e.fails == 0 && !e.closed
 }
 
-// usable — через выход можно пойти сейчас: он работает или пауза прошла и
-// пробы ещё нет.
+// usable — через выход можно пойти сейчас: он не закрыт и работает или пауза
+// прошла и пробы ещё нет.
 func (e *egress) usable() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.fails == 0 || !e.probing && !time.Now().Before(e.downUntil)
+	return !e.closed && (e.fails == 0 || !e.probing && !time.Now().Before(e.downUntil))
+}
+
+func (e *egress) isClosed() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.closed
+}
+
+// setClosed запоминает ответ /infos; в лог — только когда он изменился.
+func (e *egress) setClosed(closed bool, country string) {
+	e.mu.Lock()
+	was := e.closed
+	e.closed = closed
+	e.mu.Unlock()
+	switch {
+	case closed && !was:
+		log.Printf("deezer: %s is closed, Deezer sees it in %q and withholds lists; not using it", e.name, country)
+	case !closed && was:
+		log.Printf("deezer: %s is open again (%q)", e.name, country)
+	}
+}
+
+// WatchRegions узнаёт, какие выходы открыты, и дальше проверяет их раз в
+// regionCheckEvery. Первая проверка — до возврата: иначе первые запросы
+// могут успеть уйти через закрытый выход и закешировать пустоту.
+func (c *Client) WatchRegions(ctx context.Context) {
+	c.checkRegions()
+	go func() {
+		t := time.NewTicker(regionCheckEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				c.checkRegions()
+			}
+		}
+	}()
+}
+
+func (c *Client) checkRegions() {
+	var wg sync.WaitGroup
+	for _, e := range c.egresses {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.checkRegion(e)
+		}()
+	}
+	wg.Wait()
+}
+
+// checkRegion: нет ответа или он непонятный — оставляем как было. За сбоями
+// соединения следит сам get, а один запрос в 5 минут лимита не касается.
+func (c *Client) checkRegion(e *egress) {
+	var info struct {
+		Country string `json:"country_iso"`
+		Open    *bool  `json:"open"`
+	}
+	if err := c.getOnce(e, "/infos", &info); err != nil || info.Open == nil {
+		return
+	}
+	e.setClosed(!*info.Open, info.Country)
+}
+
+// openOther — есть ли открытый выход, кроме e.
+func (c *Client) openOther(e *egress) bool {
+	for _, o := range c.egresses {
+		if o != e && !o.isClosed() {
+			return true
+		}
+	}
+	return false
 }
 
 // claim — занять выход под запрос; после паузы это проба, и она одна.
@@ -117,7 +206,8 @@ func (c *Client) Capacity() int {
 
 // pick — выход для запроса: первый со свободным местом (avoid — нет), а
 // если места нет нигде — ждёт у того, где оно освободится раньше.
-// Возвращает и сколько ждал.
+// Возвращает и сколько ждал; nil — идти не через что (прямой выход закрыт, а
+// прокси на паузе или его нет).
 func (c *Client) pick(avoid *egress) (*egress, time.Duration) {
 	start := time.Now()
 	for {
@@ -144,8 +234,8 @@ func (c *Client) pick(avoid *egress) (*egress, time.Duration) {
 				next, nextIn = e, in
 			}
 		}
-		if next == nil { // так не бывает: прямой выход не пропускается
-			return c.egresses[0], time.Since(start)
+		if next == nil {
+			return nil, time.Since(start)
 		}
 		time.Sleep(nextIn)
 	}

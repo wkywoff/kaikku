@@ -185,6 +185,154 @@ func (rt rewriteRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(r)
 }
 
+// regionServer — Deezer, каким его видит IP из страны, где он открыт или нет:
+// /infos говорит open, альбомы есть только там, где открыт.
+func regionServer(t *testing.T, open bool) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var albums atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/infos" && open:
+			w.Write([]byte(`{"country_iso":"DE","open":true}`))
+		case r.URL.Path == "/infos":
+			w.Write([]byte(`{"country_iso":"HK","open":false}`))
+		case open:
+			albums.Add(1)
+			w.Write([]byte(`{"data":[{"id":1,"title":"One"}],"total":1}`))
+		default:
+			albums.Add(1)
+			w.Write([]byte(`{"data":[],"total":0}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &albums
+}
+
+// clientVia: прямой выход ведёт на directURL, прокси — на proxyURL.
+func clientVia(t *testing.T, directURL, proxyURL string) (*Client, *egress) {
+	t.Helper()
+	to, err := url.Parse(proxyURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewClientWithBaseURL(directURL)
+	p := &egress{name: "proxy", proxy: true, http: &http.Client{Transport: rewriteRT{to}}}
+	c.egresses = append(c.egresses, p)
+	return c, p
+}
+
+// Страна прямого выхода закрыта — релизы приходят через прокси, а пустой
+// ответ напрямую даже не запрашивается.
+func TestRegion_ClosedDirectGoesThroughProxy(t *testing.T) {
+	closed, closedHits := regionServer(t, false)
+	open, _ := regionServer(t, true)
+	c, _ := clientVia(t, closed.URL, open.URL)
+	c.checkRegions()
+	albums, err := c.GetArtistAlbums("27", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(albums) != 1 {
+		t.Errorf("got %d albums through the proxy, want 1", len(albums))
+	}
+	if closedHits.Load() != 0 {
+		t.Errorf("%d requests went through the closed way out", closedHits.Load())
+	}
+}
+
+// Закрыто всё — ошибка, а не пустой список, который лёг бы в кеш.
+func TestRegion_AllClosedIsAnError(t *testing.T) {
+	closed, closedHits := regionServer(t, false)
+	c := NewClientWithBaseURL(closed.URL)
+	c.checkRegions()
+	if albums, err := c.GetArtistAlbums("27", 10); !errors.Is(err, errNoEgress) {
+		t.Errorf("got %v, %v; want errNoEgress", albums, err)
+	}
+	if closedHits.Load() != 0 {
+		t.Errorf("%d requests went through the closed way out", closedHits.Load())
+	}
+}
+
+// Прокси упал, прямой закрыт: наружу — настоящая причина, напрямую не идём.
+func TestRegion_ProxyDownDirectClosed(t *testing.T) {
+	closed, closedHits := regionServer(t, false)
+	c := NewClientWithBaseURL(closed.URL)
+	c.checkRegions()
+	c.egresses = append(c.egresses, &egress{name: "proxy", proxy: true, http: &http.Client{Transport: &countRT{fail: true}}})
+	_, err := c.GetArtistAlbums("27", 10)
+	var transport *errTransport
+	if !errors.As(err, &transport) {
+		t.Errorf("got %v, want the proxy's error", err)
+	}
+	if closedHits.Load() != 0 {
+		t.Errorf("%d requests went through the closed way out", closedHits.Load())
+	}
+	// Прокси на паузе, идти не через что.
+	if _, err := c.GetArtistAlbums("27", 10); !errors.Is(err, errNoEgress) {
+		t.Errorf("got %v during the pause, want errNoEgress", err)
+	}
+}
+
+// «Квота» через прокси, прямой закрыт — повтор через тот же прокси.
+func TestRegion_ProxyQuotaDirectClosed(t *testing.T) {
+	closed, _ := regionServer(t, false)
+	var calls atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Write([]byte(`{"error":{"type":"Exception","message":"Quota limit exceeded","code":4}}`))
+			return
+		}
+		w.Write([]byte(okTrack))
+	}))
+	t.Cleanup(proxy.Close)
+	c, _ := clientVia(t, closed.URL, proxy.URL)
+	c.checkRegion(c.egresses[0])
+	if tr, err := c.GetTrack("1"); err != nil || tr.Title != "One" {
+		t.Fatalf("not retried through the proxy: %+v %v", tr, err)
+	}
+}
+
+// Закрытый выход не считается в ёмкости; открылся — снова в деле. Нет ответа
+// от /infos — состояние не меняется.
+func TestRegion_ReopensAndKeepsStateWithoutAnswer(t *testing.T) {
+	var open atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/infos" {
+			w.Write([]byte(okTrack))
+			return
+		}
+		if open.Load() {
+			w.Write([]byte(`{"country_iso":"DE","open":true}`))
+		} else {
+			w.Write([]byte(`{"country_iso":"HK","open":false}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClientWithBaseURL(srv.URL).WithRateLimit(10, 5*time.Second)
+	d := c.egresses[0]
+
+	c.checkRegions()
+	if !d.isClosed() || c.Capacity() != 0 {
+		t.Errorf("closed %v, capacity %d; want true, 0", d.isClosed(), c.Capacity())
+	}
+	working := d.http
+	d.http = &http.Client{Transport: &countRT{fail: true}}
+	c.checkRegions()
+	if !d.isClosed() {
+		t.Error("a failed check reopened the way out")
+	}
+	d.http = working
+
+	open.Store(true)
+	c.checkRegions()
+	if d.isClosed() || c.Capacity() != 10 {
+		t.Errorf("closed %v, capacity %d; want false, 10", d.isClosed(), c.Capacity())
+	}
+	if _, err := c.GetTrack("1"); err != nil {
+		t.Errorf("not usable after reopening: %v", err)
+	}
+}
+
 func TestWithProxy(t *testing.T) {
 	u, _ := url.Parse("socks5://127.0.0.1:40000")
 	c := NewClient().WithProxy(u, 40, 5*time.Second)
