@@ -369,6 +369,43 @@ func streamPath(deezerID string) string { return "/api/stream/deezer/" + deezerI
 //
 // status/job_id/job_status — состояние ingest-job'а (как у /api/ingest/lookup);
 // track_id — трек медиатеки, когда он уже скачан.
+// Новых скачиваний на пользователя: примерно одно в 10 с. Обычное прослушивание
+// и перелистывание сюда не упираются, а один человек не занимает все слоты
+// скачивания (streamMaxDownloads) и не забивает диск и очередь заданий.
+const (
+	streamStartsPerWindow = 30
+	streamStartWindow     = 5 * time.Minute
+)
+
+// streamStartLimit — счётчик по окнам; нулевое значение готово к работе.
+type streamStartLimit struct {
+	mu sync.Mutex
+	m  map[string]*streamStartCount
+}
+
+type streamStartCount struct {
+	start time.Time
+	n     int
+}
+
+func (l *streamStartLimit) allow(userID string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.m == nil {
+		l.m = map[string]*streamStartCount{}
+	}
+	c := l.m[userID]
+	if c == nil || now.Sub(c.start) >= streamStartWindow {
+		c = &streamStartCount{start: now}
+		l.m[userID] = c
+	}
+	if c.n >= streamStartsPerWindow {
+		return false
+	}
+	c.n++
+	return true
+}
+
 func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	deezerID := r.PathValue("id")
@@ -396,6 +433,14 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 	// пропускает трек (а не ищет заново ещё 5–10 с).
 	if s.Streams.recentlyNotFound(deezerID) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "the song was not found on YouTube", "reason": "not_found"})
+		return
+	}
+
+	// Уже идущее скачивание ничего не стоит, админа лимит не касается.
+	if admin, _ := r.Context().Value(isAdminCtxKey).(bool); !admin && s.Streams.lookup(deezerID) == nil &&
+		!s.streamStarts.allow(userID, time.Now()) {
+		w.Header().Set("Retry-After", "60")
+		writeError(w, http.StatusTooManyRequests, "too many new songs at once, try again in a minute")
 		return
 	}
 

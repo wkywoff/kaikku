@@ -421,3 +421,36 @@ func TestDeezerStream_SameRecordingPlaysFromLibrary(t *testing.T) {
 		t.Errorf("job isrc = %q", isrc)
 	}
 }
+
+func TestStreamStartLimit(t *testing.T) {
+	var l streamStartLimit
+	now := time.Now()
+	for i := range streamStartsPerWindow {
+		if !l.allow("a", now) {
+			t.Fatalf("start %d refused", i)
+		}
+	}
+	if l.allow("a", now) {
+		t.Error("over the limit: allowed")
+	}
+	if !l.allow("b", now) {
+		t.Error("another user was refused")
+	}
+	if !l.allow("a", now.Add(streamStartWindow)) {
+		t.Error("the next window was refused")
+	}
+}
+
+func TestDeezerStream_NewSongsLimitedPerUser(t *testing.T) {
+	srv, ts, admin, _ := newStreamTestServer(t)
+	user := invitedUser(t, ts.Config.Handler, admin, "stream-heavy")
+	var id string
+	if err := srv.DB.QueryRow(`SELECT id FROM users WHERE username = 'stream-heavy'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	for srv.streamStarts.allow(id, time.Now()) {
+	}
+	if code, _ := getStreamURL(t, ts, user, "12345"); code != http.StatusTooManyRequests {
+		t.Errorf("over the limit: status %d, want 429", code)
+	}
+}

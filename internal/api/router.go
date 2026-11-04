@@ -53,8 +53,9 @@ type Server struct {
 	logins         loginGuard // неудачные попытки входа на сайт (loginguard.go)
 	subsonicLogins loginGuard // то же для приложений: /rest/ без лимита nginx и без дорогого хеша
 
-	ogCache  ttlCache     // превью ссылок (og.go)
-	ogMisses ogMissBudget // сколько превью идут за данными (og.go)
+	ogCache      ttlCache         // превью ссылок (og.go)
+	ogMisses     ogMissBudget     // сколько превью идут за данными (og.go)
+	streamStarts streamStartLimit // новые скачивания на пользователя (stream.go)
 }
 
 type ctxKey string
