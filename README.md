@@ -150,6 +150,9 @@ yt-dlp updates itself every day; YouTube breaks old versions often.
   genre mixes and artist bios from Last.fm.
 - **A second IP for Deezer**: Deezer limits requests per IP. With many
   listeners, set `DEEZER_PROXY` to a SOCKS5 proxy such as Cloudflare WARP.
+  It is also required if Deezer doesn't serve your server's country
+  (`https://api.deezer.com/infos` says `"open":false`): without it artist
+  pages have no releases and search doesn't work.
 
 All settings: [docs/configuration.md](docs/configuration.md).
 

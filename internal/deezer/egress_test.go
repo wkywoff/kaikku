@@ -136,7 +136,7 @@ func TestEgress_OneProbe(t *testing.T) {
 	if !p.claim() {
 		t.Fatal("the probe was not given")
 	}
-	if p.usable() || p.claim() {
+	if p.usable(false) || p.claim() {
 		t.Error("a second request got through during the probe")
 	}
 	p.done(nil)
@@ -253,7 +253,52 @@ func TestRegion_AllClosedIsAnError(t *testing.T) {
 	}
 }
 
-// Прокси упал, прямой закрыт: наружу — настоящая причина, напрямую не идём.
+// Закрыто всё — альбом, его треклист, артист и трек всё равно приходят.
+func TestRegion_ObjectsThroughClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/infos":
+			w.Write([]byte(`{"country_iso":"HK","open":false}`))
+		case "/album/5/tracks":
+			w.Write([]byte(`{"data":[{"id":1,"title":"One"}],"total":1}`))
+		default:
+			w.Write([]byte(`{"id":5,"title":"One","name":"One"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClientWithBaseURL(srv.URL)
+	c.checkRegions()
+	album, err := c.GetAlbum("5")
+	if err != nil || album.Title != "One" {
+		t.Fatalf("album: %+v %v", album, err)
+	}
+	if tracks, err := c.GetAlbumTracks(album, 10); err != nil || len(tracks) != 1 {
+		t.Errorf("tracklist: %+v %v", tracks, err)
+	}
+	if a, err := c.GetArtist("5"); err != nil || a.Name != "One" {
+		t.Errorf("artist: %+v %v", a, err)
+	}
+	if tr, err := c.GetTrack("5"); err != nil || tr.Title != "One" {
+		t.Errorf("track: %+v %v", tr, err)
+	}
+}
+
+// Прокси открыт — отдельные объекты идут через него, а не через закрытый.
+func TestRegion_ObjectsPreferOpen(t *testing.T) {
+	closed, closedHits := regionServer(t, false)
+	open := trackServer(t, okTrack)
+	c, _ := clientVia(t, closed.URL, open.URL)
+	c.checkRegion(c.egresses[0])
+	if _, err := c.GetTrack("1"); err != nil {
+		t.Fatal(err)
+	}
+	if closedHits.Load() != 0 {
+		t.Errorf("%d requests went through the closed way out", closedHits.Load())
+	}
+}
+
+// Прокси упал, прямой закрыт: трек приходит напрямую, а список — нет, и наружу
+// — настоящая причина.
 func TestRegion_ProxyDownDirectClosed(t *testing.T) {
 	closed, closedHits := regionServer(t, false)
 	c := NewClientWithBaseURL(closed.URL)
@@ -270,6 +315,15 @@ func TestRegion_ProxyDownDirectClosed(t *testing.T) {
 	// Прокси на паузе, идти не через что.
 	if _, err := c.GetArtistAlbums("27", 10); !errors.Is(err, errNoEgress) {
 		t.Errorf("got %v during the pause, want errNoEgress", err)
+	}
+	if closedHits.Load() != 0 {
+		t.Errorf("%d list requests went through the closed way out", closedHits.Load())
+	}
+	if _, err := c.GetTrack("1"); err != nil {
+		t.Errorf("a track failed with the proxy paused: %v", err)
+	}
+	if closedHits.Load() != 1 {
+		t.Errorf("%d requests through the closed way out, want the one track", closedHits.Load())
 	}
 }
 

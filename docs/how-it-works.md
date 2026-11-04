@@ -36,11 +36,13 @@ limit.
 
 Deezer withholds lists (discographies, top tracks, search) from IPs in
 countries it doesn't serve, with answers that look like empty results. The API
-asks `/infos` about each way out at start and every 5 minutes, and doesn't use
-a closed one. If the server's own IP is closed, the catalogue depends on
-`DEEZER_PROXY`; with no open way out, requests fail instead of showing empty
-pages. Changes are logged as `deezer: direct is closed`. The worker only looks
-up single tracks, which Deezer still serves, so it stays on the direct IP.
+asks `/infos` about each way out at start and every 5 minutes, and doesn't send
+lists through a closed one. If the server's own IP is closed, discographies,
+top tracks and search need `DEEZER_PROXY`; with no open way out they fail
+instead of showing empty pages. Single albums, tracklists, artists and tracks
+are still served to a closed IP, so they fall back to it. Changes are logged as
+`deezer: direct is closed`. The worker only looks up single tracks, so it stays
+on the direct IP.
 
 ## Downloads
 

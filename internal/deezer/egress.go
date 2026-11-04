@@ -21,8 +21,11 @@ import (
 // Ещё Deezer смотрит на страну IP: там, где он не работает (/infos отвечает
 // open:false), списки приходят пустыми, с виду как настоящие — {"data":[],
 // "total":0} — и попали бы в кеш как «у артиста нет релизов». Через такой
-// выход запросы не идут; закрыты все — запрос кончается ошибкой, а она не
-// кешируется.
+// выход списки не идут: закрыты все — запрос кончается ошибкой, а она не
+// кешируется. Отдельные альбом, трек и артист и треклист альбома Deezer
+// отдаёт и туда (разница — поля, которых мы не берём: readable, preview,
+// nb_album), поэтому они идут через закрытый выход, если другого нет
+// (getObject).
 
 // regionCheckEvery — как часто спрашивать /infos. Страна IP меняется редко,
 // но на это время пустые ответы успеют попасть в кеш, так что не реже.
@@ -55,12 +58,15 @@ func (e *egress) up() bool {
 	return e.fails == 0 && !e.closed
 }
 
-// usable — через выход можно пойти сейчас: он не закрыт и работает или пауза
-// прошла и пробы ещё нет.
-func (e *egress) usable() bool {
+// usable — через выход можно пойти сейчас: он работает или пауза прошла и
+// пробы ещё нет. Закрытый годится только с closedToo.
+func (e *egress) usable(closedToo bool) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return !e.closed && (e.fails == 0 || !e.probing && !time.Now().Before(e.downUntil))
+	if e.closed && !closedToo {
+		return false
+	}
+	return e.fails == 0 || !e.probing && !time.Now().Before(e.downUntil)
 }
 
 func (e *egress) isClosed() bool {
@@ -77,7 +83,7 @@ func (e *egress) setClosed(closed bool, country string) {
 	e.mu.Unlock()
 	switch {
 	case closed && !was:
-		log.Printf("deezer: %s is closed, Deezer sees it in %q and withholds lists; not using it", e.name, country)
+		log.Printf("deezer: %s is closed, Deezer sees it in %q and withholds lists from it", e.name, country)
 	case !closed && was:
 		log.Printf("deezer: %s is open again (%q)", e.name, country)
 	}
@@ -103,6 +109,12 @@ func (c *Client) WatchRegions(ctx context.Context) {
 }
 
 func (c *Client) checkRegions() {
+	wasOpen := c.openOther(nil)
+	defer func() {
+		if wasOpen && !c.openOther(nil) {
+			log.Printf("deezer: no open way out: discographies, top tracks and search will fail, single albums and tracks still work; set DEEZER_PROXY to a proxy in another country")
+		}
+	}()
 	var wg sync.WaitGroup
 	for _, e := range c.egresses {
 		wg.Add(1)
@@ -127,7 +139,7 @@ func (c *Client) checkRegion(e *egress) {
 	e.setClosed(!*info.Open, info.Country)
 }
 
-// openOther — есть ли открытый выход, кроме e.
+// openOther — есть ли открытый выход, кроме e (nil — любой открытый).
 func (c *Client) openOther(e *egress) bool {
 	for _, o := range c.egresses {
 		if o != e && !o.isClosed() {
@@ -171,7 +183,7 @@ func (e *egress) done(err error) {
 	pause = min(pause, proxyDownMax)
 	e.downUntil = time.Now().Add(pause)
 	e.mu.Unlock()
-	log.Printf("deezer: %s failed, going direct for %s: %v", e.name, pause, err)
+	log.Printf("deezer: %s failed, not using it for %s: %v", e.name, pause, err)
 }
 
 // WithProxy добавляет выход через прокси (socks5://… или http://…) со своим
@@ -207,14 +219,14 @@ func (c *Client) Capacity() int {
 // pick — выход для запроса: первый со свободным местом (avoid — нет), а
 // если места нет нигде — ждёт у того, где оно освободится раньше.
 // Возвращает и сколько ждал; nil — идти не через что (прямой выход закрыт, а
-// прокси на паузе или его нет).
-func (c *Client) pick(avoid *egress) (*egress, time.Duration) {
+// прокси на паузе или его нет). closedToo — закрытые выходы тоже годятся.
+func (c *Client) pick(avoid *egress, closedToo bool) (*egress, time.Duration) {
 	start := time.Now()
 	for {
 		var next *egress
 		var nextIn time.Duration
 		for _, e := range c.egresses {
-			if e == avoid || !e.usable() {
+			if e == avoid || !e.usable(closedToo) {
 				continue
 			}
 			if e.limiter == nil {

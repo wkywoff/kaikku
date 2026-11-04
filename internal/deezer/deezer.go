@@ -252,11 +252,20 @@ func (e *APIError) overQuota() bool { return e.Code == 4 || e.Code == 700 }
 // times when Deezer says the quota is exceeded. Если через прокси Deezer не
 // ответил (соединение, таймаут, не тот ответ) или ответил «квота», запрос
 // сразу повторяется напрямую — если прямой выход открыт (egress.go).
-func (c *Client) get(path string, out any) error {
+func (c *Client) get(path string, out any) error { return c.fetch(path, out, false) }
+
+// getObject — get для того, что Deezer отдаёт и на закрытый IP: если открытого
+// выхода нет, запрос идёт через закрытый.
+func (c *Client) getObject(path string, out any) error { return c.fetch(path, out, true) }
+
+func (c *Client) fetch(path string, out any, closedOK bool) error {
 	var avoid *egress
 	var proxyErr error
 	for attempt := 0; ; attempt++ {
-		e, waited := c.pick(avoid)
+		e, waited := c.pick(avoid, false)
+		if e == nil && closedOK {
+			e, waited = c.pick(avoid, true)
+		}
 		c.waits.waited(waited)
 		if e == nil {
 			if proxyErr != nil {
@@ -326,8 +335,12 @@ func (c *Client) getOnce(e *egress, path string, out any) error {
 // the rows withheld. Passing that through as "nothing found" hides the real
 // problem, so it's an error.
 func getList[T any](c *Client, path string) ([]T, error) {
+	return fetchList[T](c, path, false)
+}
+
+func fetchList[T any](c *Client, path string, closedOK bool) ([]T, error) {
 	var resp deezerListResponse[T]
-	if err := c.get(path, &resp); err != nil {
+	if err := c.fetch(path, &resp, closedOK); err != nil {
 		return nil, err
 	}
 	if len(resp.Data) == 0 && resp.Total > 0 {
@@ -365,7 +378,7 @@ func (c *Client) GetTrack(id string) (*Track, error) {
 	}
 	track, err := c.trackLoads.Do(id, func() (Track, error) {
 		var t deezerTrack
-		if err := c.get("/track/"+url.PathEscape(id), &t); err != nil {
+		if err := c.getObject("/track/"+url.PathEscape(id), &t); err != nil {
 			return Track{}, fmt.Errorf("get track: %w", err)
 		}
 		track := convertTrack(t)
@@ -433,7 +446,7 @@ func (c *Client) GetArtistTop(id string, limit int) ([]Track, error) {
 // GetArtist resolves one artist by Deezer ID.
 func (c *Client) GetArtist(id string) (*Artist, error) {
 	var a deezerArtist
-	if err := c.get("/artist/"+url.PathEscape(id), &a); err != nil {
+	if err := c.getObject("/artist/"+url.PathEscape(id), &a); err != nil {
 		return nil, fmt.Errorf("get artist: %w", err)
 	}
 	artist := convertArtist(a)
@@ -487,7 +500,7 @@ func (c *Client) GetAlbum(id string) (*Album, error) {
 	}
 	album, err := c.albumLoads.Do(id, func() (Album, error) {
 		var a deezerAlbum
-		if err := c.get("/album/"+url.PathEscape(id), &a); err != nil {
+		if err := c.getObject("/album/"+url.PathEscape(id), &a); err != nil {
 			return Album{}, fmt.Errorf("get album: %w", err)
 		}
 		album := convertAlbum(a, a.Artist)
@@ -534,7 +547,7 @@ func (c *Client) GetAlbumTracks(album *Album, limit int) ([]Track, error) {
 	if !ok {
 		loaded, err := c.tracklistLoads.Do(key, func() ([]Track, error) {
 			path := fmt.Sprintf("/album/%s/tracks?limit=%d", url.PathEscape(album.ID), limit)
-			data, err := getList[deezerTrack](c, path)
+			data, err := fetchList[deezerTrack](c, path, true)
 			if err != nil {
 				return nil, fmt.Errorf("get album tracks: %w", err)
 			}
