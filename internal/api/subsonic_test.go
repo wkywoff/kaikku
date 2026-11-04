@@ -686,3 +686,14 @@ func TestAppDeezerShare(t *testing.T) {
 		}
 	}
 }
+
+func TestSubsonicAppPasswordOffAfterPasswordChange(t *testing.T) {
+	_, router, token := newTestRouter(t)
+	c := newSubClient(t, router, token)
+	var fresh struct{ Token string }
+	json.Unmarshal(call(t, router, "PUT", "/api/me/password", token, `{"old_password":"testpass123","new_password":"newpass12345"}`, http.StatusOK), &fresh)
+	if code := subErrorCode(t, c.raw("ping", url.Values{"f": {"json"}})); code != subErrWrongCreds {
+		t.Errorf("app password after the change: code %d, want 40", code)
+	}
+	newSubClient(t, router, fresh.Token).get("ping", nil) // включается заново
+}

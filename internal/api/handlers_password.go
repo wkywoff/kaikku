@@ -221,9 +221,10 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // setPassword stores the hash, ends every older session (password_changed_at)
-// and drops the user's unused reset links; commits tx.
+// and drops the user's unused reset links and app password (кто подсмотрел
+// его из чужой сессии, не должен остаться в приложениях); commits tx.
 func (s *Server) setPassword(w http.ResponseWriter, tx *sql.Tx, userID, hash string) bool {
-	if _, err := tx.Exec(`UPDATE users SET password_hash = $2, password_changed_at = now() WHERE id = $1`, userID, hash); err != nil {
+	if _, err := tx.Exec(`UPDATE users SET password_hash = $2, password_changed_at = now(), subsonic_secret = NULL WHERE id = $1`, userID, hash); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not set the password")
 		return false
 	}

@@ -8,7 +8,9 @@ extensions, so you can listen in apps such as Feishin (desktop), Amperfy
 
 1. On the site: **Settings → Apps → Turn on**. It shows the server
    address, your username and a separate password for apps only (your site
-   password doesn't work there; **New password** replaces it).
+   password doesn't work there; **New password** replaces it). Changing or
+   resetting your site password turns the app password off: turn it on again
+   and enter the new one in your apps.
 2. In the app, add a Subsonic (or Navidrome/OpenSubsonic) server with
    those three values.
 

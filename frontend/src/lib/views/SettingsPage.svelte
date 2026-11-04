@@ -41,7 +41,8 @@
       auth.login(token);
       pwOpen = false;
       pwOld = pwNew = pwNew2 = '';
-      toast($t('settings.passwordChanged'));
+      toast($t(apps?.enabled ? 'settings.passwordChangedApps' : 'settings.passwordChanged'));
+      api.subsonic().then((a) => (apps = a), () => {}); // пароль для приложений снят
     } catch (e) {
       pwError = e.status === 403 ? $t('settings.wrongPassword') : e.status === 429 ? $t('login.tooMany') : e.message;
     } finally {
