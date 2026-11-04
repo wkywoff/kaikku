@@ -308,6 +308,9 @@ func (s *Server) handleRedownloadTrack(w http.ResponseWriter, r *http.Request) {
 const (
 	maxAudioUpload     = 200 << 20
 	audioUploadTimeout = 5 * time.Minute
+	// Сколько идёт сам файл: nginx его не копит (docker/nginx.conf.template),
+	// и 200 МБ по медленному каналу приходят дольше, чем длится обработка.
+	audioBodyTimeout = 20 * time.Minute
 )
 
 // prepareAudio — ingest.PrepareAudio; тесты подставляют медленный.
@@ -355,8 +358,8 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 	// таймаутов сервера (cmd/api): без своих сроков ответ обрывался, и админ
 	// видел ошибку, хотя аудио уже заменилось. nginx ждёт этот адрес 360 с.
 	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(time.Now().Add(audioUploadTimeout))
-	_ = rc.SetWriteDeadline(time.Now().Add(audioUploadTimeout))
+	_ = rc.SetReadDeadline(time.Now().Add(audioBodyTimeout))
+	_ = rc.SetWriteDeadline(time.Now().Add(audioBodyTimeout))
 
 	// Тело — во временный файл рядом с медиатекой (не в память), оттуда — в .m4a.
 	src, err := os.CreateTemp(s.StorageDir, ".upload-*")

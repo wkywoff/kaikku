@@ -45,8 +45,8 @@ func acquireAudioSlot(w http.ResponseWriter, r *http.Request) bool {
 
 func releaseAudioSlot() { <-audioSlot }
 
-// Место на диске: файл, его временная копия у nginx и результат не должны
-// забить диск, на котором ещё база и всё остальное. freeSpace подменяют тесты.
+// Место на диске: файл, его временная копия и результат не должны забить
+// диск, на котором ещё база и всё остальное. freeSpace подменяют тесты.
 const minFreeSpace = 1 << 30
 
 var freeSpace = statFree
@@ -174,8 +174,8 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 	// Файл в сотни МБ, очередь и перекодирование — дольше общих таймаутов
 	// сервера (cmd/api); nginx ждёт /api/uploads/ 420 с.
 	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(time.Now().Add(audioUploadTimeout))
-	_ = rc.SetWriteDeadline(time.Now().Add(slotWait + audioUploadTimeout + 30*time.Second))
+	_ = rc.SetReadDeadline(time.Now().Add(audioBodyTimeout))
+	_ = rc.SetWriteDeadline(time.Now().Add(audioBodyTimeout))
 
 	src, err := os.CreateTemp(s.StorageDir, ".upload-*")
 	if err != nil {
@@ -195,6 +195,7 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 		writeError(w, http.StatusBadRequest, "upload interrupted")
 		return a, false
 	}
+	_ = rc.SetWriteDeadline(time.Now().Add(slotWait + audioUploadTimeout + 30*time.Second))
 	if !acquireAudioSlot(w, r) {
 		os.Remove(a.src)
 		return a, false

@@ -87,6 +87,7 @@ server {
   # Свой аудиофайл трека (админ): до 200 МБ и перекодирование до минут.
   location ~ ^/api/tracks/deezer/[0-9]+/audio$ {
     client_max_body_size 200m;
+    proxy_request_buffering off; # без токена API откажет сразу, не принимая файл на диск
     proxy_read_timeout 360s;
     proxy_pass http://kaikku_api;
   }
@@ -97,6 +98,7 @@ server {
   }
   location /api/uploads/ {
     client_max_body_size 200m;
+    proxy_request_buffering off; # без токена API откажет сразу, не принимая файл на диск
     proxy_read_timeout 420s;
     proxy_pass http://kaikku_api;
   }
