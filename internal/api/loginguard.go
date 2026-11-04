@@ -70,6 +70,41 @@ func (g *loginGuard) failed(name string, now time.Time) {
 	f.last = now
 }
 
+// reserve is wait and failed in one step, for checks that take long: иначе
+// параллельные запросы успели бы все пройти wait до первой неудачи. Попытка
+// считается сразу; verdict — succeeded (снимает счёт) или refund (не было проверки).
+func (g *loginGuard) reserve(name string, now time.Time) time.Duration {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if f := g.m[name]; f != nil && now.Sub(f.last) <= loginWindow {
+		if wait := loginPause(f.count) - now.Sub(f.last); wait > 0 {
+			return wait
+		}
+	}
+	if g.m == nil || len(g.m) >= loginMaxTracked {
+		g.prune(now)
+	}
+	f := g.m[name]
+	if f == nil || now.Sub(f.last) > loginWindow {
+		f = &loginFailures{}
+		g.m[name] = f
+	}
+	f.count++
+	f.last = now
+	return 0
+}
+
+// refund returns an attempt that reserve counted but no password was checked.
+func (g *loginGuard) refund(name string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if f := g.m[name]; f != nil {
+		if f.count--; f.count <= 0 {
+			delete(g.m, name)
+		}
+	}
+}
+
 func (g *loginGuard) succeeded(name string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

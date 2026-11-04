@@ -184,18 +184,18 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Подбор старого пароля с чужого открытого устройства — как подбор при входе.
-	if wait := s.logins.wait(username, time.Now()); wait > 0 {
+	if wait := s.logins.reserve(username, time.Now()); wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 		writeError(w, http.StatusTooManyRequests, "too many failed attempts, try again later")
 		return
 	}
 	ok, err := auth.VerifyPassword(req.Old, hash)
 	if errors.Is(err, auth.ErrBusy) {
+		s.logins.refund(username)
 		writeBusy(w)
 		return
 	}
 	if err != nil || !ok {
-		s.logins.failed(username, time.Now())
 		writeError(w, http.StatusForbidden, "the current password is wrong")
 		return
 	}

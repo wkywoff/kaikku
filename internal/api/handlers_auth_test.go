@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -368,5 +369,50 @@ func TestTokenRenewal(t *testing.T) {
 	rec = request(router, "GET", "/api/me", old)
 	if rec.Code != http.StatusUnauthorized || rec.Header().Get("X-Auth-Token") != "" {
 		t.Fatalf("after password change: %d, renewed %q", rec.Code, rec.Header().Get("X-Auth-Token"))
+	}
+}
+
+func TestLoginGuard_ReserveCountsBeforeTheCheck(t *testing.T) {
+	var g loginGuard
+	t0 := time.Now()
+	allowed := 0
+	for range 30 {
+		if g.reserve("a", t0) == 0 {
+			allowed++
+		}
+	}
+	if allowed != loginFreeAttempts {
+		t.Errorf("%d attempts at once allowed, want %d", allowed, loginFreeAttempts)
+	}
+	var h loginGuard
+	h.reserve("b", t0)
+	h.refund("b")
+	if h.m["b"] != nil {
+		t.Error("a refunded attempt stays counted")
+	}
+}
+
+// Параллельный подбор старого пароля упирается в тот же счёт, что и по одному.
+func TestChangePassword_ConcurrentGuessesAreBounded(t *testing.T) {
+	_, router, token, _ := newTestServer(t)
+	var mu sync.Mutex
+	codes := map[int]int{}
+	var wg sync.WaitGroup
+	for range 30 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest("PUT", "/api/me/password", strings.NewReader(`{"old_password":"wrong-password","new_password":"newpass12345"}`))
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			mu.Lock()
+			codes[rec.Code]++
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	if codes[http.StatusForbidden] > loginFreeAttempts {
+		t.Errorf("status counts %v: more than %d passwords checked", codes, loginFreeAttempts)
 	}
 }
