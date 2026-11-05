@@ -126,8 +126,14 @@ func main() {
 func pollLoop(ctx context.Context, conn *sql.DB, stagingDir, storageDir string, metadataKick chan<- struct{}) {
 	const idleDelay = 2 * time.Second
 	const errorDelay = 5 * time.Second
+	const lowDiskDelay = time.Minute
 
 	for ctx.Err() == nil {
+		if ingest.DiskLow(storageDir) {
+			log.Printf("under 1 GB free in %s: jobs wait", storageDir)
+			sleep(ctx, lowDiskDelay)
+			continue
+		}
 		job, err := ingest.ClaimNextJob(conn)
 		if err != nil {
 			log.Printf("claim error: %v", err)

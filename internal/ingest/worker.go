@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/lib/pq"
@@ -76,6 +77,26 @@ func LoadJob(db *sql.DB, sourceRef string) (*Job, error) {
 func (j *Job) deezerTrackID() string {
 	id, _ := strings.CutPrefix(j.SourceRef, "deezer:")
 	return id
+}
+
+// Меньше этого свободного места воркер заданий не берёт: диск общий с базой.
+// Задания остаются в очереди и пойдут сами, когда место появится (Housekeep
+// убирает неслушаемое), а не считаются неудачными.
+const minFreeSpace = 1 << 30
+
+// freeSpace подменяют тесты.
+var freeSpace = func(dir string) (uint64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 0, err
+	}
+	return st.Bavail * uint64(st.Bsize), nil
+}
+
+// DiskLow reports whether jobs must wait for free space on dir.
+func DiskLow(dir string) bool {
+	free, err := freeSpace(dir)
+	return err == nil && free < minFreeSpace
 }
 
 // ClaimNextJob atomically claims one pending job and marks it 'processing'.
