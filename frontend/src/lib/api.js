@@ -8,7 +8,7 @@ const BASE = '/api';
 // Сервер продлевает вход: токену больше суток — присылает новый
 // (X-Auth-Token). Сохраняем, если за время запроса не вошли заново и не вышли.
 function renew(token, fresh) {
-  if (fresh && token && get(auth) === token) auth.login(fresh);
+  if (fresh && token) auth.renew(token, fresh);
 }
 
 async function request(path, options = {}) {
