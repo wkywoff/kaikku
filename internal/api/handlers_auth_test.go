@@ -416,3 +416,24 @@ func TestChangePassword_ConcurrentGuessesAreBounded(t *testing.T) {
 		t.Errorf("status counts %v: more than %d passwords checked", codes, loginFreeAttempts)
 	}
 }
+
+// Вход, во время которого сменили пароль, не даёт живого токена.
+func TestLoginDuringPasswordChange(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	invitedUser(t, router, admin, "race-user")
+	verifyLoginPassword = func(password, hash string) (bool, error) {
+		if _, err := db.Exec(`UPDATE users SET password_changed_at = now() WHERE username = 'race-user'`); err != nil {
+			t.Error(err)
+		}
+		time.Sleep(1100 * time.Millisecond) // токен старой логики выдался бы уже в следующую секунду
+		return auth.VerifyPassword(password, hash)
+	}
+	t.Cleanup(func() { verifyLoginPassword = auth.VerifyPassword })
+	var got struct{ Token string }
+	json.Unmarshal(postJSON(router, "/api/login", `{"username":"race-user","password":"testpass123"}`, "").Body.Bytes(), &got)
+	if got.Token == "" {
+		t.Fatal("login failed")
+	}
+	verifyLoginPassword = auth.VerifyPassword
+	call(t, router, "GET", "/api/me", got.Token, "", http.StatusUnauthorized)
+}

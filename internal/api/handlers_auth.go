@@ -211,6 +211,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Токен — от начала входа: смена пароля, случившаяся пока он проверяется,
+	// должна его отменить, а старый пароль в этот момент ещё подходит.
+	started := time.Now()
 	var id, hash string
 	err := s.DB.QueryRow(`SELECT id, password_hash FROM users WHERE username = $1`, name).Scan(&id, &hash)
 	if err == sql.ErrNoRows {
@@ -225,7 +228,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := auth.VerifyPassword(req.Password, hash)
+	ok, err := verifyLoginPassword(req.Password, hash)
 	if errors.Is(err, auth.ErrBusy) {
 		s.logins.refund(name)
 		writeBusy(w)
@@ -237,13 +240,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logins.succeeded(name)
 
-	token, err := auth.IssueToken(id, tokenTTL, s.JWTSecret)
+	token, err := auth.IssueTokenAt(id, started, tokenTTL, s.JWTSecret)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not issue token")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
 }
+
+// verifyLoginPassword — auth.VerifyPassword; тест подставляет смену пароля в момент проверки.
+var verifyLoginPassword = auth.VerifyPassword
 
 // handleMe tells the frontend who is logged in (and whether to show admin
 // controls such as "Пригласить").
