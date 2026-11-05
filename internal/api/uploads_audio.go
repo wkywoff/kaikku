@@ -78,6 +78,8 @@ type receivedAudio struct {
 // receiveAudio принимает тело запроса во временный файл на диске, ждёт
 // очереди и перекодирует. Ответ при ошибке даёт сам. Вызвавший удаляет
 // a.src (os.Remove) и отпускает слот (releaseAudioSlot), если ok.
+const maxLyricsFromTag = 60 << 10
+
 // uploadReserve — место, обещанное загрузкам, что ещё идут. Свободное место
 // видит только уже записанное: без резерва параллельные запросы прошли бы
 // проверку все разом. Нулевое значение готово к работе.
@@ -255,7 +257,8 @@ func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not save the track")
 		return
 	}
-	if a.info.Tags.Lyrics != "" && s.Lyrics != nil { // текст из тегов файла
+	// Текст из тегов файла, с тем же пределом, что и у правки вручную.
+	if l := a.info.Tags.Lyrics; l != "" && len(l) <= maxLyricsFromTag && s.Lyrics != nil {
 		if err := s.saveOwnLyrics(r.Context(), trackID, a.info.Tags.Lyrics); err != nil {
 			log.Printf("lyrics of %s from tags: %v", trackID, err)
 		}

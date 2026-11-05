@@ -129,3 +129,16 @@ func TestPrepareUpload(t *testing.T) {
 		t.Error("a playlist passed as audio")
 	}
 }
+
+func TestProbeOutputStopsAtLimit(t *testing.T) {
+	stopped := false
+	o := &probeOutput{limit: 10, over: func() { stopped = true }}
+	o.Write(make([]byte, 10))
+	if stopped || o.exceeded {
+		t.Fatal("stopped at the limit")
+	}
+	o.Write(make([]byte, 1))
+	if !stopped || !o.exceeded || o.buf != nil {
+		t.Errorf("over the limit: stopped %v, exceeded %v, kept %d bytes", stopped, o.exceeded, len(o.buf))
+	}
+}

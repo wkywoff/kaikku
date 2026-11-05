@@ -61,11 +61,42 @@ var fileOnly = []string{"-protocol_whitelist", "file"}
 // ProbeUpload проверяет загруженный файл и читает его теги.
 func ProbeUpload(ctx context.Context, path string) (*UploadInfo, error) {
 	args := append(append([]string{"-v", "error"}, fileOnly...), "-print_format", "json", "-show_format", "-show_streams", path)
-	out, err := exec.CommandContext(ctx, "ffprobe", args...).Output()
-	if err != nil {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	out := &probeOutput{limit: maxProbeOutput, over: cancel}
+	cmd := exec.CommandContext(ctx, "ffprobe", args...)
+	cmd.Stdout = out
+	if err := cmd.Run(); out.exceeded {
+		return nil, fmt.Errorf("ffprobe: output over %d bytes", maxProbeOutput)
+	} else if err != nil {
 		return nil, fmt.Errorf("ffprobe: %w", err)
 	}
-	return parseProbe(out)
+	return parseProbe(out.buf)
+}
+
+// maxProbeOutput: теги могут быть любого размера, а ответ ffprobe разбирается
+// в памяти API. Настоящим файлам столько не нужно.
+const maxProbeOutput = 8 << 20
+
+// probeOutput копит вывод до limit; дальше — останавливает ffprobe.
+type probeOutput struct {
+	buf      []byte
+	limit    int
+	over     func()
+	exceeded bool
+}
+
+func (o *probeOutput) Write(p []byte) (int, error) {
+	if !o.exceeded {
+		if len(o.buf)+len(p) > o.limit {
+			o.exceeded = true
+			o.buf = nil
+			o.over()
+		} else {
+			o.buf = append(o.buf, p...)
+		}
+	}
+	return len(p), nil
 }
 
 type probeStream struct {
