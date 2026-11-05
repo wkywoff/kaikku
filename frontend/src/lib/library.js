@@ -103,6 +103,22 @@ export function isContext(ctx, kind, id = '') {
 }
 
 /**
+ * rows — актуальные строки места. Трек, которого там больше нет (убрали,
+ * в том числе с другого устройства), доигрывает, но уже не «оттуда»: снимаем
+ * context у него в очереди, как у добавленного вручную.
+ */
+export function syncContext(kind, id, rows) {
+  const state = get(libraryState);
+  dropContext(kind, id, (entry) => rows.some((r) => isCurrentRow(r, entry, state)));
+}
+
+function dropContext(kind, id, stillThere) {
+  for (const entry of get(player).queue) {
+    if (isContext(entry.context, kind, id) && !stillThere(entry)) player.patchEntry(entry, { context: null });
+  }
+}
+
+/**
  * Play в шапке или на карточке: если отсюда уже играет — пауза/продолжить,
  * иначе — с начала. loadRows отдаёт строки (треки) этого места.
  */

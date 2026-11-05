@@ -9,7 +9,7 @@
   import { lang } from '../stores/settings.js';
   import { t } from '../i18n.js';
   import { pageTint } from '../stores/theme.js';
-  import { refresh, playRows, playingContext, isContext, queueRow } from '../library.js';
+  import { refresh, playRows, playingContext, isContext, queueRow, syncContext } from '../library.js';
   import { refreshPlaylists } from '../stores/collection.js';
   import { toast } from '../stores/toast.js';
   import { rowFromCollectionTrack, filterRows } from '../rows.js';
@@ -65,6 +65,7 @@
       if (my !== seq) return;
       playlist = data.playlist;
       rows = data.tracks.map(rowFromCollectionTrack);
+      syncContext('playlist', playlist.id, rows);
       tint.from(playlist.covers[0] || null);
       refresh(rows.map((r) => r.deezerId));
     } catch (e) {
@@ -134,6 +135,7 @@
     rows = rows.filter((r) => r !== row);
     try {
       await api.removeFromPlaylist(playlist.id, row.itemId);
+      syncContext('playlist', playlist.id, rows);
       refreshPlaylists();
     } catch (e) {
       toast(e.message, 'error');

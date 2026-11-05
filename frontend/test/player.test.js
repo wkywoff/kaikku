@@ -774,6 +774,27 @@ test('playingContext tells where the playing song was started from', async () =>
   assert.equal(get(playingContext), null, 'добавленное вручную — ни из какого места');
 });
 
+test('a song removed from a playlist no longer counts as playing from it', async () => {
+  const { playRows, playingContext, isContext, syncContext } = await import('../src/lib/library.js');
+  const { get } = await import('svelte/store');
+  const ctx = { kind: 'playlist', id: '5' };
+  const rows = [{ deezerId: '1', title: 'A' }, { deezerId: '2', title: 'B' }, { deezerId: '3', title: 'C' }];
+  await playRows(rows, 0, ctx);
+
+  syncContext('playlist', '6', []);
+  assert.equal(isContext(get(playingContext), 'playlist', '5'), true, 'другой плейлист очередь не трогает');
+
+  syncContext('playlist', '5', rows.slice(1));
+  assert.equal(get(playingContext), null, 'играющий трек убран — кнопка плейлиста не «играет»');
+  let s;
+  player.subscribe((v) => (s = v))();
+  assert.equal(s.queue[0].deezerId, '1', 'трек доигрывает');
+  assert.deepEqual(s.queue.map((e) => e.context), [null, ctx, ctx], 'остальные всё ещё из плейлиста');
+  await player.toggle(); // пауза и продолжить — метка не возвращается
+  await player.toggle();
+  assert.equal(get(playingContext), null);
+});
+
 test('"play next" goes right after the playing song, in the order songs were added', async () => {
   await player.playQueue([{ id: 'n1', title: 'N1' }, { id: 'n2', title: 'N2' }, { id: 'n3', title: 'N3' }], 0);
   await player.playNext({ id: 'pn1', title: 'PN1' });
