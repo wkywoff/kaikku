@@ -139,9 +139,51 @@ func TestEgress_OneProbe(t *testing.T) {
 	if p.usable(false) || p.claim() {
 		t.Error("a second request got through during the probe")
 	}
-	p.done(nil)
+	p.done(nil, proxyDownMax)
 	if !p.up() || !p.claim() {
 		t.Error("the proxy is not up after a good probe")
+	}
+}
+
+// Запросы, упавшие вместе, — один сбой; следующий считается после паузы.
+func TestEgress_BurstIsOneFailure(t *testing.T) {
+	p := &egress{name: "proxy", proxy: true}
+	boom := errors.New("unexpected status 403")
+	for range 4 {
+		p.done(boom, proxyDownMax)
+	}
+	if p.fails != 1 {
+		t.Errorf("%d failures from one burst, want 1", p.fails)
+	}
+	if left := time.Until(p.downUntil); left > proxyDownFor {
+		t.Errorf("paused for %s, want at most %s", left, proxyDownFor)
+	}
+	p.downUntil = time.Now().Add(-time.Second)
+	p.done(boom, proxyDownMax)
+	if p.fails != 2 {
+		t.Errorf("%d failures after the pause, want 2", p.fails)
+	}
+}
+
+// Прямой выход закрыт — пауза прокси не растёт: без него не работают списки.
+func TestRegion_OnlyWayKeepsPauseShort(t *testing.T) {
+	old := proxyDownFor
+	proxyDownFor = 30 * time.Millisecond
+	t.Cleanup(func() { proxyDownFor = old })
+	closed, _ := regionServer(t, false)
+	c := NewClientWithBaseURL(closed.URL)
+	c.checkRegions()
+	p := &egress{name: "proxy", proxy: true, http: &http.Client{Transport: &countRT{fail: true}}}
+	c.egresses = append(c.egresses, p)
+	for range 3 {
+		c.GetArtistAlbums("27", 10)
+		if left := time.Until(p.downUntil); left > proxyDownFor {
+			t.Fatalf("paused for %s, want at most %s", left, proxyDownFor)
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+	if p.fails != 3 {
+		t.Errorf("%d failures, want 3", p.fails)
 	}
 }
 

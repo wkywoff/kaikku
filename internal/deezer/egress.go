@@ -14,9 +14,10 @@ import (
 // другим IP, например WARP как локальный SOCKS5) удваивает его: запрос
 // идёт через тот, где есть место. Прокси не ответил — запрос повторяется
 // напрямую, а прокси отдыхает: минуту, после повторного сбоя — вдвое
-// дольше, до 10 минут. После паузы через него идёт один пробный запрос,
-// остальные — напрямую, пока проба не пройдёт: у WARP часто открыт порт при
-// мёртвом туннеле, и иначе раз в минуту десятки запросов ждали бы таймаута.
+// дольше, до 10 минут (если он единственный открытый — минуту). После паузы
+// через него идёт один пробный запрос, остальные — напрямую, пока проба не
+// пройдёт: у WARP часто открыт порт при мёртвом туннеле, и иначе раз в минуту
+// десятки запросов ждали бы таймаута.
 //
 // Ещё Deezer смотрит на страну IP: там, где он не работает (/infos отвечает
 // open:false), списки приходят пустыми, с виду как настоящие — {"data":[],
@@ -163,8 +164,10 @@ func (e *egress) claim() bool {
 	return true
 }
 
-// done — итог запроса через прокси: err без ответа Deezer — сбой.
-func (e *egress) done(err error) {
+// done — итог запроса через прокси: err без ответа Deezer — сбой. Запросы,
+// ушедшие вместе (поиск шлёт сразу несколько), падают вместе: пока идёт пауза,
+// новые сбои её не удлиняют. maxPause — потолок паузы (pauseLimit).
+func (e *egress) done(err error, maxPause time.Duration) {
 	var apiErr *APIError
 	failed := err != nil && !errors.As(err, &apiErr)
 	e.mu.Lock()
@@ -178,12 +181,26 @@ func (e *egress) done(err error) {
 		}
 		return
 	}
+	if was > 0 && time.Now().Before(e.downUntil) {
+		e.mu.Unlock()
+		return
+	}
 	e.fails++
 	pause := proxyDownFor << min(e.fails-1, 10)
-	pause = min(pause, proxyDownMax)
+	pause = min(pause, maxPause)
 	e.downUntil = time.Now().Add(pause)
 	e.mu.Unlock()
 	log.Printf("deezer: %s failed, not using it for %s: %v", e.name, pause, err)
+}
+
+// pauseLimit — самая долгая пауза прокси e. Других открытых выходов нет — без
+// него не работают списки, и лучше пробовать каждую минуту: мёртвый туннель
+// задержит только один запрос, остальные сразу получат ошибку.
+func (c *Client) pauseLimit(e *egress) time.Duration {
+	if c.openOther(e) {
+		return proxyDownMax
+	}
+	return proxyDownFor
 }
 
 // WithProxy добавляет выход через прокси (socks5://… или http://…) со своим

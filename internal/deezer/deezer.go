@@ -277,7 +277,7 @@ func (c *Client) fetch(path string, out any, closedOK bool) error {
 		var apiErr *APIError
 		isAPIErr := errors.As(err, &apiErr)
 		if e.proxy {
-			e.done(err)
+			e.done(err, c.pauseLimit(e))
 			if err != nil && !isAPIErr && avoid == nil {
 				avoid, proxyErr = e, err
 				continue
