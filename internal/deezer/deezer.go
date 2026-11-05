@@ -271,7 +271,7 @@ func (c *Client) fetch(path string, out any, closedOK bool) error {
 			if proxyErr != nil {
 				return proxyErr
 			}
-			return errNoEgress
+			return c.unavailable()
 		}
 		err := c.getOnce(e, path, out)
 		var apiErr *APIError

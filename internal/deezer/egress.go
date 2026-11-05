@@ -32,8 +32,20 @@ import (
 // но на это время пустые ответы успеют попасть в кеш, так что не реже.
 const regionCheckEvery = 5 * time.Minute
 
-// errNoEgress — ни одного выхода, через который Deezer сейчас ответит.
-var errNoEgress = errors.New("deezer: no open way out")
+// errNoEgress — ни одного выхода, через который Deezer сейчас ответит;
+// errProxyPaused — то же, но ненадолго: прокси открыт и после сбоя отдыхает.
+var (
+	errNoEgress    = errors.New("deezer: no open way out")
+	errProxyPaused = errors.New("deezer: proxy is paused after a failure and direct is closed")
+)
+
+// unavailable — почему идти не через что.
+func (c *Client) unavailable() error {
+	if c.openOther(nil) {
+		return errProxyPaused
+	}
+	return errNoEgress
+}
 
 type egress struct {
 	name    string

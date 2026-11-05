@@ -355,8 +355,8 @@ func TestRegion_ProxyDownDirectClosed(t *testing.T) {
 		t.Errorf("%d requests went through the closed way out", closedHits.Load())
 	}
 	// Прокси на паузе, идти не через что.
-	if _, err := c.GetArtistAlbums("27", 10); !errors.Is(err, errNoEgress) {
-		t.Errorf("got %v during the pause, want errNoEgress", err)
+	if _, err := c.GetArtistAlbums("27", 10); !errors.Is(err, errProxyPaused) {
+		t.Errorf("got %v during the pause, want errProxyPaused", err)
 	}
 	if closedHits.Load() != 0 {
 		t.Errorf("%d list requests went through the closed way out", closedHits.Load())
