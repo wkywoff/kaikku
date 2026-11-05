@@ -8,6 +8,7 @@
   // обложки текущего трека (--player-*).
   import { onDestroy, onMount } from 'svelte';
   import { auth } from './lib/stores/auth.js';
+  import { clearAccountData } from './lib/signout.js';
   import { api } from './lib/api.js';
   import { navStore, scrollMemory, fromHistory } from './lib/stores/nav.js';
   import { player, nowPlaying, isPlaying } from './lib/stores/player.js';
@@ -32,7 +33,10 @@
 
   // Ссылка на новый пароль (/?reset=…) открывает форму, даже если на этом
   // устройстве кто-то уже вошёл: старые входы после сброса всё равно не действуют.
-  if (new URLSearchParams(location.search).has('reset')) auth.logout();
+  if (new URLSearchParams(location.search).has('reset')) {
+    clearAccountData();
+    auth.logout();
+  }
 
   // Вышли — сами или вход перестал действовать (сменили пароль, истёк):
   // плеер замолкает (он живёт вне страниц и играл бы дальше без кнопок), а
@@ -42,7 +46,7 @@
   onDestroy(
     auth.subscribe((token) => {
       if (wasAuthed && !token) {
-        player.pause();
+        clearAccountData(); // вход мог закончиться сам (срок, смена пароля), не через «Выйти»
         location.reload();
       }
       wasAuthed = !!token;
