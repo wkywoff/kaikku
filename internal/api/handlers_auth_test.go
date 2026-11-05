@@ -377,7 +377,7 @@ func TestLoginGuard_ReserveCountsBeforeTheCheck(t *testing.T) {
 	t0 := time.Now()
 	allowed := 0
 	for range 30 {
-		if g.reserve("a", t0) == 0 {
+		if g.reserve("a", t0, loginFreeAttempts) == 0 {
 			allowed++
 		}
 	}
@@ -385,7 +385,7 @@ func TestLoginGuard_ReserveCountsBeforeTheCheck(t *testing.T) {
 		t.Errorf("%d attempts at once allowed, want %d", allowed, loginFreeAttempts)
 	}
 	var h loginGuard
-	h.reserve("b", t0)
+	h.reserve("b", t0, loginFreeAttempts)
 	h.refund("b")
 	if h.m["b"] != nil {
 		t.Error("a refunded attempt stays counted")
@@ -436,4 +436,51 @@ func TestLoginDuringPasswordChange(t *testing.T) {
 	}
 	verifyLoginPassword = auth.VerifyPassword
 	call(t, router, "GET", "/api/me", got.Token, "", http.StatusUnauthorized)
+}
+
+func loginFrom(router http.Handler, ip, name, password string) int {
+	req := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"username":"`+name+`","password":"`+password+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Real-IP", ip)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+// Подбор с чужого адреса не закрывает вход хозяину имени.
+func TestLogin_PauseIsPerAddress(t *testing.T) {
+	_, router, admin, _ := newTestServer(t)
+	invitedUser(t, router, admin, "pair-owner")
+	for range loginFreeAttempts {
+		loginFrom(router, "203.0.113.1", "pair-owner", "wrong-password")
+	}
+	if code := loginFrom(router, "203.0.113.1", "pair-owner", "testpass123"); code != http.StatusTooManyRequests {
+		t.Errorf("guessing address during the pause: %d, want 429", code)
+	}
+	if code := loginFrom(router, "203.0.113.2", "pair-owner", "testpass123"); code != http.StatusOK {
+		t.Errorf("the owner's address: %d, want 200", code)
+	}
+}
+
+// Перебор с многих адресов упирается в потолок на имя, один адрес его не выбирает.
+func TestLogin_NameCeiling(t *testing.T) {
+	_, router, admin, s := newTestServer(t)
+	invitedUser(t, router, admin, "ceiling-owner")
+	now := time.Now()
+	for i := range 60 {
+		s.reserveLogin("one-address", "203.0.113.1", now.Add(time.Duration(i)*24*time.Hour/100))
+	}
+	if n := s.loginNames.count("one-address"); n > loginFreeAttempts {
+		t.Errorf("one address counted %d times toward the ceiling", n)
+	}
+	for i := range loginNameFreeAttempts {
+		loginFrom(router, "198.51.100."+strconv.Itoa(i%250), "ceiling-owner", "wrong-password")
+	}
+	if code := loginFrom(router, "203.0.113.9", "ceiling-owner", "testpass123"); code != http.StatusTooManyRequests {
+		t.Errorf("over the ceiling, a new address: %d, want 429", code)
+	}
+	s.loginForget("ceiling-owner") // ссылка сброса пароля
+	if code := loginFrom(router, "203.0.113.9", "ceiling-owner", "testpass123"); code != http.StatusOK {
+		t.Errorf("after a reset: %d, want 200", code)
+	}
 }

@@ -163,7 +163,7 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !s.setPassword(w, tx, userID, passwordHash) {
 		return
 	}
-	s.logins.succeeded(username) // пауза после неудачных входов — снята
+	s.loginForget(username) // пауза после неудачных входов — снята
 	s.writeFreshToken(w, userID, username)
 }
 
@@ -184,14 +184,15 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Подбор старого пароля с чужого открытого устройства — как подбор при входе.
-	if wait := s.logins.reserve(username, time.Now()); wait > 0 {
+	ip := clientIP(r)
+	if wait := s.reserveLogin(username, ip, time.Now()); wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 		writeError(w, http.StatusTooManyRequests, "too many failed attempts, try again later")
 		return
 	}
 	ok, err := auth.VerifyPassword(req.Old, hash)
 	if errors.Is(err, auth.ErrBusy) {
-		s.logins.refund(username)
+		s.refundLogin(username, ip)
 		writeBusy(w)
 		return
 	}
@@ -199,7 +200,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "the current password is wrong")
 		return
 	}
-	s.logins.succeeded(username)
+	s.loginSucceeded(username, ip)
 	newHash, err := auth.HashPassword(req.New)
 	if errors.Is(err, auth.ErrBusy) {
 		writeBusy(w)

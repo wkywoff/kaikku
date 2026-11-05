@@ -205,7 +205,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Подбор пароля: после нескольких неудач — пауза между попытками (loginguard.go).
-	if wait := s.logins.reserve(name, time.Now()); wait > 0 {
+	ip := clientIP(r)
+	if wait := s.reserveLogin(name, ip, time.Now()); wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 		writeError(w, http.StatusTooManyRequests, "too many failed attempts, try again later")
 		return
@@ -223,14 +224,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	} else if err != nil {
-		s.logins.refund(name)
+		s.refundLogin(name, ip)
 		writeError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 
 	ok, err := verifyLoginPassword(req.Password, hash)
 	if errors.Is(err, auth.ErrBusy) {
-		s.logins.refund(name)
+		s.refundLogin(name, ip)
 		writeBusy(w)
 		return
 	}
@@ -238,7 +239,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	s.logins.succeeded(name)
+	s.loginSucceeded(name, ip)
 
 	token, err := auth.IssueTokenAt(id, started, tokenTTL, s.JWTSecret)
 	if err != nil {
