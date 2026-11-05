@@ -215,7 +215,7 @@ func startWarm() (*warmProc, error) {
 	}
 	cmd.Stderr = os.Stderr // трейсбек, если помощник упадёт
 	if cmd.Env == nil {
-		cmd.Env = os.Environ()
+		cmd.Env = toolEnv(os.Environ())
 	}
 	cmd.Env = append(cmd.Env, warmMallocArenas)
 	if err := cmd.Start(); err != nil {

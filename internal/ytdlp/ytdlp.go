@@ -28,8 +28,30 @@ import (
 	"unicode"
 )
 
-// execCommand is exec.CommandContext; tests swap it for a fake yt-dlp.
-var execCommand = exec.CommandContext
+// execCommand is exec.CommandContext without the service's secrets; tests swap
+// it for a fake yt-dlp.
+var execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = toolEnv(os.Environ())
+	return cmd
+}
+
+// toolEnv — окружение для yt-dlp и его помощника: они выполняют код, который
+// обновляется сам и приходит с YouTube, а секреты сервиса им не нужны. Это не
+// граница (тот же пользователь), а отсутствие лишнего под рукой.
+func toolEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		switch {
+		case name == "DATABASE_URL", name == "LASTFM_API_KEY", name == "LRCRED_CONTACT",
+			strings.HasSuffix(name, "_SECRET"), strings.HasSuffix(name, "_PASSWORD"), strings.HasSuffix(name, "_TOKEN"):
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
 
 type candidate struct {
 	ID         string
