@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { toast } from './toast.js';
 import { translate } from '../i18n.js';
 import { lang } from './settings.js';
+import { syncLikedContext } from '../library.js';
 
 // Личная медиатека текущего пользователя: что лайкнуто, какие альбомы
 // сохранены, на кого подписан, плейлисты (свои и чужие публичные). Грузится после входа
@@ -21,6 +22,7 @@ export async function loadCollection() {
   try {
     const [ids, lists] = await Promise.all([api.collection(), api.playlists()]);
     likedIds.set(new Set(ids.liked));
+    syncLikedContext(get(likedIds)); // очередь могла сохраниться до снятия лайка на другом устройстве
     savedAlbumIds.set(new Set(ids.albums));
     followedIds.set(new Set(ids.artists || []));
     playlists.set(lists);
@@ -52,6 +54,7 @@ export async function toggleLike(deezerId) {
   toggleIn(likedIds, deezerId, on);
   try {
     await (on ? api.like(deezerId) : api.unlike(deezerId));
+    if (!on) syncLikedContext(get(likedIds));
     toast(tr(on ? 'collection.liked' : 'collection.unliked'));
   } catch (e) {
     toggleIn(likedIds, deezerId, !on);

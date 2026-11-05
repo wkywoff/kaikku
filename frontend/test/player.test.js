@@ -125,6 +125,9 @@ const held = new Map();
 const failingLinks = new Set();
 // Deezer ID, которых нет на YouTube (404 с reason not_found).
 const notFoundLinks = new Set();
+// Лайки на «сервере» и Deezer ID, снять лайк с которых сервер не даёт.
+const serverLiked = [];
+const failingUnlikes = new Set();
 const fakeFetch = async (url) => {
   for (const [part, gate] of held) if (url.includes(part)) await gate;
   const json = (data) => ({ ok: true, status: 200, json: async () => data });
@@ -140,6 +143,10 @@ const fakeFetch = async (url) => {
     jobs[id] ||= { status: 'processing' };
     return json({ status: 'queued', job_id: id, url: `/api/stream/deezer/${id}?st=sig&e=1`, gain_db: 0 });
   }
+  const liked = url.match(/\/me\/liked\/(\w+)$/);
+  if (liked) return failingUnlikes.has(liked[1]) ? { ok: false, status: 502, json: async () => ({ error: 'unlike failed' }) } : json({});
+  if (url.endsWith('/me/collection')) return json({ liked: serverLiked, albums: [], artists: [] });
+  if (url.endsWith('/playlists')) return json({ mine: [], others: [] });
   const radio = url.match(/\/discover\/artists\/(\w+)\/radio$/);
   if (radio && radioTracks[radio[1]]) return json({ tracks: radioTracks[radio[1]] });
   const job = url.match(/\/ingest\/(\w+)$/);
@@ -793,6 +800,33 @@ test('a song removed from a playlist no longer counts as playing from it', async
   await player.toggle(); // пауза и продолжить — метка не возвращается
   await player.toggle();
   assert.equal(get(playingContext), null);
+});
+
+test('an unliked song no longer counts as playing from Liked', async () => {
+  const { playRows, playingContext, isContext } = await import('../src/lib/library.js');
+  const { likedIds, toggleLike, loadCollection } = await import('../src/lib/stores/collection.js');
+  const { get } = await import('svelte/store');
+  const LIKED = { kind: 'liked', id: '' };
+  await playRows([{ deezerId: 'l1', title: 'A' }, { deezerId: 'l2', title: 'B' }, { deezerId: 'l3', title: 'C' }], 0, LIKED);
+  likedIds.set(new Set(['l1', 'l2', 'l3']));
+
+  failingUnlikes.add('l1');
+  await toggleLike('l1');
+  failingUnlikes.clear();
+  assert.equal(get(likedIds).has('l1'), true, 'сервер отказал — лайк вернулся');
+  assert.equal(isContext(get(playingContext), 'liked'), true, 'и трек всё ещё из Любимых');
+
+  await toggleLike('l1');
+  assert.equal(get(playingContext), null, 'лайк снят — карточка Любимых не «играет»');
+  let s;
+  player.subscribe((v) => (s = v))();
+  assert.equal(s.queue[0].deezerId, 'l1', 'трек доигрывает');
+  assert.deepEqual(s.queue.map((e) => e.context), [null, LIKED, LIKED], 'остальные всё ещё из Любимых');
+
+  serverLiked.push('l3'); // l2 сняли на другом устройстве
+  await loadCollection();
+  player.subscribe((v) => (s = v))();
+  assert.deepEqual(s.queue.map((e) => e.context), [null, null, LIKED], 'после загрузки медиатеки — по лайкам с сервера');
 });
 
 test('"play next" goes right after the playing song, in the order songs were added', async () => {

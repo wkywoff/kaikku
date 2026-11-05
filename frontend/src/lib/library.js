@@ -112,6 +112,11 @@ export function syncContext(kind, id, rows) {
   dropContext(kind, id, (entry) => rows.some((r) => isCurrentRow(r, entry, state)));
 }
 
+/** То же для «Любимых»: ids — Deezer ID всех лайкнутых. */
+export function syncLikedContext(ids) {
+  dropContext('liked', '', (entry) => ids.has(entry.deezerId));
+}
+
 function dropContext(kind, id, stillThere) {
   for (const entry of get(player).queue) {
     if (isContext(entry.context, kind, id) && !stillThere(entry)) player.patchEntry(entry, { context: null });
