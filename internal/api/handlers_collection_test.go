@@ -294,3 +294,35 @@ func TestPlaylistCover(t *testing.T) {
 		t.Error("a deleted playlist's cover should be deleted")
 	}
 }
+
+func TestBackgroundDownloadsStopAtUserQueueLimit(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	old := maxQueuedPerUser
+	maxQueuedPerUser = 1
+	t.Cleanup(func() { maxQueuedPerUser = old })
+	token := invitedUser(t, router, admin, "queue-heavy")
+	var id string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'queue-heavy'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if srv.queueFull(id) {
+		t.Fatal("an empty queue is full")
+	}
+	call(t, router, "PUT", "/api/me/liked/12345", token, "", http.StatusNoContent)
+	if !srv.queueFull(id) {
+		t.Fatal("the queue did not fill")
+	}
+	var n int
+	db.QueryRow(`SELECT count(*) FROM ingest_jobs WHERE requested_by = $1`, id).Scan(&n)
+	srv.downloadTracks(id, "501")
+	var after int
+	db.QueryRow(`SELECT count(*) FROM ingest_jobs WHERE requested_by = $1`, id).Scan(&after)
+	if after != n {
+		t.Errorf("jobs went from %d to %d over the limit", n, after)
+	}
+	var adminID string
+	db.QueryRow(`SELECT id FROM users WHERE is_admin LIMIT 1`).Scan(&adminID)
+	if srv.queueFull(adminID) {
+		t.Error("the admin has a queue limit")
+	}
+}

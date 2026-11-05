@@ -39,11 +39,33 @@ func (s *Server) inBackground(f func()) {
 	safe.Go("background", f)
 }
 
+// maxQueuedPerUser — сколько незавершённых заданий ставят лайки и сохранения
+// одного человека (кроме админа). Сверх этого трек скачается при первом
+// прослушивании: один человек не занимает очередь и диск всем.
+var maxQueuedPerUser = 500
+
+func (s *Server) queueFull(userID string) bool {
+	var full bool
+	err := s.DB.QueryRow(`
+		SELECT NOT COALESCE((SELECT is_admin FROM users WHERE id = $1), false)
+		   AND (SELECT count(*) FROM ingest_jobs WHERE requested_by = $1 AND status IN ('pending', 'processing')) >= $2`,
+		userID, maxQueuedPerUser).Scan(&full)
+	if err != nil {
+		log.Printf("queue of %s: %v", userID, err)
+		return false
+	}
+	return full
+}
+
 func (s *Server) downloadTracks(userID string, deezerIDs ...string) {
 	s.inBackground(func() {
 		for _, id := range deezerIDs {
 			if isLocalID(id) {
 				continue // свой трек: файл уже есть
+			}
+			if s.queueFull(userID) {
+				log.Printf("background downloads of %s: queue is full", userID)
+				return
 			}
 			if _, err := s.enqueueTrack(userID, id); err != nil {
 				log.Printf("background download deezer:%s: %v", id, err)
@@ -61,6 +83,10 @@ func (s *Server) downloadAlbum(userID string, album *deezer.Album) {
 		}
 		s.Deezer.EnrichContributors(tracks)
 		for _, t := range tracks {
+			if s.queueFull(userID) {
+				log.Printf("background downloads of %s: queue is full", userID)
+				return
+			}
 			var err error
 			if t.AlbumID == album.ID {
 				_, err = s.enqueueResolved(userID, t, album)
