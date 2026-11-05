@@ -167,9 +167,9 @@ func TestEgress_BurstIsOneFailure(t *testing.T) {
 
 // Прямой выход закрыт — пауза прокси не растёт: без него не работают списки.
 func TestRegion_OnlyWayKeepsPauseShort(t *testing.T) {
-	old := proxyDownFor
-	proxyDownFor = 30 * time.Millisecond
-	t.Cleanup(func() { proxyDownFor = old })
+	old := proxyOnlyWayDownFor
+	proxyOnlyWayDownFor = 30 * time.Millisecond
+	t.Cleanup(func() { proxyOnlyWayDownFor = old })
 	closed, _ := regionServer(t, false)
 	c := NewClientWithBaseURL(closed.URL)
 	c.checkRegions()
@@ -177,8 +177,8 @@ func TestRegion_OnlyWayKeepsPauseShort(t *testing.T) {
 	c.egresses = append(c.egresses, p)
 	for range 3 {
 		c.GetArtistAlbums("27", 10)
-		if left := time.Until(p.downUntil); left > proxyDownFor {
-			t.Fatalf("paused for %s, want at most %s", left, proxyDownFor)
+		if left := time.Until(p.downUntil); left > proxyOnlyWayDownFor {
+			t.Fatalf("paused for %s, want at most %s", left, proxyOnlyWayDownFor)
 		}
 		time.Sleep(40 * time.Millisecond)
 	}
