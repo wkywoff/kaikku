@@ -120,3 +120,31 @@ func TestOG_MissesSpendLimitedDeezer(t *testing.T) {
 		t.Errorf("%d Deezer requests from %d previews, limit %d", n, ogMissesPerMinute+5, ogMissesPerMinute)
 	}
 }
+
+// Обложка снятого с публикации релиза не попадает в превью публичного плейлиста.
+func TestOG_PlaylistSkipsDraftCover(t *testing.T) {
+	router, srv := ogFloodServer(t)
+	rel := seedOwnRelease(t, srv.DB, "", false)
+	var user, playlist string
+	if err := srv.DB.QueryRow(`SELECT id FROM users LIMIT 1`).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.DB.QueryRow(`INSERT INTO playlists (user_id, title, is_public) VALUES ($1, 'Public', true) RETURNING id`, user).Scan(&playlist); err != nil {
+		t.Fatal(err)
+	}
+	const cover = "/media/covers/custom/00112233445566778899aabbccddeeff.jpg"
+	if _, err := srv.DB.Exec(`INSERT INTO playlist_items (playlist_id, position, deezer_id, meta) VALUES ($1, 1, $2, $3)`,
+		playlist, rel.tracks[0], `{"cover_url":"`+cover+`"}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, body := ogPage(t, router, "/playlist/"+playlist); !strings.Contains(body, cover) {
+		t.Fatal("control: a published cover is missing from the preview")
+	}
+	if _, err := srv.DB.Exec(`UPDATE albums SET draft = true WHERE deezer_id = $1`, rel.album); err != nil {
+		t.Fatal(err)
+	}
+	srv.ogCache = ttlCache{}
+	if _, body := ogPage(t, router, "/playlist/"+playlist); strings.Contains(body, cover) {
+		t.Error("a withdrawn release's cover is in the anonymous preview")
+	}
+}

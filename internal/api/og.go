@@ -132,7 +132,10 @@ func (s *Server) ogMetaFor(kind, id string) ogMeta {
 		err := s.DB.QueryRow(`
 			SELECT p.title, u.username, COALESCE('/media/' || p.cover_key,
 			         (SELECT i.meta->>'cover_url' FROM playlist_items i
-			           WHERE i.playlist_id = p.id AND COALESCE(i.meta->>'cover_url', '') <> '' ORDER BY i.position LIMIT 1)),
+			           WHERE i.playlist_id = p.id AND COALESCE(i.meta->>'cover_url', '') <> ''
+			             AND NOT EXISTS (SELECT 1 FROM tracks t JOIN albums a ON a.id = t.album_id
+			                              WHERE t.deezer_id = i.deezer_id AND (a.draft OR a.hidden))
+			           ORDER BY i.position LIMIT 1)),
 			       (SELECT count(*) FROM playlist_items i WHERE i.playlist_id = p.id)
 			  FROM playlists p JOIN users u ON u.id = p.user_id
 			 WHERE p.id::text = $1 AND p.is_public`, id).Scan(&title, &owner, &cover, &n)
