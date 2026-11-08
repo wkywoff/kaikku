@@ -64,6 +64,27 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 	}
 }
 
+// Послушал релиз до выхода, когда у Deezer не было обложки (трек 888 —
+// альбом 9 без cover_xl): карточка берёт нынешнюю обложку альбома.
+func TestRecentAlbumWithoutCoverInSnapshot(t *testing.T) {
+	_, router, token := newTestRouter(t)
+	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888"}`, http.StatusOK)
+
+	var recent struct {
+		Items []struct {
+			Album *struct {
+				ID       string
+				CoverURL string `json:"cover_url"`
+			}
+		}
+	}
+	json.Unmarshal(call(t, router, "GET", "/api/me/recent", token, "", http.StatusOK), &recent)
+	if len(recent.Items) != 1 || recent.Items[0].Album == nil || recent.Items[0].Album.ID != "9" ||
+		recent.Items[0].Album.CoverURL != "http://example.com/cover.jpg" {
+		t.Errorf("recent: %+v", recent.Items)
+	}
+}
+
 func TestFollowsSuggestionsAndReleases(t *testing.T) {
 	_, router, token := newTestRouter(t)
 

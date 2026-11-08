@@ -241,6 +241,14 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
+			if t.CoverURL == "" {
+				// Снимок сделан до выхода релиза, когда у Deezer ещё не было
+				// обложки: берём нынешнюю карточку альбома.
+				if a := s.albumCard(x.id); a != nil {
+					items = append(items, recentItem{Kind: "album", Album: a})
+					continue
+				}
+			}
 			a := &deezer.Album{ID: x.id, Title: t.Album, CoverURL: t.CoverURL, ArtistID: t.ArtistID, ArtistName: t.Artist}
 			albums = append(albums, a)
 			items = append(items, recentItem{Kind: "album", Album: a})
