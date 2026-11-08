@@ -136,6 +136,31 @@ func TestClient_FreshReleaseShortTTL(t *testing.T) {
 	}
 }
 
+// Трек без обложки (релиз ещё не вышел) держится часы: к выходу она появится.
+func TestClient_CoverlessTrackShortTTL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/track/1":
+			w.Write([]byte(`{"id":1,"title":"Soon","artist":{"id":1,"name":"A"},"album":{"id":7,"title":"Pre","cover_xl":"https://e-cdns-images.dzcdn.net/images/cover//1000x1000-000000-80-0-0.jpg"}}`))
+		case "/track/2":
+			w.Write([]byte(`{"id":2,"title":"Out","artist":{"id":1,"name":"A"},"album":{"id":8,"title":"Out","cover_xl":"https://e-cdns-images.dzcdn.net/images/cover/abc/1000x1000-000000-80-0-0.jpg"}}`))
+		}
+	}))
+	defer srv.Close()
+	st := &memStore{}
+	c := NewClientWithBaseURL(srv.URL).WithStore(st)
+	short := func(key string) bool { return time.Until(st.m[key].expires) <= freshCacheTTL }
+
+	c.GetTrack("1")
+	c.GetTrack("2")
+	if !short("track:1") {
+		t.Error("a track without a cover is kept for long")
+	}
+	if short("track:2") {
+		t.Error("a track with a cover is kept for hours only")
+	}
+}
+
 // batchMem — memStore с GetMany; считает обращения.
 type batchMem struct {
 	memStore

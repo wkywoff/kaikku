@@ -382,7 +382,13 @@ func (c *Client) GetTrack(id string) (*Track, error) {
 			return Track{}, fmt.Errorf("get track: %w", err)
 		}
 		track := convertTrack(t)
-		c.tracks.put(id, track)
+		ttl := trackCacheTTL
+		if track.CoverURL == "" {
+			// До выхода релиза Deezer отдаёт трек без обложки: с ней он
+			// появится к выходу, и снимок в истории не должен ждать месяц.
+			ttl = freshCacheTTL
+		}
+		c.tracks.putFor(id, track, ttl)
 		return track, nil
 	})
 	if err != nil {
