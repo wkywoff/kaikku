@@ -70,7 +70,7 @@ ENTRYPOINT ["entrypoint"]
 CMD ["api"]
 
 # --- web: nginx — сайт, /api/ и файлы по подписанным ссылкам ---
-FROM nginx:1.30-alpine AS web
+FROM nginx:1.31-alpine AS web
 # В шаблоне подставляется только MEDIA_SECRET; $uri и прочее остаётся nginx'у.
 ENV NGINX_ENVSUBST_FILTER=^MEDIA_SECRET$
 RUN rm -f /etc/nginx/conf.d/default.conf
