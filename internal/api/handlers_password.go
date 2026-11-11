@@ -201,7 +201,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.loginSucceeded(username, ip)
-	newHash, err := auth.HashPassword(req.New)
+	newHash, err := hashNewPassword(req.New)
 	if errors.Is(err, auth.ErrBusy) {
 		writeBusy(w)
 		return
@@ -215,11 +215,26 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	// Пока шли проверка и хеширование, пароль могли сменить (сброс по ссылке,
+	// другое устройство): запрос доказан уже не действующим паролем и новый
+	// не перезаписывает. FOR UPDATE — чтобы сброс не прошёл между сверкой и записью.
+	var current string
+	if err := tx.QueryRow(`SELECT password_hash FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&current); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not set the password")
+		return
+	}
+	if current != hash {
+		writeError(w, http.StatusConflict, "the password was changed in the meantime")
+		return
+	}
 	if !s.setPassword(w, tx, userID, newHash) {
 		return
 	}
 	s.writeFreshToken(w, userID, username)
 }
+
+// hashNewPassword — auth.HashPassword; тест подставляет сброс пароля в момент хеширования.
+var hashNewPassword = auth.HashPassword
 
 // setPassword stores the hash, ends every older session (password_changed_at)
 // and drops the user's unused reset links and app password (кто подсмотрел

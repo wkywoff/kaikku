@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"kaikku/internal/auth"
 )
 
 func loginAs(router http.Handler, username, password string) int {
@@ -113,5 +115,28 @@ func TestPasswordResetLink(t *testing.T) {
 	}
 	if rec := request(router, "GET", "/api/me", admin); rec.Code != http.StatusOK {
 		t.Errorf("the admin's own session is not affected: %d", rec.Code)
+	}
+}
+
+// Пароль сбросили, пока шла смена: смена, доказанная прежним паролем, новый
+// не перезаписывает (чужая открытая сессия не отбирает аккаунт обратно).
+func TestChangePassword_DoesNotOverwriteConcurrentReset(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	token := invitedUser(t, router, admin, "race-change")
+	hashNewPassword = func(password string) (string, error) {
+		reset, err := auth.HashPassword("resetpass123")
+		if err != nil {
+			t.Error(err)
+		}
+		if _, err := db.Exec(`UPDATE users SET password_hash = $1, password_changed_at = now() WHERE username = 'race-change'`, reset); err != nil {
+			t.Error(err)
+		}
+		return auth.HashPassword(password)
+	}
+	t.Cleanup(func() { hashNewPassword = auth.HashPassword })
+
+	call(t, router, "PUT", "/api/me/password", token, `{"old_password":"testpass123","new_password":"attackerpass1"}`, http.StatusConflict)
+	if loginAs(router, "race-change", "attackerpass1") != http.StatusUnauthorized || loginAs(router, "race-change", "resetpass123") != http.StatusOK {
+		t.Error("the reset password must stay and the overtaken change must not apply")
 	}
 }
