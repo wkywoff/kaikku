@@ -3,6 +3,7 @@ package api
 import (
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -14,9 +15,14 @@ import (
 // Поэтому неудачи считаются по паре имя + адрес (X-Real-IP от nginx): после
 // loginFreeAttempts неудач подряд пауза перед следующей попыткой растёт —
 // 30 с, 1, 2, 4, 8 минут, дальше раз в 15 минут: около сотни попыток в
-// сутки с адреса. Чужой адрес хозяина имени не задевает.
-// Перебор с многих адресов упирается в потолок на имя (loginNameFreeAttempts),
-// в него идут только первые попытки с каждого адреса: один адрес его не выберет.
+// сутки с адреса (IPv6 — с подсети /64, clientIP). Один чужой адрес хозяина
+// имени не задевает.
+// Перебор с многих адресов упирается в потолок на имя (loginNameFreeAttempts).
+// Пока идёт его пауза, под этим именем не входит никто, и хозяин тоже: это
+// цена защиты от распределённого перебора (открытые сессии работают дальше).
+// В потолок идут только первые попытки с каждого адреса, чтобы один адрес его
+// не выбрал; поэтому уже начавший адрес дальше ограничен только своей паузой,
+// и общий темп перебора растёт с числом адресов.
 // Ссылка сброса пароля (handlers_password.go) снимает всё сразу.
 
 const (
@@ -167,16 +173,29 @@ func (g *loginGuard) forgetPrefix(prefix string) {
 	}
 }
 
-// clientIP — адрес клиента: nginx кладёт его в X-Real-IP и затирает присланный
-// извне; порт API наружу не открыт. Без nginx (разработка) — адрес соединения.
+// clientIP — адрес клиента для счёта попыток: nginx кладёт его в X-Real-IP и
+// затирает присланный извне; порт API наружу не открыт. Без nginx (разработка)
+// — адрес соединения. IPv6 — подсеть /64: у одного абонента их целая подсеть,
+// и каждый её адрес иначе считался бы новым.
 func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+	ip := r.Header.Get("X-Real-IP")
+	if ip == "" {
+		ip = r.RemoteAddr
+		if host, _, err := net.SplitHostPort(ip); err == nil {
+			ip = host
+		}
+	}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
 		return ip
 	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
+	addr = addr.Unmap().WithZone("")
+	if addr.Is6() {
+		if subnet, err := addr.Prefix(64); err == nil {
+			return subnet.String()
+		}
 	}
-	return r.RemoteAddr
+	return addr.String()
 }
 
 func loginPairKey(name, ip string) string { return name + "\x00" + ip }

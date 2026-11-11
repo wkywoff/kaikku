@@ -462,6 +462,21 @@ func TestLogin_PauseIsPerAddress(t *testing.T) {
 	}
 }
 
+// IPv6: адреса одной подсети /64 — один абонент, пауза у них общая.
+func TestLogin_IPv6CountsBySubnet(t *testing.T) {
+	_, router, admin, _ := newTestServer(t)
+	invitedUser(t, router, admin, "v6-owner")
+	for i := range loginFreeAttempts {
+		loginFrom(router, "2001:db8:1:2::"+strconv.Itoa(i+1), "v6-owner", "wrong-password")
+	}
+	if code := loginFrom(router, "2001:db8:1:2:aaaa::1", "v6-owner", "testpass123"); code != http.StatusTooManyRequests {
+		t.Errorf("another address of the guessing /64: %d, want 429", code)
+	}
+	if code := loginFrom(router, "2001:db8:1:3::1", "v6-owner", "testpass123"); code != http.StatusOK {
+		t.Errorf("another /64: %d, want 200", code)
+	}
+}
+
 // Перебор с многих адресов упирается в потолок на имя, один адрес его не выбирает.
 func TestLogin_NameCeiling(t *testing.T) {
 	_, router, admin, s := newTestServer(t)
