@@ -4,6 +4,11 @@
   // в часовом поясе браузера; топ-50 треков можно включить или сохранить
   // плейлистом, альбомы — ряд самых слушаемых, остальные по «Показать все»
   // (WrappedAlbumsPage).
+  //
+  // Сетка одна на всю страницу: каждый блок — карточка одной ширины с одним
+  // внутренним отступом (--pad), цветная или серая (.panel — списки). Строки
+  // треков и карточки альбомов выступают в отступ ровно на свои поля, так что
+  // обложки, номера и заголовки стоят на одной линии с текстом карточек.
   import { api } from '../api.js';
   import { navStore, navigate, paths, link } from '../stores/nav.js';
   import { lang } from '../stores/settings.js';
@@ -175,20 +180,20 @@
         </section>
       {/if}
 
-      <section class="plain">
-        <div class="plain-head">
+      <section class="card panel">
+        <div class="panel-head">
           <h2>{$t('wrapped.topSongs')}</h2>
-          <div class="plain-actions">
+          <div class="panel-actions">
             <button class="pill" on:click={saveTop} disabled={saving}><ListPlus size={16} /> {$t('wrapped.save')}</button>
             <PlayButton size={48} label={$t('player.play')} on:click={playTop} />
           </div>
         </div>
-        <TrackList rows={rows.slice(0, 10)} showCover showAlbum header={false} />
+        <div class="rows"><TrackList rows={rows.slice(0, 10)} showCover showAlbum header={false} /></div>
       </section>
 
       {#if data.top_albums.length}
-        <section class="plain">
-          <div class="plain-head">
+        <section class="card panel">
+          <div class="panel-head">
             <h2>{$t('wrapped.topAlbums')}</h2>
             {#if albumTotal > shownAlbums.length}
               <a class="show-all" href={paths.wrappedAlbums(data.year)} use:link>{$t('disc.showAll')}</a>
@@ -286,7 +291,7 @@
     letter-spacing: -0.02em;
   }
   h2 {
-    font-size: 24px;
+    font-size: clamp(20px, 2.6vw, 24px);
     font-weight: 700;
   }
   .years {
@@ -294,8 +299,9 @@
     gap: 8px;
   }
   .card {
+    --pad: 32px;
     border-radius: 16px;
-    padding: 32px;
+    padding: var(--pad);
     color: #fff;
     display: flex;
     flex-direction: column;
@@ -437,19 +443,21 @@
     flex-direction: column;
     gap: 8px;
   }
-  .plain {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+  /* Серая карточка под списки: та же ширина, радиус и отступ, что у цветных. */
+  .panel {
+    background: var(--bg-card);
+    color: var(--text);
+    gap: 16px;
   }
-  .plain-head {
+  .panel-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+    min-height: 48px; /* как с кнопкой Play: заголовки обеих карточек на одной высоте */
   }
-  .plain-actions {
+  .panel-actions {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -466,10 +474,18 @@
       text-decoration: underline;
     }
   }
+  /* Строки треков (поля 12px, на телефоне 8px) и карточки альбомов (12px)
+     выступают в отступ карточки на свои поля. */
+  .rows {
+    margin: 0 -12px;
+  }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
+    margin: 0 -12px -12px;
+    /* Подсветка альбома под курсором — на тон светлее самой карточки,
+       иначе на её фоне не видна. */
+    --bg-card: var(--bg-hover);
   }
   .bars {
     display: flex;
@@ -523,7 +539,10 @@
       font-size: 28px;
     }
     .card {
-      padding: 22px;
+      --pad: 20px;
+    }
+    .rows {
+      margin: 0 -8px;
     }
     .artist-hero img,
     .artist-hero .ph {
@@ -537,7 +556,6 @@
     }
     .grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
     }
     .bars {
       height: 140px;
