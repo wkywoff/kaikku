@@ -10,13 +10,13 @@
   import { pageTint } from '../stores/theme.js';
   import { playingContext, isContext, playAlbum } from '../library.js';
   import { albumMenuItems } from '../cardMenu.js';
-  import { count } from '../wrappedText.js';
+  import { count, WRAPPED_TINT } from '../wrappedText.js';
   import MediaCard from '../components/MediaCard.svelte';
 
   let data = null;
   let error = '';
 
-  pageTint().none();
+  pageTint().none(WRAPPED_TINT); // фон ровный (полоса сверху), кнопки — как в итогах
 
   $: load($navStore.year);
   let seq = 0;

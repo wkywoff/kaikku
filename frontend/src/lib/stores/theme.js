@@ -17,7 +17,9 @@ let current = null; // картинка, палитру которой ждём
  *   const tint = pageTint();
  *   tint.from(url)   — по картинке (null — нейтральный цвет);
  *   tint.color(rgb)  — заданным цветом ({r, g, b}: у «Любимых» нет обложки);
- *   tint.none()      — без подкраски, ровный фон (дискография).
+ *   tint.none()      — без подкраски, ровный фон (дискография);
+ *   tint.none(rgb)   — то же, но кнопки Play — как на странице цвета rgb
+ *                      (все альбомы года: кнопки как в самих итогах).
  */
 export function pageTint() {
   const owner = routeKey(get(navStore));
@@ -39,10 +41,11 @@ export function pageTint() {
       current = null;
       pagePalette.set(paletteFrom(rgb));
     },
-    none() {
+    none(accentOf = null) {
       if (!mine()) return;
       current = null;
-      pagePalette.set(NONE);
+      const { accent, accentText } = accentOf ? paletteFrom(accentOf) : NONE;
+      pagePalette.set({ ...NONE, accent, accentText });
     },
   };
 }

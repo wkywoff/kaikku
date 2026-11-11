@@ -1,5 +1,8 @@
 import { plural } from './format.js';
 
+// Цвет страниц итогов года: подкраска самих итогов и кнопки Play на обеих.
+export const WRAPPED_TINT = { r: 155, g: 31, b: 232 };
+
 // Числа и склонения для итогов года (WrappedPage, WrappedAlbumsPage):
 // «1 прослушивание», «2 раза», «5 минут».
 const FORMS = {

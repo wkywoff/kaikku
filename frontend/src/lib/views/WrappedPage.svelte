@@ -19,7 +19,7 @@
   import { createPlaylist } from '../stores/collection.js';
   import { rowFromDeezerTrack } from '../rows.js';
   import { plural, longDate } from '../format.js';
-  import { num, word, count } from '../wrappedText.js';
+  import { num, word, count, WRAPPED_TINT } from '../wrappedText.js';
   import { albumMenuItems } from '../cardMenu.js';
   import { MAX_PER_ROW } from '../layout.js';
   import TrackList from '../components/TrackList.svelte';
@@ -33,7 +33,7 @@
   let error = '';
   let saving = false;
 
-  pageTint().color({ r: 155, g: 31, b: 232 });
+  pageTint().color(WRAPPED_TINT);
 
   $: load($navStore.year);
   let seq = 0;
