@@ -70,7 +70,8 @@ app, or use any Subsonic app.
 - Last.fm scrobbling (needs a Last.fm API key).
 
 **For the admin**
-- Invites and password-reset links.
+- Invites, password-reset links, and making other users admins (**Users**
+  in the account menu). The last admin can't be removed.
 - Fix anything on top of Deezer's data: titles, dates, covers, artists,
   release types, track order; hide releases, group album versions.
 - A "Not found" page for tracks that didn't download, fixed with a YouTube

@@ -1,7 +1,8 @@
 <script>
   // Аватар и меню аккаунта: профиль, настройки, итоги года, установка, для админа —
-  // режим админа, приглашение, сброс пароля; выход. На компьютере — в
-  // верхней панели, на телефоне — в шапке медиатеки (как у Spotify).
+  // режим админа, приглашение, пользователи (сброс пароля, права админа);
+  // выход. На компьютере — в верхней панели, на телефоне — в шапке медиатеки
+  // (как у Spotify).
   import { navigateAfterPaint, paths } from '../stores/nav.js';
   import { signOut } from '../signout.js';
   import { api } from '../api.js';
@@ -13,7 +14,7 @@
   import Check from '@lucide/svelte/icons/check';
   import Settings from '@lucide/svelte/icons/settings';
   import Sparkles from '@lucide/svelte/icons/sparkles';
-  import KeyRound from '@lucide/svelte/icons/key-round';
+  import UsersRound from '@lucide/svelte/icons/users-round';
   import ShieldCheck from '@lucide/svelte/icons/shield-check';
   import MonitorDown from '@lucide/svelte/icons/monitor-down';
   import { installPrompt, install } from '../stores/install.js';
@@ -22,7 +23,7 @@
 
   let root;
   let menuOpen = false;
-  let resetOpen = false; // админ: окно «Сбросить пароль»
+  let usersOpen = false; // админ: окно «Пользователи»
   let invite = null; // { link } | { error }
   let copied = false;
 
@@ -85,7 +86,7 @@
         </button>
         <button class="menu-item" role="menuitem" on:click={() => go(paths.missing())}><SearchX size={16} /> {$t('missing.title')}</button>
         <button class="menu-item" role="menuitem" on:click={createInvite}><UserPlus size={16} /> {$t('account.invite')}</button>
-        <button class="menu-item" role="menuitem" on:click={() => ((menuOpen = false), (invite = null), (resetOpen = true))}><KeyRound size={16} /> {$t('account.resetPassword')}</button>
+        <button class="menu-item" role="menuitem" on:click={() => ((menuOpen = false), (invite = null), (usersOpen = true))}><UsersRound size={16} /> {$t('account.users')}</button>
         {#if invite}
           <div class="invite-box">
             {#if invite.error}
@@ -109,9 +110,9 @@
   {/if}
 </div>
 
-{#if resetOpen}
-  {#await import('./ResetPasswordDialog.svelte') then m}
-    <svelte:component this={m.default} me={$me} on:close={() => (resetOpen = false)} />
+{#if usersOpen}
+  {#await import('./UsersDialog.svelte') then m}
+    <svelte:component this={m.default} me={$me} on:close={() => (usersOpen = false)} />
   {/await}
 {/if}
 

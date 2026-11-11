@@ -95,6 +95,7 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("GET /api/lyrics/{id}", s.authed(s.handleLyrics))
 	mux.Handle("POST /api/lyrics/{id}/refresh", s.adminOnly(s.handleRefreshLyrics))
 	mux.Handle("POST /api/admin/users/{id}/password-reset", s.adminOnly(s.handleCreatePasswordReset))
+	mux.Handle("PUT /api/admin/users/{id}/admin", s.adminOnly(s.handleSetUserAdmin))
 	mux.HandleFunc("POST /api/password-reset", s.handlePasswordReset)
 	mux.Handle("PUT /api/me/password", s.authed(s.handleChangePassword))
 

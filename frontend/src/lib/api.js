@@ -106,9 +106,12 @@ export const api = {
   changePassword: (oldPassword, newPassword) =>
     request('/me/password', { method: 'PUT', body: { old_password: oldPassword, new_password: newPassword } }),
   resetPassword: (code, password) => request('/password-reset', { method: 'POST', body: { code, password } }),
-  // Админ: кому сбросить пароль, одноразовая ссылка -> { code, username, expires_at }.
+  // Админ: пользователи -> { users: [{ id, username, is_admin }] }, одноразовая
+  // ссылка на новый пароль -> { code, username, expires_at }, права админа ->
+  // { id, username, is_admin }.
   adminUsers: () => request('/admin/users'),
   createPasswordReset: (userId) => request(`/admin/users/${encodeURIComponent(userId)}/password-reset`, { method: 'POST' }),
+  setUserAdmin: (userId, admin) => request(`/admin/users/${encodeURIComponent(userId)}/admin`, { method: 'PUT', body: { admin } }),
   // Тексты песен -> { lyrics: { source, sync, lines, writers } | null }.
   lyrics: (deezerId) => request(`/lyrics/${encodeURIComponent(deezerId)}`),
 
