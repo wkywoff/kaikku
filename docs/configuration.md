@@ -34,6 +34,7 @@ reads from the repository folder. Start from
 | `POSTGRES_PASSWORD` | `kaikku` | The database password inside Docker's network (the database isn't exposed). It's set when the database is created: changing it in `.env` later locks the app out, so change it in Postgres first (`ALTER USER kaikku PASSWORD '…'`). |
 | `KAIKKU_VERSION` | `latest` | Image version from ghcr.io: `latest`, or a release without the `v`, such as `0.2.0` or `0.2` (the newest 0.2.x). |
 | `YTDLP_UPDATE_HOURS` | `24` | How often the API checks for a new yt-dlp; `0` checks on start only. |
+| `YTDLP_VERSION` | empty | Empty: yt-dlp keeps itself up to date. A version such as `2026.10.26` installs exactly that one and stops the updates, if you'd rather not have new code from PyPI arrive on its own; you then raise it yourself when downloads start failing. |
 
 ## Outside Docker
 

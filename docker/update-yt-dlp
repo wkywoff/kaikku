@@ -4,6 +4,8 @@
 #   docker compose exec api update-yt-dlp --restart
 # --restart: если версия сменилась, перезапустить API (его тёплый помощник
 # держит yt-dlp загруженным). Без новой версии ничего не трогает.
+# YTDLP_VERSION=2026.10.26 в .env — ставить ровно эту версию и не обновлять:
+# для тех, кто не хочет, чтобы новый код с PyPI приезжал на сервер сам.
 set -eu
 
 VENV=/opt/yt-dlp
@@ -20,8 +22,16 @@ if ! "$VENV/bin/python" -c 'import yt_dlp' 2>/dev/null; then
   /usr/bin/python3 -m venv --clear "$VENV"
 fi
 
+install_ytdlp() {
+  case "${YTDLP_VERSION:-}" in
+    ''|latest) pip_ install --quiet --upgrade 'yt-dlp[default]' ;;
+    *[!0-9.]*) echo "yt-dlp: YTDLP_VERSION must be a version such as 2026.10.26, or latest" >&2; return 1 ;;
+    *)         pip_ install --quiet "yt-dlp[default]==$YTDLP_VERSION" ;;
+  esac
+}
+
 before=$(versions)
-if ! pip_ install --quiet --upgrade 'yt-dlp[default]'; then
+if ! install_ytdlp; then
   echo "yt-dlp: pip install failed" >&2
   "$VENV/bin/python" -c 'import yt_dlp' 2>/dev/null || exit 1
   exit 0
