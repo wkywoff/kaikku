@@ -276,3 +276,21 @@ func TestWrappedAlbumsSkipSingles(t *testing.T) {
 		t.Errorf("all albums: %+v", all.Albums)
 	}
 }
+
+// Послушал релиз до выхода, когда у Deezer не было обложки (трек 888 —
+// альбом 9 без cover_xl): и альбом, и трек в итогах — с нынешней обложкой.
+func TestWrappedUsesCurrentCoverWhenThePlayHadNone(t *testing.T) {
+	db, router, token := newTestRouter(t)
+	db.Exec(`TRUNCATE plays`)
+	t.Cleanup(func() { db.Exec(`TRUNCATE plays`) })
+	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888"}`, http.StatusOK)
+
+	var w wrappedStats
+	json.Unmarshal(call(t, router, "GET", "/api/me/wrapped?tz=UTC", token, "", http.StatusOK), &w)
+	if len(w.TopAlbums) != 1 || w.TopAlbums[0].ID != "9" || w.TopAlbums[0].CoverURL != "http://example.com/cover.jpg" {
+		t.Errorf("top albums: %+v", w.TopAlbums)
+	}
+	if len(w.TopTracks) != 1 || w.TopTracks[0].CoverURL != "http://example.com/cover.jpg" {
+		t.Errorf("top tracks: %+v", w.TopTracks)
+	}
+}

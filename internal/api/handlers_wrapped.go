@@ -29,6 +29,8 @@ import (
 //     Синглы альбомами не считаются: это треки, они в топе треков. Тип
 //     релиза — из своей базы (albums.record_type, его пишет воркер при
 //     скачивании), без запросов к Deezer;
+//   - снимок без обложки (слушали до выхода релиза, у Deezer её ещё не
+//     было) — с нынешней обложкой альбома;
 //   - место среди слушателей — по индексу (artist_id, played_at) из 0014;
 //   - готовые итоги в кеше: прошлые годы — на сутки (они уже не меняются),
 //     текущий — на 10 минут.
@@ -294,7 +296,11 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 			}
 			c.plays++
 			c.ms += p.listenedMs
+			cover := c.p.cover
 			c.p = p
+			if c.p.cover == "" {
+				c.p.cover = cover // обложка — из последнего снимка, где она есть
+			}
 		}
 		bump(tracks, p.trackID)
 		bump(artists, p.artistID)
@@ -351,6 +357,22 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 			trackList = append(trackList, t)
 		}
 	}
+	covers := map[string]string{} // альбом → нынешняя обложка, для снимков без неё
+	currentCover := func(albumID string) string {
+		cover, ok := covers[albumID]
+		if !ok {
+			if a := s.albumCard(albumID); a != nil {
+				cover = a.CoverURL
+			}
+			covers[albumID] = cover
+		}
+		return cover
+	}
+	for i := range trackList {
+		if trackList[i].CoverURL == "" && trackList[i].AlbumID != "" {
+			trackList[i].CoverURL = currentCover(trackList[i].AlbumID)
+		}
+	}
 	s.overlayFor(nil, nil, trackList) // правки админа, как в остальных списках
 	for _, t := range trackList {
 		st.TopTracks = append(st.TopTracks, wrappedTrack{Track: t, Plays: tracks[t.ID].plays})
@@ -368,6 +390,9 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 	for i, id := range albumIDs {
 		c := albums[id]
 		albumList[i] = deezer.Album{ID: id, Title: c.p.album, ArtistID: c.p.artistID, ArtistName: c.p.artist, CoverURL: c.p.cover}
+		if c.p.cover == "" {
+			albumList[i].CoverURL = currentCover(id)
+		}
 	}
 	s.overlayFor(nil, albumPtrs(albumList), nil)
 	for _, a := range albumList {
