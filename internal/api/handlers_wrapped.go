@@ -25,7 +25,10 @@ import (
 //     считаются в Go за один проход (20 тысяч записей — десятки мс);
 //   - полные снимки треков — только для топ-50, вторым запросом;
 //   - альбомы считаются все: в итогах — первый ряд (wrappedTopAlbums) и их
-//     число, остальные отдаёт /api/me/wrapped/albums из того же кеша;
+//     число, остальные отдаёт /api/me/wrapped/albums из того же кеша.
+//     Синглы альбомами не считаются: это треки, они в топе треков. Тип
+//     релиза — из своей базы (albums.record_type, его пишет воркер при
+//     скачивании), без запросов к Deezer;
 //   - место среди слушателей — по индексу (artist_id, played_at) из 0014;
 //   - готовые итоги в кеше: прошлые годы — на сутки (они уже не меняются),
 //     текущий — на 10 минут.
@@ -308,6 +311,9 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 	}
 	st.Minutes = int(totalMs / 60000)
 	tracks = mergeRecordings(tracks)
+	if err := s.dropSingles(albums); err != nil {
+		return nil, err
+	}
 	st.Tracks, st.Artists, st.Albums = len(tracks), len(artists), len(albums)
 	st.Since = firstPlay.at.In(loc).Format("2006-01-02")
 	st.TopDay, st.Streak = topDayAndStreak(days)
@@ -400,6 +406,30 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 		}
 	}
 	return st, nil
+}
+
+// dropSingles removes singles from the year's albums: a single is a song,
+// and songs have their own top. The release type is the library's
+// (albums.record_type, with the admin's edits); a release the library
+// doesn't know stays.
+func (s *Server) dropSingles(albums map[string]*wrappedCounter) error {
+	ids := make([]string, 0, len(albums))
+	for id := range albums {
+		ids = append(ids, id)
+	}
+	rows, err := s.DB.Query(`SELECT deezer_id FROM albums WHERE deezer_id = ANY($1) AND record_type = 'single'`, pq.Array(ids))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		delete(albums, id)
+	}
+	return rows.Err()
 }
 
 // latestPlayMetas returns the newest snapshot of each listed song.

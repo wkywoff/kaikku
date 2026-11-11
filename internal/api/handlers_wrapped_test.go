@@ -238,3 +238,41 @@ func TestWrappedAlbums(t *testing.T) {
 	call(t, router, "GET", "/api/me/wrapped/albums?year=abc", token, "", http.StatusBadRequest)
 	call(t, router, "GET", "/api/me/wrapped/albums?year=2025", "", "", http.StatusUnauthorized)
 }
+
+// Синглы — это треки, а не альбомы: в альбомах года их нет (тип релиза — из
+// своей базы); релиз, которого в базе нет, остаётся.
+func TestWrappedAlbumsSkipSingles(t *testing.T) {
+	db, router, token := newTestRouter(t)
+	db.Exec(`TRUNCATE plays`)
+	t.Cleanup(func() { db.Exec(`TRUNCATE plays`) })
+	me := userIDOf(t, router, token)
+
+	at := time.Date(2025, 5, 1, 12, 0, 0, 0, time.UTC)
+	for i, album := range []string{"801", "801", "801", "802", "802", "803", "804"} {
+		addPlay(t, db, token, router, me, "12"+album, "92", album, 60, at.Add(time.Duration(i)*time.Hour))
+	}
+	for album, kind := range map[string]string{"801": "single", "802": "album", "803": "ep"} { // 804 в базе нет
+		if _, err := db.Exec(`INSERT INTO albums (title, deezer_id, record_type) VALUES ($1, $2, $3)`, "Album "+album, album, kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var w wrappedStats
+	json.Unmarshal(call(t, router, "GET", "/api/me/wrapped?year=2025&tz=UTC", token, "", http.StatusOK), &w)
+	if w.Albums != 3 || len(w.TopAlbums) != 3 || w.TopAlbums[0].ID != "802" || w.TopAlbums[0].Plays != 2 {
+		t.Errorf("albums %d, top: %+v", w.Albums, w.TopAlbums)
+	}
+	if len(w.TopTracks) != 4 || w.TopTracks[0].ID != "12801" { // сингл остаётся в треках
+		t.Errorf("top tracks: %+v", w.TopTracks)
+	}
+	var all struct{ Albums []wrappedAlbum }
+	json.Unmarshal(call(t, router, "GET", "/api/me/wrapped/albums?year=2025&tz=UTC", token, "", http.StatusOK), &all)
+	for _, a := range all.Albums {
+		if a.ID == "801" {
+			t.Errorf("a single among the albums: %+v", all.Albums)
+		}
+	}
+	if len(all.Albums) != 3 {
+		t.Errorf("all albums: %+v", all.Albums)
+	}
+}
