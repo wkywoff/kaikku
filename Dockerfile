@@ -26,7 +26,7 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X kaikku/internal/api.Version=${VERSION}" -o /out/kaikku-api ./cmd/api \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/kaikku-worker ./cmd/worker
 
-FROM denoland/deno:bin-2.9.7 AS deno
+FROM denoland/deno:bin-2.9.8 AS deno
 
 # --- app: API, воркер, миграции ---
 FROM debian:trixie-slim AS app
