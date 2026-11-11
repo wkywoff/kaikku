@@ -326,3 +326,38 @@ func TestBackgroundDownloadsStopAtUserQueueLimit(t *testing.T) {
 		t.Error("the admin has a queue limit")
 	}
 }
+
+// Кто вернул в очередь чужой убранный трек, тому он и идёт в лимит.
+func TestBackgroundDownloads_RequeuedJobCountsForRequester(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	first := invitedUser(t, router, admin, "queue-first")
+	second := invitedUser(t, router, admin, "queue-second")
+	var id string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'queue-second'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	tracks := []string{"12345", "501"}
+	for _, track := range tracks {
+		call(t, router, "PUT", "/api/me/liked/"+track, first, "", http.StatusNoContent)
+	}
+	// Как после Housekeep: файл убран как неслушаемый, задание готово без трека.
+	if _, err := db.Exec(`UPDATE ingest_jobs SET status = 'done', result_track_id = NULL`); err != nil {
+		t.Fatal(err)
+	}
+	old := maxQueuedPerUser
+	maxQueuedPerUser = 1
+	t.Cleanup(func() { maxQueuedPerUser = old })
+
+	for _, track := range tracks {
+		call(t, router, "PUT", "/api/me/liked/"+track, second, "", http.StatusNoContent)
+	}
+	var pending, mine int
+	db.QueryRow(`SELECT count(*) FILTER (WHERE status = 'pending'),
+	                    count(*) FILTER (WHERE status = 'pending' AND requested_by = $1) FROM ingest_jobs`, id).Scan(&pending, &mine)
+	if pending != 1 || mine != 1 {
+		t.Errorf("pending jobs = %d, of them the requester's = %d; want 1 and 1", pending, mine)
+	}
+	if !srv.queueFull(id) {
+		t.Error("the re-queued job does not count toward the limit")
+	}
+}

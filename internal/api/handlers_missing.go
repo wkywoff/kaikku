@@ -71,7 +71,7 @@ func (s *Server) handleRetryMissing(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid job id")
 		return
 	}
-	requeued, err := s.requeueJob(jobID, "failed")
+	requeued, err := s.requeueJob(jobID, "failed", "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "update failed")
 		return

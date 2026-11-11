@@ -22,7 +22,7 @@ func (s *Server) enqueueTrack(userID, deezerTrackID string) (map[string]any, err
 		return nil, errLocalID
 	}
 	sourceRef := "deezer:" + deezerTrackID
-	if existing, err := s.existingJob(sourceRef); err != nil || existing != nil {
+	if existing, err := s.existingJob(userID, sourceRef); err != nil || existing != nil {
 		return existing, err
 	}
 
@@ -44,7 +44,7 @@ func (s *Server) enqueueResolved(userID string, track deezer.Track, album *deeze
 		return nil, errLocalID
 	}
 	sourceRef := "deezer:" + track.ID
-	if existing, err := s.existingJob(sourceRef); err != nil || existing != nil {
+	if existing, err := s.existingJob(userID, sourceRef); err != nil || existing != nil {
 		return existing, err
 	}
 	return s.insertIngestJob(userID, sourceRef, track, album)
@@ -70,7 +70,7 @@ func (s *Server) insertIngestJob(userID, sourceRef string, track deezer.Track, a
 	switch {
 	case err == sql.ErrNoRows:
 		// Гонка: кто-то поставил в очередь этот же трек между dedup-проверкой и INSERT.
-		existing, lookupErr := s.existingJob(sourceRef)
+		existing, lookupErr := s.existingJob(userID, sourceRef)
 		if lookupErr != nil {
 			return nil, lookupErr
 		}
@@ -126,7 +126,7 @@ func statusFor(result map[string]any) int {
 // existingJob returns nil if sourceRef was never queued. A job that failed,
 // or finished but whose track was since deleted, is put back into the queue
 // (re-adding is the natural way to retry); anything else is a duplicate.
-func (s *Server) existingJob(sourceRef string) (map[string]any, error) {
+func (s *Server) existingJob(userID, sourceRef string) (map[string]any, error) {
 	var jobID int64
 	var status string
 	var resultTrackID sql.NullString
@@ -140,7 +140,7 @@ func (s *Server) existingJob(sourceRef string) (map[string]any, error) {
 	}
 
 	if status == "failed" || (status == "done" && !resultTrackID.Valid) {
-		requeued, err := s.requeueJob(jobID, status)
+		requeued, err := s.requeueJob(jobID, status, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +148,7 @@ func (s *Server) existingJob(sourceRef string) (map[string]any, error) {
 			return map[string]any{"job_id": jobID, "status": "queued"}, nil
 		}
 		// Статус успел смениться параллельно — отдаём актуальный.
-		return s.existingJob(sourceRef)
+		return s.existingJob(userID, sourceRef)
 	}
 
 	resp := map[string]any{"status": "duplicate", "job_id": jobID, "job_status": status}
@@ -159,8 +159,10 @@ func (s *Server) existingJob(sourceRef string) (map[string]any, error) {
 }
 
 // requeueJob moves a job from fromStatus back to pending; false if the job
-// was no longer in fromStatus.
-func (s *Server) requeueJob(jobID int64, fromStatus string) (bool, error) {
+// was no longer in fromStatus. Задание теперь за userID (пусто — за кем было):
+// кто вернул трек в очередь, тому он и идёт в лимит (queueFull), иначе чужие
+// убранные треки ставились бы мимо него.
+func (s *Server) requeueJob(jobID int64, fromStatus, userID string) (bool, error) {
 	var others, explicit any // NULL — оставить как есть
 	if t := s.currentTrack(jobID); t != nil {
 		others, explicit = pq.Array(otherArtists(*t)), t.Explicit
@@ -168,9 +170,10 @@ func (s *Server) requeueJob(jobID int64, fromStatus string) (bool, error) {
 	res, err := s.DB.Exec(
 		`UPDATE ingest_jobs
 		    SET status = 'pending', error = NULL, result_track_id = NULL, video_id = NULL, updated_at = now(),
-		        other_artists = COALESCE($3, other_artists), explicit = COALESCE($4, explicit)
+		        other_artists = COALESCE($3, other_artists), explicit = COALESCE($4, explicit),
+		        requested_by = COALESCE($5, requested_by)
 		  WHERE id = $1 AND status = $2`,
-		jobID, fromStatus, others, explicit,
+		jobID, fromStatus, others, explicit, nullableString(userID),
 	)
 	if err != nil {
 		return false, err
