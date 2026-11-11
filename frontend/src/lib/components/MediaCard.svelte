@@ -1,8 +1,8 @@
 <script>
   // Карточка альбома/артиста для сеток: обложка, название, подпись. Если
   // передан onPlay — при наведении появляется кнопка Play (как у Spotify).
-  // menu — пункты её меню (lib/cardMenu.js): правый клик, долгое нажатие
-  // пальцем, а с мышью ещё и «…» при наведении.
+  // menu — пункты её меню (lib/cardMenu.js): правый клик или долгое нажатие
+  // пальцем. Отдельной кнопки «…» на карточке нет: при наведении — только Play.
   import { sized, srcsetOf, CARD_SIZES } from '../imageproxy.js';
   import { link, fromHistory } from '../stores/nav.js';
   import PlayButton from './PlayButton.svelte';
@@ -13,7 +13,6 @@
   import { canEdit } from '../stores/me.js';
   import { openMenu } from '../stores/contextMenu.js';
   import { longpress } from '../longpress.js';
-  import Ellipsis from '@lucide/svelte/icons/ellipsis';
 
   export let href;
   export let image = null;
@@ -55,9 +54,6 @@
       </div>
     {/if}
     {#if hidden}<span class="hidden-badge" title={$t('admin.hiddenRelease')}><EyeOff size={16} /></span>{/if}
-    {#if menu}
-      <button class="more" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title })} on:click|preventDefault|stopPropagation={showMenu}><Ellipsis size={18} /></button>
-    {/if}
     {#if onPlay && (!hidden || $canEdit)}
       <div class="play" class:visible={playing}>
         <PlayButton size={46} {playing} on:click={(e) => (e.preventDefault(), e.stopPropagation(), onPlay())} />
@@ -140,25 +136,6 @@
     .card:hover .play {
       opacity: 1;
       transform: none;
-    }
-  }
-  /* «…» — только с мышью и при наведении; на телефоне меню — долгим нажатием. */
-  .more {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: none;
-    padding: 6px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
-  }
-  @media (hover: hover) {
-    .card:hover .more {
-      display: flex;
-    }
-    .more:hover {
-      background: rgba(0, 0, 0, 0.8);
     }
   }
   .title {
