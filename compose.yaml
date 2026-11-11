@@ -110,6 +110,7 @@ services:
     environment:
       MEDIA_SECRET: ${MEDIA_SECRET:?set MEDIA_SECRET in .env (openssl rand -hex 32)}
     volumes:
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       - data:/data:ro
     ports:
       - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:80"
