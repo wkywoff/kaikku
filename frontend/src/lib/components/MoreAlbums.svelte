@@ -13,6 +13,9 @@
   import { t } from '../i18n.js';
   import { recordCategory, year } from '../format.js';
   import { albumMenuItems } from '../cardMenu.js';
+  import { isPlaying as playerPlaying } from '../stores/player.js';
+  import { playingContext, isContext, playAlbum } from '../library.js';
+  import { toast } from '../stores/toast.js';
   import MediaCard from './MediaCard.svelte';
 
   export let artist; // { id, name } — Deezer
@@ -34,6 +37,9 @@
 
   // Сколько карточек в строке (min 176 px; на телефоне — 2), как на странице артиста.
   $: perRow = gridWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(gridWidth / 176)));
+
+  $: playingCtx = $playerPlaying ? $playingContext : null;
+  const play = (id) => playAlbum(id).catch((e) => toast(e.message, 'error'));
 </script>
 
 {#if albums.length}
@@ -46,7 +52,16 @@
     </div>
     <div class="grid" bind:clientWidth={gridWidth}>
       {#each albums.slice(0, perRow) as a (a.id)}
-        <MediaCard href={paths.album(a.id)} menu={() => albumMenuItems(a)} image={a.cover_url} hidden={a.hidden} title={a.title} subtitle={year(a.release_date)} />
+        <MediaCard
+          href={paths.album(a.id)}
+          menu={() => albumMenuItems(a)}
+          image={a.cover_url}
+          hidden={a.hidden}
+          title={a.title}
+          subtitle={year(a.release_date)}
+          onPlay={() => play(a.id)}
+          playing={isContext(playingCtx, 'album', a.id)}
+        />
       {/each}
     </div>
   </section>

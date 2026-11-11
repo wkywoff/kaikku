@@ -19,7 +19,7 @@
   import { lang } from '../stores/settings.js';
   import { t } from '../i18n.js';
   import { pageTint } from '../stores/theme.js';
-  import { libraryState, refresh, playRows, trackIdOf, playArtistRadio, playingContext, isContext } from '../library.js';
+  import { libraryState, refresh, playRows, trackIdOf, playArtistRadio, playingContext, isContext, playAlbum, playArtistTop } from '../library.js';
   import { followedIds, toggleFollow } from '../stores/collection.js';
   import { toast } from '../stores/toast.js';
   import Radio from '@lucide/svelte/icons/radio';
@@ -140,6 +140,10 @@
 
   $: playingHere = !!artist && isContext($playingContext, 'artist', artist.id);
 
+  // Play на карточках релизов и похожих артистов.
+  $: playingCtx = $playerPlaying ? $playingContext : null;
+  const playCard = (start) => start().catch((e) => toast(e.message, 'error'));
+
   function onPlay() {
     if (playingHere) return player.toggle();
     const first = top.findIndex((r) => trackIdOf(r, $libraryState));
@@ -226,6 +230,8 @@
             hidden={a.hidden}
             title={a.title}
             subtitle={[year(a.release_date), recordTypeLabel(a.record_type, $lang)].filter(Boolean).join(' • ')}
+            onPlay={() => playCard(() => playAlbum(a.id))}
+            playing={isContext(playingCtx, 'album', a.id)}
           />
         {/each}
       </div>
@@ -244,7 +250,16 @@
       </div>
       <div class="grid">
         {#each relatedVisible as a (a.id)}
-          <MediaCard href={paths.artist(a.id)} menu={() => artistMenuItems(a)} image={a.picture_url} round title={a.name} subtitle={$t('artist.kind')} />
+          <MediaCard
+            href={paths.artist(a.id)}
+            menu={() => artistMenuItems(a)}
+            image={a.picture_url}
+            round
+            title={a.name}
+            subtitle={$t('artist.kind')}
+            onPlay={() => playCard(() => playArtistTop(a.id))}
+            playing={isContext(playingCtx, 'artist', a.id)}
+          />
         {/each}
       </div>
     </section>

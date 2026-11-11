@@ -12,7 +12,9 @@
   import { api } from '../api.js';
   import { navStore, paths, link, lastSearch } from '../stores/nav.js';
   import { pageTint } from '../stores/theme.js';
-  import { refresh } from '../library.js';
+  import { refresh, playingContext, isContext, playAlbum, playArtistTop } from '../library.js';
+  import { isPlaying as playerPlaying } from '../stores/player.js';
+  import { toast } from '../stores/toast.js';
   import { recordTypeLabel, year } from '../format.js';
   import { lang } from '../stores/settings.js';
   import { t } from '../i18n.js';
@@ -83,6 +85,10 @@
   $: topArtist = results?.artists?.[0];
   $: people = results?.users || [];
   $: empty = results && !rows.length && !results.artists?.length && !results.albums?.length && !people.length;
+
+  // Play на карточках артистов и альбомов.
+  $: playingCtx = $playerPlaying ? $playingContext : null;
+  const playCard = (start) => start().catch((e) => toast(e.message, 'error'));
 </script>
 
 <div class="page-pad search">
@@ -170,7 +176,16 @@
         <h2>{$t('search.artists')}</h2>
         <div class="row-grid">
           {#each results.artists.slice(0, 6) as a (a.id)}
-            <MediaCard href={paths.artist(a.id)} menu={() => artistMenuItems(a)} image={a.picture_url} title={a.name} subtitle={$t('artist.kind')} round />
+            <MediaCard
+              href={paths.artist(a.id)}
+              menu={() => artistMenuItems(a)}
+              image={a.picture_url}
+              title={a.name}
+              subtitle={$t('artist.kind')}
+              round
+              onPlay={() => playCard(() => playArtistTop(a.id))}
+              playing={isContext(playingCtx, 'artist', a.id)}
+            />
           {/each}
         </div>
       </section>
@@ -188,6 +203,8 @@
               hidden={a.hidden}
               title={a.title}
               subtitle={[year(a.release_date), recordTypeLabel(a.record_type, $lang), a.artist_name].filter(Boolean).join(' • ')}
+              onPlay={() => playCard(() => playAlbum(a.id))}
+              playing={isContext(playingCtx, 'album', a.id)}
             />
           {/each}
         </div>
