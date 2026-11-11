@@ -83,6 +83,8 @@ func newStreamTestServer(t *testing.T) (*Server, *httptest.Server, string, *fake
 	deezerSrv := mockDeezerServer(t)
 	t.Cleanup(deezerSrv.Close)
 	src := newFakeSource()
+	freeSpace = func(string) (uint64, error) { return 50 << 30, nil } // /tmp тестов может быть меньше гигабайта
+	t.Cleanup(func() { freeSpace = statFree })
 	t.Cleanup(func() { // скачивание, которое тест так и не докормил
 		select {
 		case <-src.ready:
@@ -438,6 +440,29 @@ func TestStreamStartLimit(t *testing.T) {
 	}
 	if !l.allow("a", now.Add(streamStartWindow)) {
 		t.Error("the next window was refused")
+	}
+}
+
+// Места меньше минимума — новое не качаем, иначе прослушивания доедали бы
+// диск, пока воркер ждёт места. Задание остаётся воркеру.
+func TestDeezerStream_RefusedWhenDiskIsLow(t *testing.T) {
+	srv, ts, token, src := newStreamTestServer(t)
+	freeSpace = func(string) (uint64, error) { return minFreeSpace - 1, nil }
+
+	code, link := getStreamURL(t, ts, token, "12345")
+	if code != http.StatusServiceUnavailable || link.URL != "" {
+		t.Fatalf("stream url on a nearly full disk: %d %+v", code, link)
+	}
+	if n := src.calls.Load(); n != 0 {
+		t.Errorf("downloads started: %d", n)
+	}
+	var status string
+	var held bool
+	if err := srv.DB.QueryRow(`SELECT status, hold_until IS NOT NULL FROM ingest_jobs WHERE source_ref = 'deezer:12345'`).Scan(&status, &held); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || held {
+		t.Errorf("job: status %s, held %v; want pending and free for the worker", status, held)
 	}
 }
 

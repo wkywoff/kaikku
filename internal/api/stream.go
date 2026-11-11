@@ -463,7 +463,10 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 	}
 	// Скачивание — сразу, не дожидаясь, пока браузер запросит поток: так
 	// звук на круг клиент↔сервер раньше.
-	if err := s.startStream(deezerID); err != nil {
+	if err := s.startStream(deezerID); errors.Is(err, errDiskLow) {
+		writeError(w, http.StatusServiceUnavailable, "the server is low on disk space, new songs can't be played right now")
+		return
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "query failed")
 		return
 	}
@@ -580,6 +583,9 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 		if err := s.startStream(deezerID); err == sql.ErrNoRows {
 			http.Error(w, "track is not queued", http.StatusNotFound)
 			return
+		} else if errors.Is(err, errDiskLow) {
+			http.Error(w, "low on disk space", http.StatusServiceUnavailable)
+			return
 		} else if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
@@ -593,6 +599,21 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 	serveGrowingFile(w, r, d)
 }
 
+// errDiskLow — места меньше минимума: нового не качаем. Задание остаётся в
+// очереди, воркер скачает трек сам, когда место появится (ingest.DiskLow).
+var errDiskLow = errors.New("low on disk space")
+
+// diskLow: тот же минимум, что у воркера и загрузок (minFreeSpace), — иначе
+// прослушивания доедали бы диск, пока воркер ждёт места.
+func (h *StreamHub) diskLow() bool {
+	for _, dir := range []string{h.Dir, h.StagingDir} {
+		if free, err := freeSpace(dir); err == nil && free < minFreeSpace {
+			return true
+		}
+	}
+	return false
+}
+
 // startStream starts downloading the queued track deezerID, unless that's
 // already under way. A pending job is held from the worker until the
 // download is handed off to it; if the worker already has the job, the
@@ -600,6 +621,9 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startStream(deezerID string) error {
 	if s.Streams.lookup(deezerID) != nil {
 		return nil
+	}
+	if s.Streams.diskLow() {
+		return errDiskLow
 	}
 	var job streamJob
 	var status string
