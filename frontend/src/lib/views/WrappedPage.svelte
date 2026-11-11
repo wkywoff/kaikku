@@ -52,6 +52,8 @@
   $: rows = (data?.top_tracks || []).map((tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null }));
   $: topArtist = data?.top_artists?.[0];
   $: topTrack = data?.top_tracks?.[0];
+  // Трек года открывается в своём альбоме, выделенным (как ссылка «Поделиться»).
+  $: topTrackHref = topTrack ? paths.albumTrack(paths.album(topTrack.album_id), topTrack.id) : null;
   $: maxMonth = Math.max(1, ...(data?.months || [0]));
   $: maxHour = Math.max(1, ...(data?.hours || [0]));
   $: bestMonth = data ? data.months.indexOf(Math.max(...data.months)) : -1;
@@ -170,10 +172,16 @@
         <section class="card song">
           <p class="kicker">{$t('wrapped.topSong')}</p>
           <div class="song-hero">
-            {#if topTrack.cover_url}<img src={sized(topTrack.cover_url, 300)} alt="" />{:else}<span class="ph square"><Disc3 size={64} /></span>{/if}
+            <!-- Обложка ведёт туда же, что и название: для клавиатуры и
+                 скринридера хватает ссылки-названия. -->
+            <a class="song-cover" href={topTrackHref} use:link aria-hidden="true" tabindex="-1">
+              {#if topTrack.cover_url}<img src={sized(topTrack.cover_url, 300)} alt="" />{:else}<span class="ph square"><Disc3 size={64} /></span>{/if}
+            </a>
             <div>
-              <p class="big-text">{topTrack.title}</p>
-              <p>{rows[0].artists.map((a) => a.name).join(', ')}</p>
+              <a class="big-text song-link" href={topTrackHref} use:link>{topTrack.title}</a>
+              <p>
+                {#each rows[0].artists as a, i (i)}{#if i}, {/if}{#if a.href}<a class="song-link" href={a.href} use:link>{a.name}</a>{:else}{a.name}{/if}{/each}
+              </p>
               <p class="badge">{$t('wrapped.songPlays', { times: count(topTrack.plays, 'times', $lang) })}</p>
             </div>
           </div>
@@ -429,6 +437,17 @@
     align-items: center;
     gap: 24px;
     flex-wrap: wrap;
+  }
+  .song-cover {
+    display: flex;
+  }
+  .song-link {
+    align-self: flex-start; /* ссылка — по тексту, а не во всю ширину карточки */
+  }
+  @media (hover: hover) {
+    .song-link:hover {
+      text-decoration: underline;
+    }
   }
   .song-hero img,
   .song-hero .square {
