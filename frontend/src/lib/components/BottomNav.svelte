@@ -11,7 +11,7 @@
   $: tabs = [
     { href: paths.home(), label: 'nav.home', icon: House, active: view === 'home' },
     { href: paths.search($lastSearch), label: 'nav.search', icon: Search, active: view === 'search' },
-    { href: paths.library(), label: 'nav.library', icon: Library, active: ['library', 'liked', 'settings', 'wrapped', 'uploads', 'upload'].includes(view) },
+    { href: paths.library(), label: 'nav.library', icon: Library, active: ['library', 'liked', 'settings', 'wrapped', 'wrappedAlbums', 'uploads', 'upload'].includes(view) },
   ];
 </script>
 

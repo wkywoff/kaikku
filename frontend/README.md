@@ -23,6 +23,7 @@ any unknown path, so direct links open.
 /upload, /upload/<id>               own releases: list and upload dialog
 /admin/missing                      admin: tracks that failed to download
 /wrapped[/<year>]                   year in review
+/wrapped/<year>/albums              every album played that year
 /settings                           settings (/lastfm?token= comes back here)
 ```
 

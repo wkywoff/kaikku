@@ -2,7 +2,8 @@
   // Итоги года, как Spotify Wrapped: минуты, главный исполнитель и трек,
   // топы, месяцы и часы, рекорды. Всё считает сервер (handlers_wrapped.go)
   // в часовом поясе браузера; топ-50 треков можно включить или сохранить
-  // плейлистом.
+  // плейлистом, альбомы — ряд самых слушаемых, остальные по «Показать все»
+  // (WrappedAlbumsPage).
   import { api } from '../api.js';
   import { navStore, navigate, paths, link } from '../stores/nav.js';
   import { lang } from '../stores/settings.js';
@@ -13,6 +14,9 @@
   import { createPlaylist } from '../stores/collection.js';
   import { rowFromDeezerTrack } from '../rows.js';
   import { plural, longDate } from '../format.js';
+  import { num, word, count } from '../wrappedText.js';
+  import { albumMenuItems } from '../cardMenu.js';
+  import { MAX_PER_ROW } from '../layout.js';
   import TrackList from '../components/TrackList.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import PlayButton from '../components/PlayButton.svelte';
@@ -49,9 +53,15 @@
   // История пишется не с начала года — скажем, откуда итоги.
   $: partial = !!data?.since && data.since > `${data.year}-01-15`;
 
+  // Альбомы — один ряд, сколько помещается (как полки главной); на телефоне,
+  // где в ряду два, — два ряда. Остальные — по «Показать все».
+  let albumsWidth = 0;
+  $: perRow = albumsWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(albumsWidth / 176)));
+  $: shownAlbums = (data?.top_albums || []).slice(0, perRow < 4 ? perRow * 2 : perRow);
+  $: albumTotal = data?.albums ?? data?.top_albums?.length ?? 0;
+
   const monthName = (m, l) => new Date(2000, m, 1).toLocaleDateString(l === 'en' ? 'en-US' : 'ru-RU', { month: 'long' });
   const monthShort = (m, l) => new Date(2000, m, 1).toLocaleDateString(l === 'en' ? 'en-US' : 'ru-RU', { month: 'narrow' });
-  const num = (n, l) => (n || 0).toLocaleString(l === 'en' ? 'en-US' : 'ru-RU');
 
   // Время суток, когда музыки больше всего.
   function persona(hours) {
@@ -64,18 +74,6 @@
     }
     return best;
   }
-
-  // Склонения: «1 прослушивание», «2 раза», «5 минут».
-  const FORMS = {
-    plays: { ru: ['прослушивание', 'прослушивания', 'прослушиваний'], en: ['play', 'plays'] },
-    minutes: { ru: ['минута', 'минуты', 'минут'], en: ['minute', 'minutes'] },
-    times: { ru: ['раз', 'раза', 'раз'], en: ['time', 'times'] },
-    tracks: { ru: ['разный трек', 'разных трека', 'разных треков'], en: ['different song', 'different songs'] },
-    artists: { ru: ['исполнитель', 'исполнителя', 'исполнителей'], en: ['artist', 'artists'] },
-    days: { ru: ['день подряд с музыкой', 'дня подряд с музыкой', 'дней подряд с музыкой'], en: ['day in a row with music', 'days in a row with music'] },
-  };
-  const word = (n, key, l) => (l === 'en' ? FORMS[key].en[n === 1 ? 0 : 1] : plural(n, FORMS[key].ru));
-  const count = (n, key, l) => `${num(n, l)} ${word(n, key, l)}`;
 
   // 12 345 минут → «≈ 8 дней 13 часов»
   function inDays(minutes, l) {
@@ -190,10 +188,22 @@
 
       {#if data.top_albums.length}
         <section class="plain">
-          <h2>{$t('wrapped.topAlbums')}</h2>
-          <div class="grid">
-            {#each data.top_albums as a (a.id)}
-              <MediaCard href={paths.album(a.id)} image={a.cover_url} title={a.title} subtitle={count(a.plays, 'plays', $lang)} onPlay={() => playAlbum(a.id)} />
+          <div class="plain-head">
+            <h2>{$t('wrapped.topAlbums')}</h2>
+            {#if albumTotal > shownAlbums.length}
+              <a class="show-all" href={paths.wrappedAlbums(data.year)} use:link>{$t('disc.showAll')}</a>
+            {/if}
+          </div>
+          <div class="grid" bind:clientWidth={albumsWidth}>
+            {#each shownAlbums as a (a.id)}
+              <MediaCard
+                href={paths.album(a.id)}
+                menu={() => albumMenuItems(a)}
+                image={a.cover_url}
+                title={a.title}
+                subtitle={[count(a.plays, 'plays', $lang), a.artist].filter(Boolean).join(' • ')}
+                onPlay={() => playAlbum(a.id)}
+              />
             {/each}
           </div>
         </section>
@@ -443,6 +453,18 @@
     display: flex;
     align-items: center;
     gap: 12px;
+  }
+  .show-all {
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-dim);
+  }
+  @media (hover: hover) {
+    .show-all:hover {
+      color: var(--text);
+      text-decoration: underline;
+    }
   }
   .grid {
     display: grid;

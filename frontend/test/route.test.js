@@ -20,6 +20,7 @@ test('every path builder round-trips through parseRoute', () => {
     [paths.albumTrack(paths.album('302127'), '3135556'), { view: 'album', id: '302127', track: '3135556' }],
     [paths.wrapped(), { view: 'wrapped' }],
     [paths.wrapped(2025), { view: 'wrapped', year: '2025' }],
+    [paths.wrappedAlbums(2025), { view: 'wrappedAlbums', year: '2025' }],
     [paths.album('k3'), { view: 'album', id: 'k3' }],
     [paths.albumTrack(paths.album('k3'), 'k12'), { view: 'album', id: 'k3', track: 'k12' }],
     [paths.artist('k7'), { view: 'artist', id: 'k7' }],

@@ -169,6 +169,7 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("GET /api/me/mixes/{id}", s.authed(s.handleMix))
 	mux.Handle("GET /api/me/suggestions", s.authed(s.handleSuggestions))
 	mux.Handle("GET /api/me/wrapped", s.authed(s.handleWrapped))
+	mux.Handle("GET /api/me/wrapped/albums", s.authed(s.handleWrappedAlbums))
 	mux.Handle("GET /api/playlists", s.authed(s.handlePlaylists))
 	mux.Handle("POST /api/playlists", s.authed(s.handleCreatePlaylist))
 	mux.Handle("GET /api/playlists/{id}", s.authed(s.handleGetPlaylist))

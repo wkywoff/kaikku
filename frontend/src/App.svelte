@@ -128,12 +128,13 @@
     queuePanel: () => import('./lib/components/QueuePanel.svelte'),
     settings: () => import('./lib/views/SettingsPage.svelte'),
     wrapped: () => import('./lib/views/WrappedPage.svelte'),
+    wrappedAlbums: () => import('./lib/views/WrappedAlbumsPage.svelte'),
     uploads: () => import('./lib/views/UploadsPage.svelte'),
     upload: () => import('./lib/views/UploadPage.svelte'),
     missing: () => import('./lib/views/MissingPage.svelte'),
     user: () => import('./lib/views/UserPage.svelte'),
   };
-  const RARE = ['settings', 'wrapped', 'uploads', 'upload', 'missing']; // загрузка — только у тех, кто загружает; «Не нашлось» — админ
+  const RARE = ['settings', 'wrapped', 'wrappedAlbums', 'uploads', 'upload', 'missing']; // загрузка — только у тех, кто загружает; «Не нашлось» — админ
   const BY_ID = ['playlist', 'mix', 'genre', 'artist', 'discography', 'album', 'upload', 'user']; // своя страница на каждый id
   let loaded = {}; // имя → компонент
   const loading = new Set();
@@ -166,7 +167,7 @@
   // плавная перекраска из цвета прежней страницы после него видна как
   // мигание. Вернулись по истории — цвет ставится сразу.
   $: instantTint = $navStore && fromHistory();
-  const SCREEN_TITLES = { library: 'library.title', liked: 'liked.title', search: 'search.label', settings: 'settings.title', wrapped: 'wrapped.title', uploads: 'upload.title', missing: 'missing.title' };
+  const SCREEN_TITLES = { library: 'library.title', liked: 'liked.title', search: 'search.label', settings: 'settings.title', wrapped: 'wrapped.title', wrappedAlbums: 'wrapped.albumsTitle', uploads: 'upload.title', missing: 'missing.title' };
   $: screenTitle =
     $routeTitle?.key === routeKey
       ? `${$routeTitle.text} | ${APP_NAME}`

@@ -19,11 +19,12 @@
 //
 // ID артистов, альбомов и треков — Deezer (число) или свои, загруженные (k…).
 //   /wrapped, /wrapped/<год>   → итоги года
+//   /wrapped/<год>/albums      → все альбомы, прослушанные за год
 //   /user/<ник>                → профиль: подписка, публичные плейлисты
 //
 // Старые адреса /discover/… продолжают открываться.
 //
-// route: { view: 'home'|'library'|'search'|'settings'|'liked'|'playlist'|'mix'|'genre'|'artist'|'discography'|'album'|'wrapped'|'uploads'|'upload'|'missing'|'user', id?, q?, filter?, track?, year? }
+// route: { view: 'home'|'library'|'search'|'settings'|'liked'|'playlist'|'mix'|'genre'|'artist'|'discography'|'album'|'wrapped'|'wrappedAlbums'|'uploads'|'upload'|'missing'|'user', id?, q?, filter?, track?, year? }
 
 export function parseRoute(pathname, search = '') {
   const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -36,7 +37,10 @@ export function parseRoute(pathname, search = '') {
   if (a === 'lastfm') return { view: 'settings', lastfm: true }; // возврат с Last.fm (?token=…), см. SettingsPage
   if (a === 'admin' && b === 'missing') return { view: 'missing' };
   if (a === 'upload') return b ? { view: 'upload', id: b } : { view: 'uploads' };
-  if (a === 'wrapped') return /^\d{4}$/.test(b || '') ? { view: 'wrapped', year: b } : { view: 'wrapped' };
+  if (a === 'wrapped') {
+    if (!/^\d{4}$/.test(b || '')) return { view: 'wrapped' };
+    return c === 'albums' ? { view: 'wrappedAlbums', year: b } : { view: 'wrapped', year: b };
+  }
   if (a === 'collection' && b === 'tracks') return { view: 'liked' };
   if (a === 'playlist' && b) return { view: 'playlist', id: b };
   if (a === 'mix' && b) return { view: 'mix', id: b };
@@ -83,5 +87,6 @@ export const paths = {
   missing: () => '/admin/missing',
   upload: (id) => `/upload/${enc(id)}`,
   wrapped: (year = '') => (year ? `/wrapped/${enc(year)}` : '/wrapped'),
+  wrappedAlbums: (year) => `/wrapped/${enc(year)}/albums`,
   user: (username) => `/user/${enc(username)}`,
 };

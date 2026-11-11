@@ -189,3 +189,52 @@ func TestWrappedCountsListenedTime(t *testing.T) {
 		t.Errorf("listened_ms = %d, want the song length 240000", got)
 	}
 }
+
+// В итогах — первый ряд альбомов и сколько их всего; «Показать все»
+// (/api/me/wrapped/albums) отдаёт все альбомы года, от самого слушаемого.
+func TestWrappedAlbums(t *testing.T) {
+	db, router, token := newTestRouter(t)
+	db.Exec(`TRUNCATE plays`)
+	t.Cleanup(func() { db.Exec(`TRUNCATE plays`) })
+	other := invitedUser(t, router, token, "albums-other")
+	me, them := userIDOf(t, router, token), userIDOf(t, router, other)
+
+	// 12 альбомов: у альбома 700+i — i+1 прослушивание.
+	const n = wrappedTopAlbums + 2
+	at := time.Date(2025, 5, 1, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < n; i++ {
+		for j := 0; j <= i; j++ {
+			addPlay(t, db, token, router, me, fmt.Sprint(1000+i), "91", fmt.Sprint(700+i), 60, at.Add(time.Duration(i*100+j)*time.Minute))
+		}
+	}
+	addPlay(t, db, token, router, me, "1100", "91", "799", 60, at.AddDate(-1, 0, 0)) // прошлый год
+	addPlay(t, db, other, router, them, "1101", "91", "798", 60, at)                 // чужое
+
+	var w wrappedStats
+	json.Unmarshal(call(t, router, "GET", "/api/me/wrapped?year=2025&tz=UTC", token, "", http.StatusOK), &w)
+	if w.Albums != n || len(w.TopAlbums) != wrappedTopAlbums || w.TopAlbums[0].ID != fmt.Sprint(700+n-1) {
+		t.Errorf("albums %d, top %d: %+v", w.Albums, len(w.TopAlbums), w.TopAlbums)
+	}
+
+	var all struct {
+		Year   int
+		Albums []wrappedAlbum
+	}
+	json.Unmarshal(call(t, router, "GET", "/api/me/wrapped/albums?year=2025&tz=UTC", token, "", http.StatusOK), &all)
+	if all.Year != 2025 || len(all.Albums) != n {
+		t.Fatalf("all albums: year %d, %d albums: %+v", all.Year, len(all.Albums), all.Albums)
+	}
+	for i, a := range all.Albums {
+		if want := n - 1 - i; a.ID != fmt.Sprint(700+want) || a.Plays != want+1 || a.Title != "Album "+a.ID || a.Artist != "Artist 91" {
+			t.Errorf("album %d: %+v", i, a)
+		}
+	}
+
+	// Год без прослушиваний — пустой список, а не null; год проверяется так же.
+	body := call(t, router, "GET", "/api/me/wrapped/albums?year=2023", token, "", http.StatusOK)
+	if string(body) != `{"albums":[],"year":2023}`+"\n" && string(body) != `{"albums":[],"year":2023}` {
+		t.Errorf("empty year: %s", body)
+	}
+	call(t, router, "GET", "/api/me/wrapped/albums?year=abc", token, "", http.StatusBadRequest)
+	call(t, router, "GET", "/api/me/wrapped/albums?year=2025", "", "", http.StatusUnauthorized)
+}

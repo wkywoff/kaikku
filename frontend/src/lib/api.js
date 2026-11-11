@@ -161,6 +161,11 @@ export const api = {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     return request(`/me/wrapped?tz=${encodeURIComponent(tz)}${year ? `&year=${encodeURIComponent(year)}` : ''}`);
   }, // -> { items: [{ kind, album? | artist? | playlist? }] }
+  // Все альбомы, прослушанные за год, от самого слушаемого: { year, albums: [{ id, title, artist, cover_url, plays }] }.
+  wrappedAlbums: (year) => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    return request(`/me/wrapped/albums?tz=${encodeURIComponent(tz)}&year=${encodeURIComponent(year)}`);
+  },
   suggestions: () => request('/me/suggestions'), // -> { artists, based_on }
   playlists: () => request('/playlists'), // -> { mine, others }
   createPlaylist: (fields) => request('/playlists', { method: 'POST', body: fields }),

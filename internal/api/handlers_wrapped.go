@@ -24,6 +24,8 @@ import (
 //     (user_id, played_at) — только нужные поля, без снимков целиком, — и
 //     считаются в Go за один проход (20 тысяч записей — десятки мс);
 //   - полные снимки треков — только для топ-50, вторым запросом;
+//   - альбомы считаются все: в итогах — первый ряд (wrappedTopAlbums) и их
+//     число, остальные отдаёт /api/me/wrapped/albums из того же кеша;
 //   - место среди слушателей — по индексу (artist_id, played_at) из 0014;
 //   - готовые итоги в кеше: прошлые годы — на сутки (они уже не меняются),
 //     текущий — на 10 минут.
@@ -35,7 +37,7 @@ import (
 const (
 	wrappedTopTracks  = 50 // столько уходит в «Играть» и «Сохранить плейлистом»
 	wrappedTopArtists = 5
-	wrappedTopAlbums  = 5
+	wrappedTopAlbums  = 10 // ряд карточек в итогах; все — /api/me/wrapped/albums
 	wrappedPastTTL    = 24 * time.Hour
 	wrappedCurrentTTL = 10 * time.Minute
 )
@@ -79,6 +81,7 @@ type wrappedStats struct {
 	Minutes    int               `json:"minutes"`
 	Tracks     int               `json:"tracks"`  // разных треков
 	Artists    int               `json:"artists"` // разных исполнителей
+	Albums     int               `json:"albums"`  // разных альбомов
 	TopTracks  []wrappedTrack    `json:"top_tracks"`
 	TopArtists []wrappedArtist   `json:"top_artists"`
 	TopAlbums  []wrappedAlbum    `json:"top_albums"`
@@ -88,9 +91,27 @@ type wrappedStats struct {
 	Streak     int               `json:"streak"` // самый длинный ряд дней подряд
 	First      *deezer.Track     `json:"first,omitempty"`
 	Listeners  *wrappedListeners `json:"top_artist_listeners,omitempty"`
+
+	allAlbums []wrappedAlbum // все альбомы года, от самого слушаемого
 }
 
 func (s *Server) handleWrapped(w http.ResponseWriter, r *http.Request) {
+	if stats, ok := s.wrappedFor(w, r); ok {
+		writeJSON(w, http.StatusOK, stats)
+	}
+}
+
+// handleWrappedAlbums: every album played in the year with its play count,
+// most played first — the "Show all" page of the year in review.
+func (s *Server) handleWrappedAlbums(w http.ResponseWriter, r *http.Request) {
+	if stats, ok := s.wrappedFor(w, r); ok {
+		writeJSON(w, http.StatusOK, map[string]any{"year": stats.Year, "albums": stats.allAlbums})
+	}
+}
+
+// wrappedFor returns the year in review asked for by ?year= and ?tz= (cached);
+// on a bad request or a failure it answers itself and returns false.
+func (s *Server) wrappedFor(w http.ResponseWriter, r *http.Request) (*wrappedStats, bool) {
 	userID := currentUser(r)
 	loc, err := time.LoadLocation(r.URL.Query().Get("tz"))
 	if err != nil || r.URL.Query().Get("tz") == "" {
@@ -101,7 +122,7 @@ func (s *Server) handleWrapped(w http.ResponseWriter, r *http.Request) {
 	if y := r.URL.Query().Get("year"); y != "" {
 		if year, err = strconv.Atoi(y); err != nil || year < 2000 || year > now.Year() {
 			writeError(w, http.StatusBadRequest, "invalid year")
-			return
+			return nil, false
 		}
 	}
 	ttl := wrappedPastTTL
@@ -113,9 +134,9 @@ func (s *Server) handleWrapped(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "query failed")
-		return
+		return nil, false
 	}
-	writeJSON(w, http.StatusOK, stats)
+	return stats, true
 }
 
 type wrappedPlay struct {
@@ -212,7 +233,7 @@ func mergeRecordings(byTrack map[string]*wrappedCounter) map[string]*wrappedCoun
 func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*wrappedStats, error) {
 	from := time.Date(year, 1, 1, 0, 0, 0, 0, loc)
 	to := from.AddDate(1, 0, 0)
-	st := &wrappedStats{Year: year, Years: []int{}, TopTracks: []wrappedTrack{}, TopArtists: []wrappedArtist{}, TopAlbums: []wrappedAlbum{}}
+	st := &wrappedStats{Year: year, Years: []int{}, TopTracks: []wrappedTrack{}, TopArtists: []wrappedArtist{}, TopAlbums: []wrappedAlbum{}, allAlbums: []wrappedAlbum{}}
 
 	var first, last sql.NullTime
 	if err := s.DB.QueryRow(`SELECT min(played_at), max(played_at) FROM plays WHERE user_id = $1`, userID).Scan(&first, &last); err != nil {
@@ -287,7 +308,7 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 	}
 	st.Minutes = int(totalMs / 60000)
 	tracks = mergeRecordings(tracks)
-	st.Tracks, st.Artists = len(tracks), len(artists)
+	st.Tracks, st.Artists, st.Albums = len(tracks), len(artists), len(albums)
 	st.Since = firstPlay.at.In(loc).Format("2006-01-02")
 	st.TopDay, st.Streak = topDayAndStreak(days)
 
@@ -336,16 +357,17 @@ func (s *Server) computeWrapped(userID string, year int, loc *time.Location) (*w
 
 	// Альбомы и исполнители — с правками админа (названия, обложки, фото),
 	// как в остальных списках, а не как в снимках прослушиваний.
-	topAlbumIDs := top(albums, wrappedTopAlbums)
-	albumList := make([]deezer.Album, len(topAlbumIDs))
-	for i, id := range topAlbumIDs {
+	albumIDs := top(albums, len(albums))
+	albumList := make([]deezer.Album, len(albumIDs))
+	for i, id := range albumIDs {
 		c := albums[id]
 		albumList[i] = deezer.Album{ID: id, Title: c.p.album, ArtistID: c.p.artistID, ArtistName: c.p.artist, CoverURL: c.p.cover}
 	}
 	s.overlayFor(nil, albumPtrs(albumList), nil)
 	for _, a := range albumList {
-		st.TopAlbums = append(st.TopAlbums, wrappedAlbum{ID: a.ID, Title: a.Title, Artist: a.ArtistName, CoverURL: a.CoverURL, Plays: albums[a.ID].plays})
+		st.allAlbums = append(st.allAlbums, wrappedAlbum{ID: a.ID, Title: a.Title, Artist: a.ArtistName, CoverURL: a.CoverURL, Plays: albums[a.ID].plays})
 	}
+	st.TopAlbums = st.allAlbums[:min(len(st.allAlbums), wrappedTopAlbums)]
 
 	// Исполнители: имя и фото — текущие с Deezer (страница артиста в кеше),
 	// поверх — правки админа; не вышло — имя из снимка прослушивания.
