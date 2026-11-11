@@ -251,6 +251,42 @@ func TestUploads_Version(t *testing.T) {
 	}
 }
 
+// Основной релиз сняли с публикации уже после привязки: в редакторе версии от
+// него остаётся только ID, без нынешних названия и обложки чужого черновика.
+func TestUploads_VersionOfWithdrawnRelease(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	srv.StorageDir = t.TempDir()
+	linker := invitedUser(t, router, admin, "linker")
+	invitedUser(t, router, admin, "author")
+	var author string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'author'`).Scan(&author); err != nil {
+		t.Fatal(err)
+	}
+	orig := seedOwnRelease(t, db, author, false)
+	id, tracks := newDraft(t, db, router, linker, 1)
+
+	var st struct {
+		VersionOf *struct{ ID, Title string } `json:"version_of"`
+	}
+	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, linker, `{"title":"Deluxe","artists":["1"],"record_type":"album",
+		"release_date":"2026-10-20","tracks":[{"id":"`+tracks[0]+`","title":"Bonus"}],"version_of":"`+orig.album+`","published":false}`, http.StatusOK), &st)
+	if st.VersionOf == nil || st.VersionOf.Title != "Own EP" {
+		t.Fatalf("version_of a published release = %+v", st.VersionOf)
+	}
+
+	if _, err := db.Exec(`UPDATE albums SET draft = true, title = 'Unreleased' WHERE deezer_id = $1`, orig.album); err != nil {
+		t.Fatal(err)
+	}
+	raw := call(t, router, "GET", "/api/uploads/releases/"+id, linker, "", http.StatusOK)
+	json.Unmarshal(raw, &st)
+	if st.VersionOf == nil || st.VersionOf.ID != orig.album || st.VersionOf.Title != orig.album {
+		t.Errorf("version_of a withdrawn release = %+v, want only its ID", st.VersionOf)
+	}
+	if strings.Contains(string(raw), "Unreleased") || strings.Contains(string(raw), "00112233445566778899aabbccddeeff") {
+		t.Errorf("the editor shows someone else's draft: %s", raw)
+	}
+}
+
 // В релиз добавляются существующие треки (Deezer, другие свои) — под
 // названием и обложкой релиза, на своём месте; сами они не меняются.
 // Mock: трек 12345 — с релиза 9.

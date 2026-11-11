@@ -215,7 +215,12 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 		st.Tracks = append(st.Tracks, ut)
 	}
 	if album.VersionOf != "" {
-		if st.VersionOf = s.albumCard(album.VersionOf); st.VersionOf == nil {
+		// Основной релиз после привязки могли снять с публикации: его нынешние
+		// название и обложку видит тот же, кто видит сам релиз.
+		if s.albumVisibleTo(viewerOf(r), album.VersionOf) {
+			st.VersionOf = s.albumCard(album.VersionOf)
+		}
+		if st.VersionOf == nil {
 			st.VersionOf = &deezer.Album{ID: album.VersionOf, Title: album.VersionOf}
 		}
 	}
