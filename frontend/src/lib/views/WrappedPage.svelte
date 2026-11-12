@@ -25,6 +25,8 @@
   import TrackList from '../components/TrackList.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import PlayButton from '../components/PlayButton.svelte';
+  import ShareCardDialog from '../components/ShareCardDialog.svelte';
+  import Share2 from '@lucide/svelte/icons/share-2';
   import ListPlus from '@lucide/svelte/icons/list-plus';
   import UserRound from '@lucide/svelte/icons/user-round';
   import Disc3 from '@lucide/svelte/icons/disc-3';
@@ -32,6 +34,7 @@
   let data = null;
   let error = '';
   let saving = false;
+  let sharing = false; // открыто окно «Поделиться итогами» (картинка с топами)
 
   pageTint().color(WRAPPED_TINT);
 
@@ -115,13 +118,18 @@
   {:else if data}
     <div class="head">
       <h1>{$t('wrapped.heading', { year: data.year })}</h1>
-      {#if data.years.length > 1}
-        <div class="years">
-          {#each data.years as y}
-            <a class="pill" class:active={y === data.year} href={paths.wrapped(y)} use:link>{y}</a>
-          {/each}
-        </div>
-      {/if}
+      <div class="head-actions">
+        {#if data.years.length > 1}
+          <div class="years">
+            {#each data.years as y}
+              <a class="pill" class:active={y === data.year} href={paths.wrapped(y)} use:link>{y}</a>
+            {/each}
+          </div>
+        {/if}
+        {#if data.plays > 0}
+          <button class="pill share" on:click={() => (sharing = true)}><Share2 size={16} /> {$t('share.share')}</button>
+        {/if}
+      </div>
     </div>
 
     {#if data.plays === 0}
@@ -273,6 +281,10 @@
   {/if}
 </div>
 
+{#if sharing && data}
+  <ShareCardDialog {data} on:close={() => (sharing = false)} />
+{/if}
+
 <style>
   .wrapped {
     padding-top: 24px;
@@ -302,9 +314,25 @@
     font-size: clamp(20px, 2.6vw, 24px);
     font-weight: 700;
   }
+  .head-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
   .years {
     display: flex;
     gap: 8px;
+  }
+  .share {
+    background: #fff;
+    color: #121212;
+    font-weight: 700;
+  }
+  @media (hover: hover) {
+    .share:hover:not(:disabled) {
+      background: #e6e6e6;
+    }
   }
   .card {
     --pad: 32px;

@@ -10,6 +10,7 @@ const FORMS = {
   minutes: { ru: ['минута', 'минуты', 'минут'], en: ['minute', 'minutes'] },
   times: { ru: ['раз', 'раза', 'раз'], en: ['time', 'times'] },
   tracks: { ru: ['разный трек', 'разных трека', 'разных треков'], en: ['different song', 'different songs'] },
+  songs: { ru: ['трек', 'трека', 'треков'], en: ['song', 'songs'] },
   artists: { ru: ['исполнитель', 'исполнителя', 'исполнителей'], en: ['artist', 'artists'] },
   albums: { ru: ['альбом', 'альбома', 'альбомов'], en: ['album', 'albums'] },
   days: { ru: ['день подряд с музыкой', 'дня подряд с музыкой', 'дней подряд с музыкой'], en: ['day in a row with music', 'days in a row with music'] },
