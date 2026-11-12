@@ -148,3 +148,76 @@ func TestOG_PlaylistSkipsDraftCover(t *testing.T) {
 		t.Error("a withdrawn release's cover is in the anonymous preview")
 	}
 }
+
+// Ссылка «Поделиться» на трек (/album/<id>?track=<id>) — превью трека, а не
+// всего альбома.
+func TestOG_TrackLinkPreviewsTheTrack(t *testing.T) {
+	db, _, admin, srv := newTestServer(t)
+	srv.FrontendIndex = filepath.Join(t.TempDir(), "index.html")
+	srv.PublicURL = "https://music.test"
+	if err := os.WriteFile(srv.FrontendIndex, []byte(ogIndex), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	router := NewRouter(srv)
+
+	_, body := ogPage(t, router, "/album/9?track=12345")
+	for _, want := range []string{
+		`og:title" content="Test Song"`,
+		`og:description" content="Song · Test Artist · Test Album"`,
+		`og:type" content="music.song"`,
+		`og:image" content="http://example.com/cover.jpg"`,
+		`og:url" content="https://music.test/album/9?track=12345"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("track preview lacks %s: %s", want, body)
+		}
+	}
+	if _, body := ogPage(t, router, "/album/9?track=888"); !strings.Contains(body, `content="Song · Test Artist, Feat Artist · Test Album"`) {
+		t.Errorf("a song with a guest names every artist: %s", body)
+	}
+
+	// Трека на этом релизе нет или в ссылке мусор — превью альбома.
+	album := func(path, why string) {
+		t.Helper()
+		if _, body := ogPage(t, router, path); !strings.Contains(body, `og:title" content="Test Album"`) ||
+			!strings.Contains(body, `og:type" content="music.album"`) {
+			t.Errorf("%s: %s", why, body)
+		}
+	}
+	album("/album/9?track=501", "a song of another release previews the album")
+	album("/album/9?track=404404", "an unknown song previews the album")
+	album("/album/9?track=nope", "a malformed song id previews the album")
+	if _, body := ogPage(t, router, "/album/9?track=nope"); !strings.Contains(body, `og:url" content="https://music.test/album/9"`) {
+		t.Errorf("a malformed song id stays out of og:url: %s", body)
+	}
+
+	// Трек с другого релиза, подставленный в треклист этого, — тоже трек.
+	if rec := postJSON(router, "/api/albums/deezer/9/claim", "", admin); rec.Code != http.StatusOK {
+		t.Fatalf("claim: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := db.Exec(`UPDATE albums SET tracklist = '{12345,501}', tracklist_from = '{501}' WHERE deezer_id = '9'`); err != nil {
+		t.Fatal(err)
+	}
+	srv.ogCache = ttlCache{}
+	if _, body := ogPage(t, router, "/album/9?track=501"); !strings.Contains(body, `og:title" content="Album Track One"`) ||
+		!strings.Contains(body, `content="Song · Test Artist · Test Album"`) {
+		t.Errorf("a substituted song previews as a song of this release: %s", body)
+	}
+}
+
+// Трек чужого черновика в превью не попадает.
+func TestOG_TrackOfDraftStaysPrivate(t *testing.T) {
+	router, srv := ogFloodServer(t)
+	rel := seedOwnRelease(t, srv.DB, "", false)
+	path := "/album/" + rel.album + "?track=" + rel.tracks[0]
+	if _, body := ogPage(t, router, path); !strings.Contains(body, `og:title" content="First"`) {
+		t.Fatalf("control: an uploaded song has a preview: %s", body)
+	}
+	if _, err := srv.DB.Exec(`UPDATE albums SET draft = true WHERE deezer_id = $1`, rel.album); err != nil {
+		t.Fatal(err)
+	}
+	srv.ogCache = ttlCache{}
+	if _, body := ogPage(t, router, path); strings.Contains(body, "First") || strings.Contains(body, "Own EP") {
+		t.Errorf("a draft's song is in the anonymous preview: %s", body)
+	}
+}

@@ -23,13 +23,16 @@ import (
 // своих: здесь видны лишь название и обложка — как в любой ссылке Spotify.
 // Подписи — по-английски: превью строит бот мессенджера, один раз на всех
 // в чате, и языка читателя не знает.
+// Ссылка «Поделиться» на трек (/album/<id>?track=<id>) — превью трека: его
+// название и исполнители, обложка релиза.
 // Приватный плейлист, скрытый релиз, чужой черновик или ошибка — страница
 // без подробностей (только «kaikku»). nginx шлёт сюда /album/…, /artist/…
 // и /playlist/… (docker/nginx.conf.template), остальное отдаёт сам.
 
 const ogTTL = 10 * time.Minute
 
-// ogMissesPerMinute — сколько превью в минуту идут за данными (Deezer, база).
+// ogMissesPerMinute — сколько превью в минуту идут за данными (Deezer, база;
+// превью трека — это два запроса: релиз и трек).
 // Страницы открыты без входа, а бюджет Deezer общий: подбор ID не должен
 // тормозить каталог всем. Сверх лимита — страница без подробностей.
 const ogMissesPerMinute = 30
@@ -60,7 +63,8 @@ type ogMeta struct {
 	Title, Description, Image, Type string
 }
 
-// handleOG — index.html с og-тегами для kind (album | artist | playlist).
+// handleOG — index.html с og-тегами для kind (album | artist | playlist);
+// у альбома с ?track=<id> — теги этого трека.
 func (s *Server) handleOG(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		page, err := s.frontIndex.read(s.FrontendIndex)
@@ -70,23 +74,29 @@ func (s *Server) handleOG(kind string) http.HandlerFunc {
 			return
 		}
 		id := r.PathValue("id")
+		key, path, track := kind+":"+id, r.URL.Path, ""
+		if tr := r.URL.Query().Get("track"); kind == "album" && validCatalogID(id) && validCatalogID(tr) {
+			key, path, track = "track:"+id+":"+tr, path+"?track="+tr, tr
+		}
 		// Кеш свой: перебор ID не должен вытеснять общий кеш страниц (s.cache).
-		meta, err := cached(&s.ogCache, kind+":"+id, ogTTL, func() (ogMeta, error) {
+		meta, err := cached(&s.ogCache, key, ogTTL, func() (ogMeta, error) {
 			if !s.ogMisses.take(time.Now()) {
 				return ogMeta{}, errOGBusy // ошибка не кешируется: потом превью будет с данными
 			}
-			return s.ogMetaFor(kind, id), nil
+			return s.ogMetaFor(kind, id, track), nil
 		})
 		if err != nil || meta.Title == "" {
 			meta = ogMeta{}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache") // как index.html у nginx: после деплоя — новая сборка
-		w.Write(injectOG(page, s.ogTags(meta, r.URL.Path)))
+		w.Write(injectOG(page, s.ogTags(meta, path)))
 	}
 }
 
-func (s *Server) ogMetaFor(kind, id string) ogMeta {
+// ogMetaFor — что показать в превью; track — трек из ссылки на альбом
+// (пусто — сам альбом).
+func (s *Server) ogMetaFor(kind, id, track string) ogMeta {
 	switch kind {
 	case "album":
 		if !validCatalogID(id) {
@@ -99,6 +109,12 @@ func (s *Server) ogMetaFor(kind, id string) ogMeta {
 		s.overlayFor(nil, []*deezer.Album{a}, nil)
 		if a.Hidden {
 			return ogMeta{}
+		}
+		if track != "" {
+			// Трек не с этого релиза — превью альбома: его и откроет ссылка.
+			if m := s.ogTrackMeta(a, track); m.Title != "" {
+				return m
+			}
 		}
 		desc := []string{ogRecordType(a.RecordType)}
 		if a.ArtistName != "" {
@@ -145,6 +161,37 @@ func (s *Server) ogMetaFor(kind, id string) ogMeta {
 		return ogMeta{Title: title, Description: "Playlist · " + owner + " · " + songsCount(n), Image: cover.String, Type: "music.playlist"}
 	}
 	return ogMeta{}
+}
+
+// ogTrackMeta — превью трека id на странице релиза a; пусто, если трека на
+// этом релизе нет.
+func (s *Server) ogTrackMeta(a *deezer.Album, id string) ogMeta {
+	t, err := s.catalogTrack(viewer{}, id)
+	if err != nil || t == nil {
+		return ogMeta{}
+	}
+	if t.AlbumID != a.ID {
+		// Трек с другого релиза, подставленный в треклист этого (tracklist.go).
+		var listed bool
+		if s.DB.QueryRow(`SELECT $2 = ANY(tracklist) FROM albums WHERE deezer_id = $1 AND tracklist IS NOT NULL`,
+			a.ID, id).Scan(&listed) != nil || !listed {
+			return ogMeta{}
+		}
+	}
+	desc := []string{"Song"}
+	if names := joinRefNames(t.Contributors); names != "" {
+		desc = append(desc, names)
+	} else if t.Artist != "" {
+		desc = append(desc, t.Artist)
+	}
+	if !strings.EqualFold(a.Title, t.Title) { // у сингла название то же
+		desc = append(desc, a.Title)
+	}
+	image := a.CoverURL
+	if image == "" {
+		image = t.CoverURL
+	}
+	return ogMeta{Title: t.Title, Description: strings.Join(desc, " · "), Image: image, Type: "music.song"}
 }
 
 func ogRecordType(t string) string {

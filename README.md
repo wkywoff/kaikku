@@ -45,7 +45,7 @@ app, or use any Subsonic app.
 - Liked songs, saved albums, followed artists.
 - Playlists with your own cover, public or private; add a whole album or
   artist at once.
-- Link previews for albums, artists and public playlists in messengers.
+- Link previews for albums, songs, artists and public playlists in messengers.
 
 **Discovery**
 - Home: recently played, mixes, new releases from artists you follow,
