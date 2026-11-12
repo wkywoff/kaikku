@@ -47,6 +47,7 @@
   export let highlight = null;
   export let playSimilar = false; // поиск: после трека — похожие, а не следующая строка
   export let showAddedBy = false; // совместный плейлист: «добавил X» под исполнителями
+  export let queue = null; // показана часть списка (топ артиста: первые 5) — в очередь идёт весь
 
   $: mode = view || $settings.trackView;
   $: compact = mode === 'compact';
@@ -71,6 +72,7 @@
     if (unavailable(rows[i])) return;
     if (isCurrentRow(rows[i], current, $libraryState)) player.toggle();
     else if (playSimilar) playWithSimilar(rows[i]);
+    else if (queue) playRows(queue, Math.max(queue.indexOf(rows[i]), 0), context);
     else playRows(rows, i, context);
   }
 

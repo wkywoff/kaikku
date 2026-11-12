@@ -200,7 +200,7 @@
           </button>
         {/if}
       </div>
-      <TrackList rows={topExpanded ? top : top.slice(0, 5)} showCover header={false} context={{ kind: 'artist', id: artist.id, title: artist.name }} on:changed={reload} />
+      <TrackList rows={topExpanded ? top : top.slice(0, 5)} queue={top} showCover header={false} context={{ kind: 'artist', id: artist.id, title: artist.name }} on:changed={reload} />
     </section>
   {/if}
 
