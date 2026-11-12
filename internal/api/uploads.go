@@ -113,6 +113,10 @@ func (s *Server) handleUploads(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 	cards, err := s.localAlbumCards(ids)
 	if err != nil {
 		serverError(w, r, "query failed", err)
@@ -201,6 +205,9 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	for _, t := range tracks {
 		ut := uploadTrack{ID: t.ID, Title: t.Title, DurationMs: t.DurationMs, Explicit: t.Explicit, Disc: max(t.DiscNo, 1)}
 		switch {

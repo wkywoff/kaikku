@@ -307,6 +307,10 @@ func (s *Server) handleSavedAlbums(w http.ResponseWriter, r *http.Request) {
 			albums = append(albums, a)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 	s.overlayFor(nil, albumPtrs(albums), nil)
 	writeJSON(w, http.StatusOK, map[string]any{"albums": albums})
 }
@@ -405,6 +409,10 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 		} else {
 			others = append(others, p)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"mine": mine, "others": others})
 }

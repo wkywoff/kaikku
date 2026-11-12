@@ -82,6 +82,10 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "delete failed", err)
+		return
+	}
 
 	if _, err := tx.Exec(`DELETE FROM albums WHERE id = $1`, id); err != nil {
 		serverError(w, r, "delete failed", err)

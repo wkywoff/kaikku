@@ -217,6 +217,10 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 		found = append(found, x)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 
 	items := []recentItem{}
 	var albums []*deezer.Album
@@ -304,6 +308,10 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 
 	skip := map[string]bool{}
 	followed, err := s.idList(`SELECT deezer_id FROM followed_artists WHERE user_id = $1`, userID)

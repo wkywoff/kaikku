@@ -115,3 +115,38 @@ func TestServerError_SkipsClientGone(t *testing.T) {
 		t.Errorf("log = %q, want nothing for a request the client dropped", buf.String())
 	}
 }
+
+// Чтение оборвалось посреди списка (здесь — деление на ноль на третьей
+// строке): closeRows пишет это в лог, а не оставляет неполные данные молча.
+func TestCloseRows_LogsBrokenRead(t *testing.T) {
+	db, _, _, _ := newTestServer(t)
+	buf := captureLog(t)
+
+	rows, err := db.Query(`SELECT 10 / (3 - g) FROM generate_series(1, 5) g`)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	n := 0
+	for rows.Next() {
+		n++
+	}
+	closeRows("overlay: albums", rows)
+	if n >= 5 {
+		t.Fatalf("read all %d rows, the query was meant to break", n)
+	}
+	if got := buf.String(); !strings.HasPrefix(got, "overlay: albums: reading rows: ") || !strings.Contains(got, "division by zero") {
+		t.Errorf("log = %q, want the broken read with its cause", got)
+	}
+
+	buf.Reset()
+	rows, err = db.Query(`SELECT g FROM generate_series(1, 5) g`)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	for rows.Next() {
+	}
+	closeRows("overlay: albums", rows)
+	if buf.Len() != 0 {
+		t.Errorf("log = %q, want nothing after a complete read", buf.String())
+	}
+}

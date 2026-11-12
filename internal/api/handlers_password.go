@@ -60,6 +60,10 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			users = append(users, u)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": users})
 }
 

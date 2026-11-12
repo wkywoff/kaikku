@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -177,9 +178,10 @@ func (c *subCtx) libraryInfo(ids []string) map[string]libInfo {
 	}
 	rows, err := c.s.DB.Query(`SELECT deezer_id, storage_key, gain_db FROM tracks WHERE deezer_id = ANY($1)`, pq.Array(ids))
 	if err != nil {
+		log.Printf("subsonic: library info: %v", err)
 		return out
 	}
-	defer rows.Close()
+	defer closeRows("subsonic: library info", rows)
 	for rows.Next() {
 		var id, key string
 		var info libInfo
@@ -206,9 +208,10 @@ func (c *subCtx) starred(table string, ids []string) map[string]time.Time {
 	rows, err := c.s.DB.Query(`SELECT deezer_id, added_at FROM `+table+` WHERE user_id = $1 AND deezer_id = ANY($2)`,
 		c.userID, pq.Array(ids))
 	if err != nil {
+		log.Printf("subsonic: starred in %s: %v", table, err)
 		return out
 	}
-	defer rows.Close()
+	defer closeRows("subsonic: starred in "+table, rows)
 	for rows.Next() {
 		var id string
 		var at time.Time

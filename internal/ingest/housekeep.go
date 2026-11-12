@@ -84,6 +84,9 @@ func evictAudio(db *sql.DB, storageDir string, keep time.Duration) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("housekeep: evict: reading rows: %v", err)
+	}
 
 	var n int
 	var freed int64

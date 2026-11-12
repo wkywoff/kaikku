@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -44,6 +45,16 @@ func logServerError(r *http.Request, msg string, err error) {
 		return // человек ушёл со страницы, это не поломка
 	}
 	log.Printf("%s %s: %s: %v", r.Method, r.URL.EscapedPath(), msg, err)
+}
+
+// closeRows закрывает rows там, где ответ строится и без них (правки поверх
+// Deezer, фоновые задачи): чтение оборвалось — данные неполные, и без записи
+// в лог об этом никто не узнает.
+func closeRows(what string, rows *sql.Rows) {
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("%s: reading rows: %v", what, err)
+	}
 }
 
 // isUniqueViolation reports whether err is a Postgres unique_violation (23505).

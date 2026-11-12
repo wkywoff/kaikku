@@ -234,6 +234,10 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			serverError(w, r, "query failed", err)
+			return
+		}
 	}
 
 	rows, err := s.DB.Query(
@@ -259,6 +263,10 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 			entry["track_id"] = trackID.String
 		}
 		result[strings.TrimPrefix(ref, "deezer:")] = entry
+	}
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
 	}
 	writeJSON(w, http.StatusOK, result)
 }

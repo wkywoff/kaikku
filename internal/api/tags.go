@@ -295,7 +295,7 @@ func (s *Server) tagBatch(ctx context.Context) bool {
 			todo = append(todo, a)
 		}
 	}
-	rows.Close()
+	closeRows("tagger", rows)
 	for _, a := range todo {
 		if ctx.Err() != nil {
 			return false

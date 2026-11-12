@@ -147,6 +147,9 @@ func (s *Server) genrePage(r *http.Request, userID, slug string) (*genrePage, er
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if len(ids) < genreMinArtists {
 		return nil, nil
 	}

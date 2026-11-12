@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"slices"
 	"sort"
@@ -92,7 +93,9 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 			o.albums[dz] = ov
 			artistIDs = append(artistIDs, ov.artists...)
 		}
-		rows.Close()
+		closeRows("overlay: albums", rows)
+	} else {
+		log.Printf("overlay: albums: %v", err)
 	}
 
 	// Правки скачанных треков — в их строках, нескачанных — в track_edits.
@@ -109,7 +112,9 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 				o.tracks[dz] = ov
 			}
 		}
-		rows.Close()
+		closeRows("overlay: track edits", rows)
+	} else {
+		log.Printf("overlay: track edits: %v", err)
 	}
 
 	if rows, err := s.DB.Query(
@@ -127,7 +132,9 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 			o.credits[dz] = tc
 			artistIDs = append(artistIDs, tc.artists...)
 		}
-		rows.Close()
+		closeRows("overlay: track credits", rows)
+	} else {
+		log.Printf("overlay: track credits: %v", err)
 	}
 
 	// Артисты — последними: правки исполнителей выше добавили своих.
@@ -153,7 +160,9 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 			}
 			o.artists[dz] = ov
 		}
-		rows.Close()
+		closeRows("overlay: artists", rows)
+	} else {
+		log.Printf("overlay: artists: %v", err)
 	}
 	return o
 }
@@ -385,6 +394,7 @@ func (s *Server) creditedDiscography(artistID string, albums []deezer.Album) []d
 		  WHERE artist_ids IS NOT NULL AND (artist_ids @> ARRAY[$1] OR deezer_id = ANY($2))`,
 		artistID, pq.Array(ids))
 	if err != nil {
+		log.Printf("credited discography of %s: %v", artistID, err)
 		return albums
 	}
 	moved := map[string]bool{}
@@ -402,7 +412,7 @@ func (s *Server) creditedDiscography(artistID string, albums []deezer.Album) []d
 			add = append(add, dz)
 		}
 	}
-	rows.Close()
+	closeRows("credited discography of "+artistID, rows)
 	if len(moved) == 0 && len(add) == 0 {
 		return albums
 	}

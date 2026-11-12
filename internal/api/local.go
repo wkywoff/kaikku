@@ -257,7 +257,9 @@ func (s *Server) trackDurations(ids []string) map[string]int {
 				out[id] = ms
 			}
 		}
-		rows.Close()
+		closeRows("track durations", rows)
+	} else {
+		log.Printf("track durations: %v", err)
 	}
 	for _, id := range ids {
 		if _, ok := out[id]; ok || isLocalID(id) {
@@ -284,7 +286,9 @@ func (s *Server) explicitTracks(ids []string) map[string]bool {
 				out[id], edited[id] = explicit, true
 			}
 		}
-		rows.Close()
+		closeRows("explicit tracks", rows)
+	} else {
+		log.Printf("explicit tracks: %v", err)
 	}
 	for _, id := range ids {
 		if edited[id] || isLocalID(id) {

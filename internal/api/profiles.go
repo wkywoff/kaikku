@@ -76,6 +76,10 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		playlists = append(playlists, pl)
 	}
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 	resp := map[string]any{"user": p, "me": p.ID == me, "playlists": playlists}
 	if p.ID == me {
 		people, err := s.people(me)

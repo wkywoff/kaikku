@@ -284,7 +284,7 @@ func (s *Server) flushLastfm(ctx context.Context) {
 			users = append(users, d)
 		}
 	}
-	rows.Close()
+	closeRows("lastfm queue", rows)
 	for _, u := range users {
 		for ctx.Err() == nil && s.flushLastfmBatch(ctx, u.userID, u.sk) {
 		}
@@ -310,7 +310,7 @@ func (s *Server) flushLastfmBatch(ctx context.Context, userID, sk string) bool {
 			ids, batch = append(ids, id), append(batch, t)
 		}
 	}
-	rows.Close()
+	closeRows("lastfm batch", rows)
 	if len(batch) == 0 {
 		return false
 	}

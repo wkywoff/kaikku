@@ -36,6 +36,9 @@ func fillISRC(ctx context.Context, db *sql.DB, dz *deezer.Client) {
 		}
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("metadata: isrc query: reading rows: %v", err)
+	}
 
 	filled := 0
 	for _, t := range tracks {

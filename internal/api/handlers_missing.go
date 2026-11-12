@@ -60,6 +60,10 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		m.Kind = ingest.FailureKind(m.Error)
 		out = append(out, m)
 	}
+	if err := rows.Err(); err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": out})
 }
 
