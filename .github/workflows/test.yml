@@ -1,6 +1,6 @@
-# Tests on every push and pull request: Go against a real PostgreSQL, the
-# frontend's unit tests, type check and build. The same commands as in
-# docs/development.md.
+# Tests on every push and pull request: Go against a real PostgreSQL (with the
+# race detector), staticcheck and govulncheck, the frontend's unit tests,
+# linter, type check and build. The same commands as in docs/development.md.
 name: Tests
 
 on:
@@ -45,7 +45,18 @@ jobs:
       - run: DATABASE_URL="$TEST_DATABASE_URL" migrations/migrate.sh
       - run: go vet ./...
       # -p 1: the api and ingest packages share the test database.
-      - run: go test -p 1 -count=1 ./...
+      # -race: the API and the worker run many goroutines over shared state.
+      - run: go test -race -p 1 -count=1 ./...
+      # Versions are pinned: a new release of a linter must not turn an
+      # unrelated push red. govulncheck still can, when a vulnerability in
+      # Go itself or in lib/pq is published — that is its job. Both run even
+      # when the tests failed, so one run shows everything.
+      - name: staticcheck
+        if: ${{ !cancelled() }}
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - name: govulncheck
+        if: ${{ !cancelled() }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   frontend:
     runs-on: ubuntu-latest
@@ -61,5 +72,6 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
+      - run: npm run lint
       - run: npx svelte-check
       - run: npm run build

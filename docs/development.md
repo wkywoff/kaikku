@@ -58,12 +58,17 @@ sudo -u postgres createdb -O kaikku_test kaikku_test
 ```bash
 export TEST_DATABASE_URL=postgres://kaikku_test:<password>@localhost:5432/kaikku_test?sslmode=disable
 DATABASE_URL="$TEST_DATABASE_URL" migrations/migrate.sh
-go vet ./... && go test -p 1 -count=1 ./...
+go vet ./... && go test -race -p 1 -count=1 ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
 `-p 1` is required: the `api` and `ingest` packages share one test
 database and clean it after each test. Without `TEST_DATABASE_URL` the
-database tests are skipped and the rest run as usual.
+database tests are skipped and the rest run as usual. `-race` needs a C
+compiler and makes the tests several times slower; drop it for a quick run,
+CI always uses it. staticcheck and govulncheck are pinned to the versions
+CI runs.
 
 Covered, among other things:
 
@@ -87,8 +92,13 @@ Covered, among other things:
 ### Frontend
 
 ```bash
-cd frontend && npm ci && npm test && npx svelte-check && npm run build
+cd frontend && npm ci && npm test && npm run lint && npx svelte-check && npm run build
 ```
+
+`npm run lint` is ESLint (`eslint.config.js`): undefined names, unused
+imports and variables, and the Svelte plugin's checks. `svelte-check` does
+not type-check plain JS here, so the linter is what catches a typo in a
+name.
 
 `npm test` runs `node:test` with fake `Audio`/`AudioContext` for the player
 store (`src/lib/stores/player.js`): queue, volume, crossfade timing,
