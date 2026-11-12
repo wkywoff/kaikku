@@ -221,14 +221,13 @@ export const DEFAULT_PALETTE = {
 export function paletteFrom(rgb, clusters = []) {
   if (!rgb) return DEFAULT_PALETTE;
   let { h, s } = rgbToHsl(rgb);
-  let grey = s < 0.12;
+  const grey = s < 0.12;
   // Тёмная блёклая обложка (тёмно-синий фон, фиолетовые пряди) ярких
   // цветов не даёт, но она и не серая: как у Apple Music, берём её
   // преобладающий тёмный оттенок — приглушённо, без подкрашивания.
   const tint = grey ? dominantTint(clusters) : null;
   if (tint) {
     ({ h, s } = tint);
-    grey = false;
     return {
       base: hsl(h, clamp(s, 0.2, 0.35), 0.24),
       dark: hsl(h, clamp(s, 0.15, 0.3), 0.12),

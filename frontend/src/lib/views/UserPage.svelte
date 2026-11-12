@@ -43,7 +43,7 @@
   $: followers = (page?.people || []).filter((p) => p.follows_me && !p.i_follow);
   $: following = (page?.people || []).filter((p) => p.i_follow && !p.follows_me);
   $: playingCtx = $playerPlaying ? $playingContext : null;
-  $: hue = mixHue(`user-${name.toLowerCase()}`);
+  const hue = mixHue(`user-${name.toLowerCase()}`);
 
   // Подписаться / отписаться — на профиле и в списках своего профиля.
   async function toggle(p) {

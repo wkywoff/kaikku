@@ -112,7 +112,6 @@
       style="transform: translateY({drag ? shift(i, drag, target) : settling?.id === row.id ? settling.dy : 0}px)"
     >
       <div class="row">
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <span
           class="handle"
           role="button"

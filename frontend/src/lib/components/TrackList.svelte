@@ -20,7 +20,7 @@
   import { link, fromHistory, paths } from '../stores/nav.js';
   import { settings } from '../stores/settings.js';
   import { t } from '../i18n.js';
-  import { libraryState, playRows, playWithSimilar, trackIdOf, isCurrentRow } from '../library.js';
+  import { libraryState, playRows, playWithSimilar, isCurrentRow } from '../library.js';
   import { likedIds, toggleLike } from '../stores/collection.js';
   import { openMenu } from '../stores/contextMenu.js';
   import { trackMenuItems } from '../trackMenu.js';

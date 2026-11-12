@@ -195,7 +195,6 @@
         style:transform={drag ? `translateY(${shift(i, drag, target)}px)` : settling?.key === row.key ? `translateY(${settling.dy}px)` : null}
       >
         <div class="row" class:sep={row.sep}>
-          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <span
             class="handle"
             role="button"

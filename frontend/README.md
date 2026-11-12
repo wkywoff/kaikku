@@ -66,8 +66,8 @@ How it fits together:
 
 `npm test`: `node:test` with fake `Audio`/`AudioContext` (jsdom has no Web
 Audio): queue, volume, crossfade and gapless, retry on error, saved queue,
-autoplay, history; routes, colours, formats. See also
-[docs/development.md](../docs/development.md).
+autoplay, history; routes, colours, formats. `npm run lint`: ESLint
+(`eslint.config.js`). See also [docs/development.md](../docs/development.md).
 
 ## Development
 
