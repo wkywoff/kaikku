@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"kaikku/internal/deezer"
 )
@@ -130,11 +131,8 @@ type subIndex[T any] struct {
 
 // indexLetter — буква оглавления: первая буква имени, остальное — «#».
 func indexLetter(name string) string {
-	for _, r := range name {
-		if unicode.IsLetter(r) {
-			return string(unicode.ToUpper(r))
-		}
-		return "#"
+	if r, _ := utf8.DecodeRuneInString(name); unicode.IsLetter(r) {
+		return string(unicode.ToUpper(r))
 	}
 	return "#"
 }

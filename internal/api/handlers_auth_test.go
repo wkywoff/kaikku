@@ -179,7 +179,7 @@ func TestRegister_RejectsBadInputBeforeHashing(t *testing.T) {
 		{"password over 256 bytes", "newbie", strings.Repeat("p", 300), invite, http.StatusBadRequest},
 		{"space in the name", "new bie", "testpass123", invite, http.StatusBadRequest},
 		{"name over 32 characters", strings.Repeat("n", 33), "testpass123", invite, http.StatusBadRequest},
-		{"invisible character", "new​bie", "testpass123", invite, http.StatusBadRequest},
+		{"invisible character", "new\u200bbie", "testpass123", invite, http.StatusBadRequest},
 		{"wrong invite", "newbie", "testpass123", "not-a-code", http.StatusForbidden},
 	}
 	for _, c := range cases {

@@ -35,7 +35,6 @@ func freshRelease(date string) bool {
 }
 
 type ttlCache[T any] struct {
-	ttl    time.Duration
 	clone  func(T) T
 	prefix string // ключ в store: "track:" и т. п.
 	store  Store  // nil — только память
@@ -71,9 +70,7 @@ func (c *ttlCache[T]) has(id string) bool {
 	return ok
 }
 
-func (c *ttlCache[T]) put(id string, v T) { c.putFor(id, v, c.ttl) }
-
-// putFor — put со своим сроком.
+// putFor — запись в память и в store со своим сроком.
 func (c *ttlCache[T]) putFor(id string, v T, ttl time.Duration) {
 	expires := time.Now().Add(ttl)
 	c.remember(id, v, expires)

@@ -76,7 +76,7 @@ func TestDeezer_WordsLinesTextAndMissing(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		json.Unmarshal(b, &req)
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer e30.") {
-			http.Error(w, "no token", 401)
+			http.Error(w, "no token", http.StatusUnauthorized)
 			return
 		}
 		io.WriteString(w, answers[req.Variables.ID])
@@ -114,7 +114,7 @@ func TestLRCLIB_SyncedPlainMissing(t *testing.T) {
 		switch r.URL.Query().Get("track_name") {
 		case "busy": // перегружен — со второго раза отвечает
 			if busy++; busy == 1 {
-				http.Error(w, `{"name":"ServerOverloaded"}`, 503)
+				http.Error(w, `{"name":"ServerOverloaded"}`, http.StatusServiceUnavailable)
 				return
 			}
 			io.WriteString(w, `{"plainLyrics":"Со второго раза"}`)

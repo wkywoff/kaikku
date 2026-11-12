@@ -67,7 +67,7 @@ func TestLRCRed_FindsByISRCWithContact(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if !strings.Contains(r.Header.Get("User-Agent"), "me@example.com") {
-			http.Error(w, "who are you", 403)
+			http.Error(w, "who are you", http.StatusForbidden)
 			return
 		}
 		if r.URL.Path == "/s/GBAAA0000001.ttml" {

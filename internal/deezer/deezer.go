@@ -65,9 +65,9 @@ func newClient(apiURL string, limiter *rateLimiter, quotaDelay time.Duration) *C
 			name: "direct", http: &http.Client{Timeout: 10 * time.Second}, limiter: limiter,
 		}},
 		quotaDelay:  quotaDelay,
-		tracks:      ttlCache[Track]{ttl: trackCacheTTL, clone: cloneTrack, prefix: "track:"},
-		albums:      ttlCache[Album]{ttl: albumCacheTTL, clone: cloneAlbum, prefix: "album:"},
-		albumTracks: ttlCache[[]Track]{ttl: tracklistCacheTTL, clone: cloneTracks, prefix: "tracklist:"},
+		tracks:      ttlCache[Track]{clone: cloneTrack, prefix: "track:"},
+		albums:      ttlCache[Album]{clone: cloneAlbum, prefix: "album:"},
+		albumTracks: ttlCache[[]Track]{clone: cloneTracks, prefix: "tracklist:"},
 	}
 }
 

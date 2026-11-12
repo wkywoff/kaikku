@@ -78,9 +78,9 @@ func TestEditsOverlayDeezerAlbum(t *testing.T) {
 }
 
 func TestUploadAlbumCover(t *testing.T) {
-	db, router, token := newTestRouter(t)
+	db, _, token := newTestRouter(t)
 	dir := t.TempDir()
-	router = NewRouter(&Server{DB: db, JWTSecret: []byte("test-secret-at-least-32-bytes-long!!"), StorageDir: dir})
+	router := NewRouter(&Server{DB: db, JWTSecret: []byte("test-secret-at-least-32-bytes-long!!"), StorageDir: dir})
 
 	var artistID, albumID string
 	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('A', '1') RETURNING id`).Scan(&artistID)
