@@ -91,7 +91,6 @@
         <button type="button" class="pill active" on:click={download} disabled={!url}><Download size={16} /> {$t('wrapped.download')}</button>
       {/if}
     </div>
-    <p class="note">{$t('wrapped.shareNote')}</p>
   </div>
 </div>
 
@@ -112,7 +111,7 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-    padding: 20px 24px 18px;
+    padding: 20px 24px 24px;
     border-radius: 8px;
     background: #282828;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
@@ -135,7 +134,7 @@
     justify-content: center;
     aspect-ratio: 9 / 16;
     /* …и по ширине: на узком телефоне — в поля окна (100vw − отступы подложки и окна). */
-    height: min(560px, 100dvh - 220px, (100vw - 80px) * 16 / 9);
+    height: min(560px, 100dvh - 190px, (100vw - 80px) * 16 / 9);
     flex: 0 0 auto;
     align-self: center;
     border-radius: 14px;
@@ -162,11 +161,5 @@
     height: 40px;
     padding: 0 20px;
     font-weight: 700;
-  }
-  .note {
-    margin: 0;
-    text-align: center;
-    font-size: 12px;
-    color: var(--text-dim);
   }
 </style>
