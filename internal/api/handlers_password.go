@@ -44,7 +44,7 @@ func resetCodeHash(code string) string {
 func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.Query(`SELECT id, username, is_admin FROM users ORDER BY lower(username)`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	defer rows.Close()
@@ -73,34 +73,34 @@ func (s *Server) handleCreatePasswordReset(w http.ResponseWriter, r *http.Reques
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "user not found")
 		} else {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 		}
 		return
 	}
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not generate a link")
+		serverError(w, r, "could not generate a link", err)
 		return
 	}
 	code := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b))
 	expires := time.Now().Add(passwordResetTTL)
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create a link")
+		serverError(w, r, "could not create a link", err)
 		return
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create a link")
+		serverError(w, r, "could not create a link", err)
 		return
 	}
 	if _, err := tx.Exec(`INSERT INTO password_resets (code_hash, user_id, created_by, expires_at) VALUES ($1, $2, $3, $4)`,
 		resetCodeHash(code), userID, adminID, expires); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create a link")
+		serverError(w, r, "could not create a link", err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create a link")
+		serverError(w, r, "could not create a link", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{
@@ -132,7 +132,7 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "the link is invalid, used or expired")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	passwordHash, err := auth.HashPassword(req.Password)
@@ -140,31 +140,31 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeBusy(w)
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not hash password")
+		serverError(w, r, "could not hash password", err)
 		return
 	}
 
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return
 	}
 	defer tx.Rollback()
 	// Пока хешировали, ссылку могли использовать — второй раз она не сработает.
 	res, err := tx.Exec(`UPDATE password_resets SET used_at = now() WHERE code_hash = $1 AND used_at IS NULL AND expires_at > now()`, hash)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n != 1 {
 		writeError(w, http.StatusForbidden, "the link is invalid, used or expired")
 		return
 	}
-	if !s.setPassword(w, tx, userID, passwordHash) {
+	if !s.setPassword(w, r, tx, userID, passwordHash) {
 		return
 	}
 	s.loginForget(username) // пауза после неудачных входов — снята
-	s.writeFreshToken(w, userID, username)
+	s.writeFreshToken(w, r, userID, username)
 }
 
 // handleChangePassword (PUT /api/me/password) — с текущим паролем.
@@ -180,7 +180,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	var username, hash string
 	if err := s.DB.QueryRow(`SELECT username, password_hash FROM users WHERE id = $1`, userID).Scan(&username, &hash); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	// Подбор старого пароля с чужого открытого устройства — как подбор при входе.
@@ -206,12 +206,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeBusy(w)
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not hash password")
+		serverError(w, r, "could not hash password", err)
 		return
 	}
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return
 	}
 	defer tx.Rollback()
@@ -220,17 +220,17 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	// не перезаписывает. FOR UPDATE — чтобы сброс не прошёл между сверкой и записью.
 	var current string
 	if err := tx.QueryRow(`SELECT password_hash FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&current); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return
 	}
 	if current != hash {
 		writeError(w, http.StatusConflict, "the password was changed in the meantime")
 		return
 	}
-	if !s.setPassword(w, tx, userID, newHash) {
+	if !s.setPassword(w, r, tx, userID, newHash) {
 		return
 	}
-	s.writeFreshToken(w, userID, username)
+	s.writeFreshToken(w, r, userID, username)
 }
 
 // hashNewPassword — auth.HashPassword; тест подставляет сброс пароля в момент хеширования.
@@ -239,17 +239,17 @@ var hashNewPassword = auth.HashPassword
 // setPassword stores the hash, ends every older session (password_changed_at)
 // and drops the user's unused reset links and app password (кто подсмотрел
 // его из чужой сессии, не должен остаться в приложениях); commits tx.
-func (s *Server) setPassword(w http.ResponseWriter, tx *sql.Tx, userID, hash string) bool {
+func (s *Server) setPassword(w http.ResponseWriter, r *http.Request, tx *sql.Tx, userID, hash string) bool {
 	if _, err := tx.Exec(`UPDATE users SET password_hash = $2, password_changed_at = now(), subsonic_secret = NULL WHERE id = $1`, userID, hash); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return false
 	}
 	if _, err := tx.Exec(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return false
 	}
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not set the password")
+		serverError(w, r, "could not set the password", err)
 		return false
 	}
 	return true
@@ -258,11 +258,11 @@ func (s *Server) setPassword(w http.ResponseWriter, tx *sql.Tx, userID, hash str
 // writeFreshToken answers with a token issued after the change. Tokens carry
 // whole seconds and authed rejects those from the second of the change, so
 // the new one waits for the next second (at most 1 s).
-func (s *Server) writeFreshToken(w http.ResponseWriter, userID, username string) {
+func (s *Server) writeFreshToken(w http.ResponseWriter, r *http.Request, userID, username string) {
 	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
 	token, err := auth.IssueToken(userID, tokenTTL, s.JWTSecret)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not issue token")
+		serverError(w, r, "could not issue token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token, "username": username})

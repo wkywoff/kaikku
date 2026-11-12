@@ -51,7 +51,7 @@ func (s *Server) handleUpdateArtist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.DB.Exec(`UPDATE artists SET name = $1, edited = true WHERE id = $2`, strings.TrimSpace(req.Name), r.PathValue("id"))
-	if !s.affected(w, res, err, "artist") {
+	if !s.affected(w, r, res, err, "artist") {
 		return
 	}
 	s.handleGetArtist(w, r)
@@ -91,24 +91,24 @@ func (s *Server) handleUpdateAlbum(w http.ResponseWriter, r *http.Request) {
 		`UPDATE albums SET title = $1, released_at = $2, record_type = COALESCE(NULLIF($3, ''), record_type), edited = true WHERE id = $4`,
 		strings.TrimSpace(req.Title), released, req.RecordType, r.PathValue("id"),
 	)
-	if !s.affected(w, res, err, "album") {
+	if !s.affected(w, r, res, err, "album") {
 		return
 	}
 	if req.Artists != nil {
 		if err := s.saveAlbumCredits(r.PathValue("id"), req.Artists); err != nil {
-			writeSaveError(w, err)
+			writeSaveError(w, r, err)
 			return
 		}
 	}
 	if req.Hidden != nil {
 		if _, err := s.DB.Exec(`UPDATE albums SET hidden = $2 WHERE id = $1`, r.PathValue("id"), *req.Hidden); err != nil {
-			writeError(w, http.StatusInternalServerError, "update failed")
+			serverError(w, r, "update failed", err)
 			return
 		}
 	}
 	if req.VersionOf != nil {
 		if err := s.saveVersionOf(viewerOf(r), r.PathValue("id"), *req.VersionOf); err != nil {
-			writeSaveError(w, err)
+			writeSaveError(w, r, err)
 			return
 		}
 	}
@@ -119,7 +119,7 @@ func (s *Server) handleUpdateAlbum(w http.ResponseWriter, r *http.Request) {
 			err = s.saveTracklist(dz, req.Tracklist)
 		}
 		if err != nil {
-			writeSaveError(w, err)
+			writeSaveError(w, r, err)
 			return
 		}
 	}
@@ -147,7 +147,7 @@ func (s *Server) handleResetArtist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "artist not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	a, err := s.Deezer.GetArtist(deezerID)
@@ -164,7 +164,7 @@ func (s *Server) handleResetArtist(w http.ResponseWriter, r *http.Request) {
 		`UPDATE artists SET name = $1, edited = false, picture_key = $2, picture_custom = false WHERE id = $3`,
 		a.Name, newPicture, id,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if custom && picture.Valid {
@@ -185,7 +185,7 @@ func (s *Server) handleResetAlbum(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "album not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	a, err := s.Deezer.GetAlbum(deezerID)
@@ -204,7 +204,7 @@ func (s *Server) handleResetAlbum(w http.ResponseWriter, r *http.Request) {
 		  WHERE id = $5`,
 		a.Title, nullableDate(a.ReleaseDate), a.RecordType, newCover, id,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if custom && cover.Valid {
@@ -245,11 +245,11 @@ func (s *Server) saveUploadedImage(w http.ResponseWriter, r *http.Request) (stri
 	key := filepath.Join("covers", "custom", randomKey()+".jpg")
 	path := filepath.Join(s.StorageDir, key)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save image")
+		serverError(w, r, "could not save image", err)
 		return "", false
 	}
 	if err := os.WriteFile(path, body, 0o644); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save image")
+		serverError(w, r, "could not save image", err)
 		return "", false
 	}
 	return key, true
@@ -271,7 +271,7 @@ func (s *Server) handleUploadArtistPicture(w http.ResponseWriter, r *http.Reques
 		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "artist not found")
 		} else {
-			writeError(w, http.StatusInternalServerError, "update failed")
+			serverError(w, r, "update failed", err)
 		}
 		return
 	}
@@ -297,7 +297,7 @@ func (s *Server) handleUploadAlbumCover(w http.ResponseWriter, r *http.Request) 
 		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "album not found")
 		} else {
-			writeError(w, http.StatusInternalServerError, "update failed")
+			serverError(w, r, "update failed", err)
 		}
 		return
 	}
@@ -314,9 +314,9 @@ func validName(s string) bool {
 	return s != "" && len([]rune(s)) <= 300
 }
 
-func (s *Server) affected(w http.ResponseWriter, res sql.Result, err error, what string) bool {
+func (s *Server) affected(w http.ResponseWriter, r *http.Request, res sql.Result, err error, what string) bool {
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return false
 	}
 	if n, _ := res.RowsAffected(); n == 0 {

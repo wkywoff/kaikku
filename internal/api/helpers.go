@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -26,6 +27,23 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// serverError — ответ 500: клиенту уходит только msg, а причина пишется в лог
+// API вместе с запросом, иначе по «query failed» не понять, что сломалось.
+func serverError(w http.ResponseWriter, r *http.Request, msg string, err error) {
+	logServerError(r, msg, err)
+	writeError(w, http.StatusInternalServerError, msg)
+}
+
+// logServerError — запись для serverError отдельно: поток отвечает текстом,
+// а не JSON (stream.go). Путь — без параметров (в них подписи и токены) и
+// как прислан, в %-кодировке: перевод строки из адреса в лог не попадёт.
+func logServerError(r *http.Request, msg string, err error) {
+	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
+		return // человек ушёл со страницы, это не поломка
+	}
+	log.Printf("%s %s: %s: %v", r.Method, r.URL.EscapedPath(), msg, err)
 }
 
 // isUniqueViolation reports whether err is a Postgres unique_violation (23505).

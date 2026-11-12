@@ -108,17 +108,17 @@ func (s *Server) handleCollectionIDs(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	liked, err := s.idList(`SELECT deezer_id FROM liked_tracks WHERE user_id = $1`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	albums, err := s.idList(`SELECT deezer_id FROM saved_albums WHERE user_id = $1`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	artists, err := s.idList(`SELECT deezer_id FROM followed_artists WHERE user_id = $1`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"liked": liked, "albums": albums, "artists": artists})
@@ -166,7 +166,7 @@ func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO liked_tracks (user_id, deezer_id, meta) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
 		userID, id, meta,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not like the song")
+		serverError(w, r, "could not like the song", err)
 		return
 	}
 	s.downloadTracks(userID, id)
@@ -180,7 +180,7 @@ func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request) {
 	var meta []byte
 	err := s.DB.QueryRow(`DELETE FROM liked_tracks WHERE user_id = $1 AND deezer_id = $2 RETURNING meta`, userID, r.PathValue("id")).Scan(&meta)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "could not remove the like")
+		serverError(w, r, "could not remove the like", err)
 		return
 	}
 	var track deezer.Track
@@ -203,7 +203,7 @@ func (s *Server) handleLikedTracks(w http.ResponseWriter, r *http.Request) {
 	tracks, err := s.collectionTracks(
 		`SELECT 0, meta, added_at FROM liked_tracks WHERE user_id = $1 ORDER BY added_at DESC`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": tracks})
@@ -273,7 +273,7 @@ func (s *Server) handleSaveAlbum(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO saved_albums (user_id, deezer_id, meta) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
 		userID, id, meta,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save the album")
+		serverError(w, r, "could not save the album", err)
 		return
 	}
 	if !isLocalID(id) {
@@ -285,7 +285,7 @@ func (s *Server) handleSaveAlbum(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUnsaveAlbum(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	if _, err := s.DB.Exec(`DELETE FROM saved_albums WHERE user_id = $1 AND deezer_id = $2`, userID, r.PathValue("id")); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove the album")
+		serverError(w, r, "could not remove the album", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -295,7 +295,7 @@ func (s *Server) handleSavedAlbums(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	rows, err := s.DB.Query(`SELECT meta FROM saved_albums WHERE user_id = $1 ORDER BY added_at DESC`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	defer rows.Close()
@@ -389,7 +389,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	rows, err := s.DB.Query(playlistSelect+` WHERE `+playlistListedFor+` ORDER BY p.updated_at DESC`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	defer rows.Close()
@@ -397,7 +397,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		p, err := scanPlaylist(rows)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			serverError(w, r, "scan failed", err)
 			return
 		}
 		if p.Mine || p.CanEdit { // совместный — тоже «мой»: в него добавляют из меню трека
@@ -422,16 +422,16 @@ func (s *Server) handleGetPlaylist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "playlist not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	tracks, err := s.playlistTracks(p.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if p.Collaborators, err = s.playlistCollaborators(p.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"playlist": p, "tracks": tracks})
@@ -469,7 +469,7 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO playlists (user_id, title, description, is_public) VALUES ($1, $2, $3, $4) RETURNING id`,
 		userID, strings.TrimSpace(*f.Title), desc, public,
 	).Scan(&id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create the playlist")
+		serverError(w, r, "could not create the playlist", err)
 		return
 	}
 	p, _ := s.visiblePlaylist(userID, id)
@@ -479,17 +479,17 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 // ownPlaylist answers false (and writes an error) unless the playlist is the
 // user's: renaming, the cover and deleting are the owner's alone. A
 // collaborator gets 403, anyone else 404 — as if there were no playlist.
-func (s *Server) ownPlaylist(w http.ResponseWriter, userID, id string) bool {
-	return s.playlistAccess(w, userID, id, false)
+func (s *Server) ownPlaylist(w http.ResponseWriter, r *http.Request, userID, id string) bool {
+	return s.playlistAccess(w, r, userID, id, false)
 }
 
 // editablePlaylist — the user may add, remove and reorder songs: the owner
 // or a collaborator (playlist_collab.go).
-func (s *Server) editablePlaylist(w http.ResponseWriter, userID, id string) bool {
-	return s.playlistAccess(w, userID, id, true)
+func (s *Server) editablePlaylist(w http.ResponseWriter, r *http.Request, userID, id string) bool {
+	return s.playlistAccess(w, r, userID, id, true)
 }
 
-func (s *Server) playlistAccess(w http.ResponseWriter, userID, id string, collaboratorOK bool) bool {
+func (s *Server) playlistAccess(w http.ResponseWriter, r *http.Request, userID, id string, collaboratorOK bool) bool {
 	var owner, collaborator bool
 	err := s.DB.QueryRow(
 		`SELECT p.user_id = $2, EXISTS (SELECT 1 FROM playlist_collaborators c WHERE c.playlist_id = p.id AND c.user_id = $2)
@@ -499,7 +499,7 @@ func (s *Server) playlistAccess(w http.ResponseWriter, userID, id string, collab
 		writeError(w, http.StatusNotFound, "playlist not found")
 		return false
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return false
 	case !owner && !collaboratorOK:
 		writeError(w, http.StatusForbidden, "only the owner can change this")
@@ -516,7 +516,7 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid playlist fields")
 		return
 	}
-	if !s.ownPlaylist(w, userID, id) {
+	if !s.ownPlaylist(w, r, userID, id) {
 		return
 	}
 	var title, desc any
@@ -531,7 +531,7 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 		        is_public = COALESCE($4, is_public), updated_at = now()
 		  WHERE id = $1`, id, title, desc, f.IsPublic,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not update the playlist")
+		serverError(w, r, "could not update the playlist", err)
 		return
 	}
 	p, _ := s.visiblePlaylist(userID, id)
@@ -541,12 +541,12 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
-	if !s.ownPlaylist(w, userID, id) {
+	if !s.ownPlaylist(w, r, userID, id) {
 		return
 	}
 	var cover sql.NullString
 	if err := s.DB.QueryRow(`DELETE FROM playlists WHERE id = $1 RETURNING cover_key`, id).Scan(&cover); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete the playlist")
+		serverError(w, r, "could not delete the playlist", err)
 		return
 	}
 	if cover.Valid {
@@ -561,28 +561,28 @@ func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
-	if !s.ownPlaylist(w, userID, id) {
+	if !s.ownPlaylist(w, r, userID, id) {
 		return
 	}
 	key, ok := s.saveUploadedImage(w, r)
 	if !ok {
 		return
 	}
-	s.setPlaylistCover(w, userID, id, &key)
+	s.setPlaylistCover(w, r, userID, id, &key)
 }
 
 func (s *Server) handleDeletePlaylistCover(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
-	if !s.ownPlaylist(w, userID, id) {
+	if !s.ownPlaylist(w, r, userID, id) {
 		return
 	}
-	s.setPlaylistCover(w, userID, id, nil)
+	s.setPlaylistCover(w, r, userID, id, nil)
 }
 
 // setPlaylistCover stores the new cover (nil — back to the mosaic), deletes
 // the previous file and answers with the playlist.
-func (s *Server) setPlaylistCover(w http.ResponseWriter, userID, id string, key *string) {
+func (s *Server) setPlaylistCover(w http.ResponseWriter, r *http.Request, userID, id string, key *string) {
 	var old sql.NullString
 	err := s.DB.QueryRow(
 		`UPDATE playlists p SET cover_key = $2, updated_at = now()
@@ -593,7 +593,7 @@ func (s *Server) setPlaylistCover(w http.ResponseWriter, userID, id string, key 
 		if key != nil {
 			s.removeStorageFiles(*key)
 		}
-		writeError(w, http.StatusInternalServerError, "could not update the cover")
+		serverError(w, r, "could not update the cover", err)
 		return
 	}
 	if old.Valid && (key == nil || old.String != *key) {
@@ -601,7 +601,7 @@ func (s *Server) setPlaylistCover(w http.ResponseWriter, userID, id string, key 
 	}
 	p, err := s.visiblePlaylist(userID, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
@@ -627,7 +627,7 @@ func (s *Server) handleAddToPlaylist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !s.editablePlaylist(w, userID, id) {
+	if !s.editablePlaylist(w, r, userID, id) {
 		return
 	}
 	// Deezer — параллельно, до 200 треков за раз; свои — из базы.
@@ -645,27 +645,27 @@ func (s *Server) handleAddToPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add the songs")
+		serverError(w, r, "could not add the songs", err)
 		return
 	}
 	defer tx.Rollback()
 	var last float64
 	// FOR UPDATE: два одновременных добавления не получат одни и те же позиции.
 	if err := tx.QueryRow(`SELECT 1 FROM playlists WHERE id = $1 FOR UPDATE`, id).Scan(new(int)); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add the songs")
+		serverError(w, r, "could not add the songs", err)
 		return
 	}
 	tx.QueryRow(`SELECT COALESCE(max(position), 0) FROM playlist_items WHERE playlist_id = $1`, id).Scan(&last)
 	for i, dz := range req.DeezerIDs {
 		if _, err := tx.Exec(`INSERT INTO playlist_items (playlist_id, position, deezer_id, meta, added_by) VALUES ($1, $2, $3, $4, $5)`,
 			id, last+float64(i+1), dz, metas[i], userID); err != nil {
-			writeError(w, http.StatusInternalServerError, "could not add the songs")
+			serverError(w, r, "could not add the songs", err)
 			return
 		}
 	}
 	tx.Exec(`UPDATE playlists SET updated_at = now() WHERE id = $1`, id)
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add the songs")
+		serverError(w, r, "could not add the songs", err)
 		return
 	}
 	if req.Download == nil || *req.Download {
@@ -697,18 +697,18 @@ func (s *Server) handleMovePlaylistItem(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, `"before" must be another song of the playlist or null`)
 		return
 	}
-	if !s.editablePlaylist(w, userID, id) {
+	if !s.editablePlaylist(w, r, userID, id) {
 		return
 	}
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not move the song")
+		serverError(w, r, "could not move the song", err)
 		return
 	}
 	defer tx.Rollback()
 	// Как при добавлении: перестановки одного плейлиста идут по очереди.
 	if err := tx.QueryRow(`SELECT 1 FROM playlists WHERE id = $1 FOR UPDATE`, id).Scan(new(int)); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not move the song")
+		serverError(w, r, "could not move the song", err)
 		return
 	}
 	var found bool
@@ -740,7 +740,7 @@ func (s *Server) handleMovePlaylistItem(w http.ResponseWriter, r *http.Request) 
 		err = tx.Commit()
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not move the song")
+		serverError(w, r, "could not move the song", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -786,12 +786,12 @@ func (s *Server) handleRemoveFromPlaylist(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
-	if !s.editablePlaylist(w, userID, id) {
+	if !s.editablePlaylist(w, r, userID, id) {
 		return
 	}
 	res, err := s.DB.Exec(`DELETE FROM playlist_items WHERE id = $1 AND playlist_id = $2`, itemID, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove the song")
+		serverError(w, r, "could not remove the song", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {

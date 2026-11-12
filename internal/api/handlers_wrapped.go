@@ -138,7 +138,7 @@ func (s *Server) wrappedFor(w http.ResponseWriter, r *http.Request) (*wrappedSta
 		return s.computeWrapped(userID, year, loc)
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return nil, false
 	}
 	return stats, true

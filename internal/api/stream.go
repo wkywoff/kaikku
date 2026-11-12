@@ -423,7 +423,7 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp, err := s.libraryStreamURL(deezerID); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	} else if resp != nil {
 		writeJSON(w, http.StatusOK, resp)
@@ -452,7 +452,7 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 	// Та же запись на другом релизе (ISRC) уже в медиатеке — играет её файл,
 	// без YouTube; воркер сразу заведёт на него и этот трек (worker.go).
 	if twin, err := s.sameRecordingURL(deezerID); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	} else if twin != nil {
 		for k, v := range twin {
@@ -467,7 +467,7 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "the server is low on disk space, new songs can't be played right now")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	url, expires := s.MediaSigner.PathURL(streamPath(deezerID))
@@ -481,15 +481,18 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 // медиатеке, скачивать нечего. Чужой черновик — как будто трека нет.
 func (s *Server) ownStreamURL(w http.ResponseWriter, r *http.Request, id string) {
 	if tracks, err := s.localTracks(viewerOf(r), []string{id}); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	} else if len(tracks) == 0 {
 		writeError(w, http.StatusNotFound, "track not found")
 		return
 	}
 	resp, err := s.libraryStreamURL(id)
-	if err != nil || resp == nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+	if err == nil && resp == nil {
+		err = errors.New("the track was removed from the library meanwhile")
+	}
+	if err != nil {
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -573,6 +576,7 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 	if s.Streams.lookup(deezerID) == nil {
 		// Скачанное уже убрано, а трек в медиатеке (ссылка ещё живая) — туда.
 		if resp, err := s.libraryStreamURL(deezerID); err != nil {
+			logServerError(r, "query failed", err)
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		} else if resp != nil {
@@ -587,6 +591,7 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "low on disk space", http.StatusServiceUnavailable)
 			return
 		} else if err != nil {
+			logServerError(r, "query failed", err)
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		}

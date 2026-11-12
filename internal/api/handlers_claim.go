@@ -30,7 +30,7 @@ func (s *Server) handleClaimArtist(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := ingest.EnsureArtist(s.DB, dz, a.Name)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create the artist")
+		serverError(w, r, "could not create the artist", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"id": id})
@@ -44,7 +44,7 @@ func (s *Server) handleClaimAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.claimAlbum(dz)
 	if err != nil {
-		writeSaveError(w, err)
+		writeSaveError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"id": id})
@@ -139,7 +139,7 @@ func (s *Server) handleGetDeezerTrackEdit(w http.ResponseWriter, r *http.Request
 			}
 		}
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if trackNo.Valid {
@@ -173,7 +173,7 @@ func (s *Server) handleUpdateDeezerTrack(w http.ResponseWriter, r *http.Request)
 	}
 	libID, err := s.libraryTrackByDeezer(dz)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if libID != "" {
@@ -188,11 +188,11 @@ func (s *Server) handleUpdateDeezerTrack(w http.ResponseWriter, r *http.Request)
 			dz, strings.TrimSpace(req.Title), req.TrackNo, req.DiscNo)
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if err := s.saveTrackCredits(dz, req.Explicit, req.Artists); err != nil {
-		writeSaveError(w, err)
+		writeSaveError(w, r, err)
 		return
 	}
 	s.handleGetDeezerTrackEdit(w, r)
@@ -205,16 +205,16 @@ func (s *Server) handleResetDeezerTrack(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if _, err := s.DB.Exec(`DELETE FROM track_edits WHERE deezer_id = $1`, dz); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if _, err := s.DB.Exec(`DELETE FROM track_overrides WHERE deezer_id = $1`, dz); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	libID, err := s.libraryTrackByDeezer(dz)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if libID != "" {
@@ -225,7 +225,7 @@ func (s *Server) handleResetDeezerTrack(w http.ResponseWriter, r *http.Request) 
 		}
 		if _, err := s.DB.Exec(`UPDATE tracks SET title = $1, track_no = $2, disc_no = $3, edited = false WHERE id = $4`,
 			t.Title, nullablePositive(t.TrackNo), nullablePositive(t.DiscNo), libID); err != nil {
-			writeError(w, http.StatusInternalServerError, "update failed")
+			serverError(w, r, "update failed", err)
 			return
 		}
 	}

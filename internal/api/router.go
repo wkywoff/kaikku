@@ -284,7 +284,7 @@ func (s *Server) authed(next http.HandlerFunc) http.Handler {
 			writeError(w, http.StatusUnauthorized, "user no longer exists")
 			return
 		} else if err != nil {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 			return
 		}
 		// Токены — с точностью до секунды: выданный в ту же секунду, что и

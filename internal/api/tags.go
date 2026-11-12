@@ -209,7 +209,7 @@ func (s *Server) handlePutArtistTags(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO artist_tags (deezer_id, tags, name, custom) VALUES ($1, $2, $3, true)
 		 ON CONFLICT (deezer_id) DO UPDATE SET tags = EXCLUDED.tags, name = COALESCE(EXCLUDED.name, artist_tags.name),
 		        custom = true, updated_at = now()`, id, js, name); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save")
+		serverError(w, r, "could not save", err)
 		return
 	}
 	s.forgetGenres()
@@ -223,7 +223,7 @@ func (s *Server) handleDeleteArtistTags(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if _, err := s.DB.Exec(`DELETE FROM artist_tags WHERE deezer_id = $1`, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not reset")
+		serverError(w, r, "could not reset", err)
 		return
 	}
 	s.forgetGenres()

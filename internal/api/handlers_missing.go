@@ -45,7 +45,7 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		 ORDER BY j.updated_at DESC
 		 LIMIT 500`, ingest.MaxAttempts)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	defer rows.Close()
@@ -54,7 +54,7 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		var m missingTrack
 		if err := rows.Scan(&m.JobID, &m.DeezerID, &m.Title, &m.Artist, &m.Album, &m.AlbumID, &m.CoverURL, &m.DurationMs,
 			&m.Error, &m.Attempts, &m.RequestedBy, &m.ManualVideoID, &m.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			serverError(w, r, "scan failed", err)
 			return
 		}
 		m.Kind = ingest.FailureKind(m.Error)
@@ -73,7 +73,7 @@ func (s *Server) handleRetryMissing(w http.ResponseWriter, r *http.Request) {
 	}
 	requeued, err := s.requeueJob(jobID, "failed", "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if !requeued {
@@ -118,7 +118,7 @@ func (s *Server) handleSetTrackVideo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "the track was never queued")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if status == "pending" || status == "processing" {
@@ -131,7 +131,7 @@ func (s *Server) handleSetTrackVideo(w http.ResponseWriter, r *http.Request) {
 		        manual_video_id = $2, attempts = 0, replace_audio = $3, updated_at = now()
 		  WHERE source_ref = $1 AND status IN ('done', 'failed')`, "deezer:"+dz, videoID, hasTrack,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	s.Streams.clearNotFound(dz)

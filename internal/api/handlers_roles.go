@@ -30,7 +30,7 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	defer tx.Rollback()
@@ -40,7 +40,7 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 	// два админа не снимут друг друга разом.
 	rows, err := tx.Query(`SELECT id::text FROM users WHERE is_admin ORDER BY id FOR UPDATE`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	callerIsAdmin, others := false, 0 // others — админы, кроме того, чьи права меняют
@@ -48,7 +48,7 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			writeError(w, http.StatusInternalServerError, "update failed")
+			serverError(w, r, "update failed", err)
 			return
 		}
 		if id == callerID {
@@ -61,7 +61,7 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	// adminOnly проверил права до транзакции; их могли снять, пока запрос шёл.
@@ -79,11 +79,11 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	log.Printf("users: admin rights of %s set to %v by user %s", username, *req.Admin, callerID)

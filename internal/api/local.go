@@ -491,7 +491,7 @@ func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id stri
 	played, _ := s.artistTopByPlays(id)
 	own, err := s.localArtistTracks(v, id, topLimit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "artist tracks lookup failed")
+		serverError(w, r, "artist tracks lookup failed", err)
 		return
 	}
 	top := popularTracks(played, own)
@@ -511,7 +511,7 @@ func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id stri
 func (s *Server) localArtistRadio(w http.ResponseWriter, r *http.Request, id string) {
 	tracks, err := s.localArtistTracks(viewerOf(r), id, 100)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "artist tracks lookup failed")
+		serverError(w, r, "artist tracks lookup failed", err)
 		return
 	}
 	rand.Shuffle(len(tracks), func(i, j int) { tracks[i], tracks[j] = tracks[j], tracks[i] })

@@ -19,7 +19,7 @@ func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "track not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	s.removeStorageFiles(s.unreferencedAudio(storageKey)...)

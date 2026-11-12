@@ -473,7 +473,7 @@ func interleave(per [][]deezer.Track, max int) []deezer.Track {
 func (s *Server) handleMixes(w http.ResponseWriter, r *http.Request) {
 	plans, err := s.planMixes(r, currentUser(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	mixes := []mix{}
@@ -532,7 +532,7 @@ func (s *Server) handleMix(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if tracks == nil {

@@ -23,7 +23,7 @@ func (s *Server) handleGetAlbum(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "album not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	// Исполнители и обложка — какими их видят все (Deezer с правкой): окно
@@ -52,7 +52,7 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	defer tx.Rollback()
@@ -64,7 +64,7 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "album not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if coverKey.Valid {
@@ -72,7 +72,7 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := tx.Query(`DELETE FROM tracks WHERE album_id = $1 RETURNING storage_key`, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	for rows.Next() {
@@ -84,11 +84,11 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 
 	if _, err := tx.Exec(`DELETE FROM albums WHERE id = $1`, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	// Файл трека может быть общим с тем же треком другого релиза (ISRC).

@@ -141,7 +141,7 @@ func (s *Server) handleReplaceAlbumTrack(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if _, err := s.claimAlbum(dz); err != nil {
-		writeSaveError(w, err)
+		writeSaveError(w, r, err)
 		return
 	}
 	album, err := s.Deezer.GetAlbum(dz)
@@ -172,7 +172,7 @@ func (s *Server) handleReplaceAlbumTrack(w http.ResponseWriter, r *http.Request)
 	}
 	ids[at] = req.With
 	if err := s.saveTracklist(dz, ids); err != nil {
-		writeSaveError(w, err)
+		writeSaveError(w, r, err)
 		return
 	}
 	s.handleDiscoverAlbum(w, r)

@@ -23,7 +23,7 @@ func (s *Server) handleStreamURL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "track not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 

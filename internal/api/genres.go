@@ -83,7 +83,7 @@ func (s *Server) handleGenres(w http.ResponseWriter, r *http.Request) {
 		return out, nil
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"genres": list})
@@ -102,7 +102,7 @@ func (s *Server) handleGenre(w http.ResponseWriter, r *http.Request) {
 	userID, slug := currentUser(r), r.PathValue("slug")
 	page, err := cached(&s.cache, "genre:"+userID+":"+slug, genrePageTTL, func() (*genrePage, error) { return s.genrePage(r, userID, slug) })
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	if page == nil {

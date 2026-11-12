@@ -79,7 +79,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// без приглашения не должен стоить ничего. createUser проверяет его ещё
 	// раз в транзакции.
 	if ok, err := s.inviteUsable(req.Invite); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not check the invite")
+		serverError(w, r, "could not check the invite", err)
 		return
 	} else if !ok {
 		writeError(w, http.StatusForbidden, "registration requires a valid invite code")
@@ -91,7 +91,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeBusy(w)
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not hash password")
+		serverError(w, r, "could not hash password", err)
 		return
 	}
 
@@ -104,13 +104,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "username already taken")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "could not create user")
+		serverError(w, r, "could not create user", err)
 		return
 	}
 
 	token, err := auth.IssueToken(id, tokenTTL, s.JWTSecret)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not issue token")
+		serverError(w, r, "could not issue token", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "token": token})
@@ -121,7 +121,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRegisterInfo(w http.ResponseWriter, r *http.Request) {
 	var first bool
 	if err := s.DB.QueryRow(`SELECT NOT EXISTS (SELECT 1 FROM users)`).Scan(&first); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"first_user": first})
@@ -225,7 +225,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if err != nil {
 		s.refundLogin(name, ip)
-		writeError(w, http.StatusInternalServerError, "login failed")
+		serverError(w, r, "login failed", err)
 		return
 	}
 
@@ -243,7 +243,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	token, err := auth.IssueTokenAt(id, started, tokenTTL, s.JWTSecret)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not issue token")
+		serverError(w, r, "could not issue token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
@@ -264,7 +264,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "user no longer exists")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	// can_upload — показывать ли загрузку своих релизов (uploads.go);
@@ -282,7 +282,7 @@ func (s *Server) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
 
 	b := make([]byte, 10)
 	if _, err := rand.Read(b); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not generate invite")
+		serverError(w, r, "could not generate invite", err)
 		return
 	}
 	code := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b))
@@ -291,7 +291,7 @@ func (s *Server) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.DB.Exec(
 		`INSERT INTO invites (code, created_by, expires_at) VALUES ($1, $2, $3)`, code, userID, expires,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create invite")
+		serverError(w, r, "could not create invite", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{

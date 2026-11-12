@@ -58,12 +58,12 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	rows, err := s.DB.Query(playlistSelect+` WHERE p.user_id = $2 AND p.is_public ORDER BY p.updated_at DESC`, me, p.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	defer rows.Close()
@@ -71,7 +71,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		pl, err := scanPlaylist(rows)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			serverError(w, r, "scan failed", err)
 			return
 		}
 		playlists = append(playlists, pl)
@@ -80,7 +80,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	if p.ID == me {
 		people, err := s.people(me)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 			return
 		}
 		resp["people"] = people
@@ -105,7 +105,7 @@ func (s *Server) people(me string) ([]person, error) {
 func (s *Server) handlePeople(w http.ResponseWriter, r *http.Request) {
 	people, err := s.people(currentUser(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"people": people})
@@ -123,29 +123,29 @@ func (s *Server) handleFollowUser(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO user_follows (follower_id, followee_id)
 		 SELECT $1, u.id FROM users u WHERE u.id::text = $2
 		 ON CONFLICT DO NOTHING`, me, other); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not follow")
+		serverError(w, r, "could not follow", err)
 		return
 	}
-	s.writePerson(w, me, other)
+	s.writePerson(w, r, me, other)
 }
 
 func (s *Server) handleUnfollowUser(w http.ResponseWriter, r *http.Request) {
 	me, other := currentUser(r), r.PathValue("id")
 	if _, err := s.DB.Exec(`DELETE FROM user_follows WHERE follower_id = $1 AND followee_id::text = $2`, me, other); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not unfollow")
+		serverError(w, r, "could not unfollow", err)
 		return
 	}
-	s.writePerson(w, me, other)
+	s.writePerson(w, r, me, other)
 }
 
-func (s *Server) writePerson(w http.ResponseWriter, me, id string) {
+func (s *Server) writePerson(w http.ResponseWriter, r *http.Request, me, id string) {
 	var p person
 	err := s.DB.QueryRow(personSelect+` WHERE u.id::text = $2`, me, id).Scan(&p.ID, &p.Username, &p.IFollow, &p.FollowsMe)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, p)

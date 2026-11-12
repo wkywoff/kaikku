@@ -127,7 +127,7 @@ func (s *Server) reserveUpload(w http.ResponseWriter, r *http.Request) (release 
 	if quota > 0 {
 		var err error
 		if used, err = s.uploadedBytes(r.Context(), userID); err != nil {
-			writeError(w, http.StatusInternalServerError, "could not save audio")
+			serverError(w, r, "could not save audio", err)
 			return nil, false
 		}
 	}
@@ -181,7 +181,7 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 
 	src, err := os.CreateTemp(s.StorageDir, ".upload-*")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save audio")
+		serverError(w, r, "could not save audio", err)
 		return a, false
 	}
 	a.src = src.Name()
@@ -218,6 +218,7 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 		return fail(http.StatusBadRequest, "the file has no sound")
 	}
 	if err := os.MkdirAll(filepath.Join(s.StorageDir, "uploads"), 0o755); err != nil {
+		logServerError(r, "could not save audio", err)
 		return fail(http.StatusInternalServerError, "could not save audio")
 	}
 	a.key = "uploads/" + randomKey() + ".m4a"
@@ -253,8 +254,7 @@ func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 	trackID, disc, err := s.insertOwnTrack(rel, title, a)
 	if err != nil {
 		s.removeStorageFiles(a.key)
-		log.Printf("upload to %s: %v", rel.id, err)
-		writeError(w, http.StatusInternalServerError, "could not save the track")
+		serverError(w, r, "could not save the track", err)
 		return
 	}
 	// Текст из тегов файла, с тем же пределом, что и у правки вручную.
@@ -350,7 +350,7 @@ func (s *Server) handleReplaceTrackAudio(w http.ResponseWriter, r *http.Request)
 		trackID, a.key, a.lufs, a.gain, a.durationMs).Scan(&old)
 	if err != nil {
 		s.removeStorageFiles(a.key)
-		writeError(w, http.StatusInternalServerError, "could not save the track")
+		serverError(w, r, "could not save the track", err)
 		return
 	}
 	s.removeStorageFiles(s.unreferencedAudio(old)...)
@@ -380,8 +380,7 @@ func (s *Server) handleDeleteOwnTrack(w http.ResponseWriter, r *http.Request) {
 	}
 	keys, err := s.deleteOwn(rel.id, rel.libraryID, trackID)
 	if err != nil {
-		log.Printf("delete track %s: %v", trackID, err)
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	s.removeStorageFiles(s.unreferencedAudio(keys...)...)

@@ -16,7 +16,7 @@ func (s *Server) handleGetArtist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "artist not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	// Фото — какое видят все: своё или с Deezer (через прокси, /api/img).

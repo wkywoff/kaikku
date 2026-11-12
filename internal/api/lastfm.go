@@ -107,7 +107,7 @@ func (s *Server) handleLastfmLink(w http.ResponseWriter, r *http.Request) {
 		 ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username, session_key = EXCLUDED.session_key, linked_at = now()`,
 		currentUser(r), name, key,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save the link")
+		serverError(w, r, "could not save the link", err)
 		return
 	}
 	s.handleLastfmStatus(w, r)
@@ -127,7 +127,7 @@ func (s *Server) handleLastfmSettings(w http.ResponseWriter, r *http.Request) {
 		`UPDATE lastfm_links SET scrobble = COALESCE($2, scrobble), love = COALESCE($3, love) WHERE user_id = $1`,
 		currentUser(r), req.Scrobble, req.Love)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save")
+		serverError(w, r, "could not save", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -140,7 +140,7 @@ func (s *Server) handleLastfmSettings(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/me/lastfm — отвязать (неотправленные скробблы пропадают).
 func (s *Server) handleLastfmUnlink(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.DB.Exec(`DELETE FROM lastfm_links WHERE user_id = $1`, currentUser(r)); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not unlink")
+		serverError(w, r, "could not unlink", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -212,7 +212,7 @@ func (s *Server) handleScrobble(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO lastfm_queue (user_id, artist, track, album, duration, played_at) VALUES ($1, $2, $3, $4, $5, $6)`,
 		currentUser(r), lt.Artist, lt.Title, lt.Album, lt.Duration, started,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not queue the scrobble")
+		serverError(w, r, "could not queue the scrobble", err)
 		return
 	}
 	select {

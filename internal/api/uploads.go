@@ -64,7 +64,7 @@ func (s *Server) releaseByID(w http.ResponseWriter, r *http.Request, id string) 
 		writeError(w, http.StatusNotFound, "release not found")
 		return rel, false
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return rel, false
 	case !v.mayEdit(rel.owner):
 		writeError(w, http.StatusForbidden, "only the release's author can change it")
@@ -98,7 +98,7 @@ func (s *Server) handleUploads(w http.ResponseWriter, r *http.Request) {
 		  WHERE a.deezer_id LIKE 'k%' AND (a.owner_id::text = $1 OR $2)
 		  ORDER BY a.created_at DESC`, v.userID, v.admin)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	var ids []string
@@ -115,7 +115,7 @@ func (s *Server) handleUploads(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 	cards, err := s.localAlbumCards(ids)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	out := make([]uploadCard, len(cards))
@@ -139,7 +139,7 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 		 VALUES ('k' || nextval('kaikku_ids'), '', current_date, 'single', true, $1, true)
 		 RETURNING deezer_id`, currentUser(r)).Scan(&id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create the release")
+		serverError(w, r, "could not create the release", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
@@ -234,7 +234,7 @@ func (s *Server) handleGetRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	st, err := s.releaseState(r, rel)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -310,12 +310,12 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	have, err := idsIn(s.DB, `SELECT deezer_id FROM tracks WHERE album_id = $1`, rel.libraryID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	other, err := s.otherTracks(viewerOf(r), rel.id, req.Tracks, have)
 	if err != nil {
-		writeSaveError(w, err)
+		writeSaveError(w, r, err)
 		return
 	}
 	// Диски: по порядку треков номер не убывает (диск 2 — после диска 1);
@@ -354,24 +354,24 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 
 	if req.VersionOf != nil {
 		if err := s.saveVersionOf(viewerOf(r), rel.libraryID, *req.VersionOf); err != nil {
-			writeSaveError(w, err)
+			writeSaveError(w, r, err)
 			return
 		}
 	}
 
 	tx, err := s.DB.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	defer tx.Rollback()
 	var cover sql.NullString
 	if err := tx.QueryRow(`SELECT cover_key FROM albums WHERE id = $1 FOR UPDATE`, rel.libraryID).Scan(&cover); err != nil {
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	if have, err = idsIn(tx, `SELECT deezer_id FROM tracks WHERE album_id = $1`, rel.libraryID); err != nil {
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	sent := make([]string, len(req.Tracks))
@@ -402,7 +402,7 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		`UPDATE albums SET title = $2, artist_ids = $3, record_type = NULLIF($4, ''), released_at = $5, tracklist = $6, tracklist_discs = $7
 		  WHERE id = $1`,
 		rel.libraryID, req.Title, nullArray(artists), req.RecordType, released, nullArray(tracklist), discsArg); err != nil {
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	for i, t := range req.Tracks {
@@ -411,7 +411,7 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, err := tx.Exec(`UPDATE tracks SET title = $2, track_no = $3, disc_no = $4 WHERE deezer_id = $1`,
 			t.ID, req.Tracks[i].Title, trackNos[i], req.Tracks[i].Disc); err != nil {
-			writeError(w, http.StatusInternalServerError, "save failed")
+			serverError(w, r, "save failed", err)
 			return
 		}
 		if trackArtists[i] == nil && !t.Explicit {
@@ -423,7 +423,7 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 				t.ID, t.Explicit, nullArray(trackArtists[i]))
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "save failed")
+			serverError(w, r, "save failed", err)
 			return
 		}
 	}
@@ -435,19 +435,19 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if _, err := tx.Exec(`UPDATE albums SET draft = $2 WHERE id = $1`, rel.libraryID, !*req.Published); err != nil {
-			writeError(w, http.StatusInternalServerError, "save failed")
+			serverError(w, r, "save failed", err)
 			return
 		}
 		rel.draft = !*req.Published
 	}
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	s.syncLocalSnapshots(rel.id)
 	st, err := s.releaseState(r, rel)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -562,7 +562,7 @@ func (s *Server) handleReleaseCover(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.setReleaseCover(rel, key, true); err != nil {
 		s.removeStorageFiles(key)
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"cover_url": "/media/" + key})
@@ -600,8 +600,7 @@ func (s *Server) handleDeleteRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	keys, err := s.deleteOwn(rel.id, rel.libraryID, "")
 	if err != nil {
-		log.Printf("delete release %s: %v", rel.id, err)
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		serverError(w, r, "delete failed", err)
 		return
 	}
 	s.removeStorageFiles(s.unreferencedAudio(keys...)...)
@@ -692,7 +691,7 @@ func (s *Server) handleCreateArtist(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.QueryRow(
 		`INSERT INTO artists (deezer_id, name, edited, owner_id) VALUES ('k' || nextval('kaikku_ids'), $1, true, $2)
 		 RETURNING deezer_id, id`, a.Name, currentUser(r)).Scan(&a.ID, &a.LibraryID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create the artist")
+		serverError(w, r, "could not create the artist", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, a)
@@ -708,7 +707,7 @@ func (s *Server) artistEditor(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "artist not found")
 			return
 		} else if err != nil {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 			return
 		}
 		if !viewerOf(r).mayEdit(owner) {
@@ -773,7 +772,7 @@ func (s *Server) handleGetOwnLyrics(w http.ResponseWriter, r *http.Request) {
 	if s.Lyrics != nil {
 		l, err := s.Lyrics.Stored(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 			return
 		}
 		text = lyrics.ToText(l)
@@ -784,7 +783,7 @@ func (s *Server) handleGetOwnLyrics(w http.ResponseWriter, r *http.Request) {
 // handlePutOwnLyrics сохраняет текст своего трека: {"text": "..."} — LRC
 // или просто строки; пустой — убрать.
 func (s *Server) handlePutOwnLyrics(w http.ResponseWriter, r *http.Request) {
-	rel, trackID, ok := s.ownTrackFor(w, r)
+	_, trackID, ok := s.ownTrackFor(w, r)
 	if !ok {
 		return
 	}
@@ -800,8 +799,7 @@ func (s *Server) handlePutOwnLyrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.saveOwnLyrics(r.Context(), trackID, req.Text); err != nil {
-		log.Printf("lyrics of %s (%s): %v", trackID, rel.id, err)
-		writeError(w, http.StatusInternalServerError, "save failed")
+		serverError(w, r, "save failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

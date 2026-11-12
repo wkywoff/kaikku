@@ -67,7 +67,7 @@ func (s *Server) playlistCollaborators(playlistID string) ([]playlistOwner, erro
 // (владелец; только друга).
 func (s *Server) handleAddCollaborator(w http.ResponseWriter, r *http.Request) {
 	userID, id, other := currentUser(r), r.PathValue("id"), r.PathValue("user")
-	if !s.ownPlaylist(w, userID, id) {
+	if !s.ownPlaylist(w, r, userID, id) {
 		return
 	}
 	if other == userID {
@@ -89,7 +89,7 @@ func (s *Server) handleAddCollaborator(w http.ResponseWriter, r *http.Request) {
 		 SELECT $1::uuid, u.id FROM users u WHERE u.id::text = $2
 		 ON CONFLICT DO NOTHING`, id, other)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add the collaborator")
+		serverError(w, r, "could not add the collaborator", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -108,12 +108,12 @@ func (s *Server) handleAddCollaborator(w http.ResponseWriter, r *http.Request) {
 // (владелец) или выйти из соавторов самому.
 func (s *Server) handleRemoveCollaborator(w http.ResponseWriter, r *http.Request) {
 	userID, id, other := currentUser(r), r.PathValue("id"), r.PathValue("user")
-	if other != userID && !s.ownPlaylist(w, userID, id) {
+	if other != userID && !s.ownPlaylist(w, r, userID, id) {
 		return
 	}
 	res, err := s.DB.Exec(`DELETE FROM playlist_collaborators WHERE playlist_id::text = $1 AND user_id::text = $2`, id, other)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not remove the collaborator")
+		serverError(w, r, "could not remove the collaborator", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 && other == userID {

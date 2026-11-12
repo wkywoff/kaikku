@@ -60,7 +60,7 @@ func (s *Server) handleLyrics(w http.ResponseWriter, r *http.Request) {
 // находка через месяц заменила бы текст автора.
 func (s *Server) ownLyrics(w http.ResponseWriter, r *http.Request, id string) {
 	if tracks, err := s.localTracks(viewerOf(r), []string{id}); err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	} else if len(tracks) == 0 {
 		writeError(w, http.StatusNotFound, "track not found")
@@ -68,7 +68,7 @@ func (s *Server) ownLyrics(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	l, err := s.Lyrics.Stored(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")

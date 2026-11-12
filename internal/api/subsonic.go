@@ -257,7 +257,7 @@ func (s *Server) subsonicAccessOf(userID string) (subsonicAccess, error) {
 func (s *Server) handleSubsonicAccess(w http.ResponseWriter, r *http.Request) {
 	a, err := s.subsonicAccessOf(currentUser(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, a)
@@ -270,7 +270,7 @@ func (s *Server) handleNewSubsonicPassword(w http.ResponseWriter, r *http.Reques
 		_, err = s.DB.Exec(`UPDATE users SET subsonic_secret = $2 WHERE id = $1`, currentUser(r), sealed)
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create the password")
+		serverError(w, r, "could not create the password", err)
 		return
 	}
 	s.handleSubsonicAccess(w, r)
@@ -279,7 +279,7 @@ func (s *Server) handleNewSubsonicPassword(w http.ResponseWriter, r *http.Reques
 // DELETE /api/me/subsonic — выключить вход из приложений.
 func (s *Server) handleDisableSubsonic(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.DB.Exec(`UPDATE users SET subsonic_secret = NULL WHERE id = $1`, currentUser(r)); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not turn it off")
+		serverError(w, r, "could not turn it off", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

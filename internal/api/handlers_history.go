@@ -54,7 +54,7 @@ func (s *Server) handleRecordPlay(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO plays (user_id, deezer_id, meta, context_kind, context_id, context_meta) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 		userID, req.DeezerID, meta, ctx.Kind, ctx.ID, ctxMeta,
 	).Scan(&id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not record the play")
+		serverError(w, r, "could not record the play", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int64{"id": id})
@@ -77,7 +77,7 @@ func (s *Server) handlePlayListened(w http.ResponseWriter, r *http.Request) {
 		        CASE WHEN COALESCE((meta->>'duration_ms')::int, 0) > 0 THEN LEAST($1, (meta->>'duration_ms')::int) ELSE $1 END)
 		  WHERE id = $2 AND user_id = $3`, req.Ms, id, currentUser(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save the play")
+		serverError(w, r, "could not save the play", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -199,7 +199,7 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 		 ORDER BY played_at DESC
 		 LIMIT 30`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	type row struct {
@@ -211,7 +211,7 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 		var x row
 		if err := rows.Scan(&x.kind, &x.id, &x.meta, &x.ctxMeta); err != nil {
 			rows.Close()
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			serverError(w, r, "scan failed", err)
 			return
 		}
 		found = append(found, x)
@@ -291,7 +291,7 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 		 WHERE user_id = $1 AND played_at > now() - interval '30 days' AND COALESCE(meta->>'artist_id', '') NOT IN ('', '0')
 		 GROUP BY 1 ORDER BY 3 DESC, 2 LIMIT 3`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	var topIDs, basedOn []string
@@ -308,7 +308,7 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 	skip := map[string]bool{}
 	followed, err := s.idList(`SELECT deezer_id FROM followed_artists WHERE user_id = $1`, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	for _, id := range append(followed, topIDs...) {
@@ -386,7 +386,7 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO followed_artists (user_id, deezer_id, meta) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
 		userID, id, meta,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not follow the artist")
+		serverError(w, r, "could not follow the artist", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -395,7 +395,7 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUnfollow(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	if _, err := s.DB.Exec(`DELETE FROM followed_artists WHERE user_id = $1 AND deezer_id = $2`, userID, r.PathValue("id")); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not unfollow the artist")
+		serverError(w, r, "could not unfollow the artist", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -422,7 +422,7 @@ func (s *Server) handleFollowedArtists(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	artists, err := s.followedArtists(userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	s.overlayFor(artistPtrs(artists), nil, nil)
@@ -442,7 +442,7 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	artists, err := s.followedArtists(userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	since := time.Now().Add(-releasesWindow).Format("2006-01-02")
@@ -538,12 +538,12 @@ func (s *Server) handleLibraryTimes(w http.ResponseWriter, r *http.Request) {
 		UNION ALL SELECT 'artist:' || deezer_id, added_at FROM followed_artists WHERE user_id = $1
 		UNION ALL SELECT 'playlist:' || id, created_at FROM playlists WHERE user_id = $1`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	played, err := times(`SELECT context_kind || ':' || context_id, max(played_at) FROM plays WHERE user_id = $1 GROUP BY 1`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"added": added, "played": played})

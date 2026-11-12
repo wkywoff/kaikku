@@ -215,7 +215,7 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 		// Свои треки (загрузка) всегда в медиатеке — job'а у них нет.
 		visible, err := s.localTracks(viewerOf(r), own)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 			return
 		}
 		ids := make([]string, len(visible))
@@ -224,7 +224,7 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 		}
 		rows, err := s.DB.Query(`SELECT deezer_id, id FROM tracks WHERE deezer_id = ANY($1)`, pq.Array(ids))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "query failed")
+			serverError(w, r, "query failed", err)
 			return
 		}
 		for rows.Next() {
@@ -241,7 +241,7 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 		pq.Array(refs),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	defer rows.Close()
@@ -251,7 +251,7 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 		var jobID int64
 		var trackID sql.NullString
 		if err := rows.Scan(&ref, &jobID, &status, &trackID); err != nil {
-			writeError(w, http.StatusInternalServerError, "scan failed")
+			serverError(w, r, "scan failed", err)
 			return
 		}
 		entry := map[string]any{"job_id": jobID, "job_status": status}

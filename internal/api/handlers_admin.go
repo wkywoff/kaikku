@@ -169,7 +169,7 @@ type badRequest struct{ msg string }
 
 func (e *badRequest) Error() string { return e.msg }
 
-func writeSaveError(w http.ResponseWriter, err error) {
+func writeSaveError(w http.ResponseWriter, r *http.Request, err error) {
 	var br *badRequest
 	if errors.As(err, &br) {
 		writeError(w, http.StatusBadRequest, br.msg)
@@ -180,7 +180,7 @@ func writeSaveError(w http.ResponseWriter, err error) {
 		writeDeezerError(w, "deezer lookup failed", err)
 		return
 	}
-	writeError(w, http.StatusInternalServerError, "update failed")
+	serverError(w, r, "update failed", err)
 }
 
 // --- релиз: исполнители и скрытие ---
@@ -240,11 +240,11 @@ func (s *Server) handleSetAlbumHidden(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.claimAlbum(dz)
 	if err != nil {
-		writeSaveError(w, err)
+		writeSaveError(w, r, err)
 		return
 	}
 	if _, err := s.DB.Exec(`UPDATE albums SET hidden = $2 WHERE id = $1`, id, req.Hidden); err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "hidden": req.Hidden})
@@ -286,7 +286,7 @@ func (s *Server) handleRedownloadTrack(w http.ResponseWriter, r *http.Request) {
 		  WHERE source_ref = $1 AND status IN ('done', 'failed')
 		    AND EXISTS (SELECT 1 FROM tracks WHERE deezer_id = $2)`, "deezer:"+dz, dz, explicit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "update failed")
+		serverError(w, r, "update failed", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -342,7 +342,7 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "query failed")
+		serverError(w, r, "query failed", err)
 		return
 	}
 	// Перекачка в работе заменила бы загруженный файл своим.
@@ -364,7 +364,7 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 	// Тело — во временный файл рядом с медиатекой (не в память), оттуда — в .m4a.
 	src, err := os.CreateTemp(s.StorageDir, ".upload-*")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save audio")
+		serverError(w, r, "could not save audio", err)
 		return
 	}
 	defer os.Remove(src.Name())
@@ -394,7 +394,7 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if missing {
-		s.saveMissingTrack(w, dz, key, lufs, gainDB)
+		s.saveMissingTrack(w, r, dz, key, lufs, gainDB)
 		return
 	}
 	// audio_pinned: файл админа не скачать заново — неслушаемым его не удалять (0029).
@@ -417,7 +417,7 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 
 // saveMissingTrack делает загруженный админом файл треком, которого не было
 // в медиатеке: каталог — по данным его задачи, как у воркера.
-func (s *Server) saveMissingTrack(w http.ResponseWriter, dz, key string, lufs, gainDB float64) {
+func (s *Server) saveMissingTrack(w http.ResponseWriter, r *http.Request, dz, key string, lufs, gainDB float64) {
 	job, err := ingest.LoadJob(s.DB, "deezer:"+dz)
 	var trackID string
 	if err == nil {
@@ -427,9 +427,8 @@ func (s *Server) saveMissingTrack(w http.ResponseWriter, dz, key string, lufs, g
 		_, err = s.DB.Exec(`UPDATE tracks SET audio_pinned = true WHERE id = $1 AND storage_key = $2`, trackID, key)
 	}
 	if err != nil {
-		log.Printf("track %s: saving uploaded audio: %v", dz, err)
 		s.removeStorageFiles(key)
-		writeError(w, http.StatusInternalServerError, "could not save the track")
+		serverError(w, r, "could not save the track", err)
 		return
 	}
 	ingest.MarkDone(s.DB, job.ID, trackID)
@@ -454,7 +453,7 @@ func (s *Server) handleRefreshLyrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.Lyrics != nil {
 		if err := s.Lyrics.Forget(r.Context(), id, isrc); err != nil {
-			writeError(w, http.StatusInternalServerError, "update failed")
+			serverError(w, r, "update failed", err)
 			return
 		}
 	}

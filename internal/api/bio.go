@@ -177,7 +177,7 @@ func (s *Server) handlePutArtistBio(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO artist_bios (deezer_id, lang, text, source) VALUES ($1, '', $2, 'custom')
 		 ON CONFLICT (deezer_id, lang) DO UPDATE SET text = EXCLUDED.text, updated_at = now()`, id, text,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not save")
+		serverError(w, r, "could not save", err)
 		return
 	}
 	s.handleArtistBio(w, r)
@@ -190,7 +190,7 @@ func (s *Server) handleDeleteArtistBio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.DB.Exec(`DELETE FROM artist_bios WHERE deezer_id = $1 AND lang = ''`, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not reset")
+		serverError(w, r, "could not reset", err)
 		return
 	}
 	s.handleArtistBio(w, r)
