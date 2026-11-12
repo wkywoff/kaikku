@@ -110,32 +110,32 @@ export const api = {
   // ссылка на новый пароль -> { code, username, expires_at }, права админа ->
   // { id, username, is_admin }.
   adminUsers: () => request('/admin/users'),
-  createPasswordReset: (userId) => request(`/admin/users/${encodeURIComponent(userId)}/password-reset`, { method: 'POST' }),
-  setUserAdmin: (userId, admin) => request(`/admin/users/${encodeURIComponent(userId)}/admin`, { method: 'PUT', body: { admin } }),
+  createPasswordReset: (userId) => request(`/admin/users/${enc(userId)}/password-reset`, { method: 'POST' }),
+  setUserAdmin: (userId, admin) => request(`/admin/users/${enc(userId)}/admin`, { method: 'PUT', body: { admin } }),
   // Тексты песен -> { lyrics: { source, sync, lines, writers } | null }.
-  lyrics: (deezerId) => request(`/lyrics/${encodeURIComponent(deezerId)}`),
+  lyrics: (deezerId) => request(`/lyrics/${enc(deezerId)}`),
 
   // signal — отменить, если человек печатает дальше (SearchPage).
-  search: (q, { signal } = {}) => request(`/search?q=${encodeURIComponent(q)}`, { signal }), // -> { tracks, artists, albums }
-  ingestLookup: (deezerTrackIds) => request(`/ingest/lookup?ids=${deezerTrackIds.join(',')}`),
+  search: (q, { signal } = {}) => request(`/search?q=${enc(q)}`, { signal }), // -> { tracks, artists, albums }
+  ingestLookup: (deezerTrackIds) => request(`/ingest/lookup?ids=${deezerTrackIds.map(enc).join(',')}`),
 
   // Личная медиатека: лайки, сохранённые альбомы, плейлисты (по Deezer ID;
   // сервер сам берёт метаданные и качает добавленное в фоне).
   collection: () => request('/me/collection'), // -> { liked: [id], albums: [id], artists: [id] }
   likedTracks: () => request('/me/liked'), // -> { tracks }
-  like: (deezerTrackId) => request(`/me/liked/${deezerTrackId}`, { method: 'PUT' }),
-  unlike: (deezerTrackId) => request(`/me/liked/${deezerTrackId}`, { method: 'DELETE' }),
+  like: (deezerTrackId) => request(`/me/liked/${enc(deezerTrackId)}`, { method: 'PUT' }),
+  unlike: (deezerTrackId) => request(`/me/liked/${enc(deezerTrackId)}`, { method: 'DELETE' }),
   savedAlbums: () => request('/me/albums'), // -> { albums }
-  saveAlbum: (deezerAlbumId) => request(`/me/albums/${deezerAlbumId}`, { method: 'PUT' }),
-  unsaveAlbum: (deezerAlbumId) => request(`/me/albums/${deezerAlbumId}`, { method: 'DELETE' }),
+  saveAlbum: (deezerAlbumId) => request(`/me/albums/${enc(deezerAlbumId)}`, { method: 'PUT' }),
+  unsaveAlbum: (deezerAlbumId) => request(`/me/albums/${enc(deezerAlbumId)}`, { method: 'DELETE' }),
   followedArtists: () => request('/me/artists'), // -> { artists }
-  follow: (deezerArtistId) => request(`/me/artists/${deezerArtistId}`, { method: 'PUT' }),
-  unfollow: (deezerArtistId) => request(`/me/artists/${deezerArtistId}`, { method: 'DELETE' }),
+  follow: (deezerArtistId) => request(`/me/artists/${enc(deezerArtistId)}`, { method: 'PUT' }),
+  unfollow: (deezerArtistId) => request(`/me/artists/${enc(deezerArtistId)}`, { method: 'DELETE' }),
   newReleases: () => request('/me/releases'), // -> { albums } — свежее у артистов из подписок
   // История: трек дослушан до порога; context — { kind: album|playlist|artist|liked|mix, id }.
   recordPlay: (deezerTrackId, context) => request('/me/plays', { method: 'POST', body: { deezer_id: deezerTrackId, context: context || {} } }),
   // keepalive — уходит и при закрытии вкладки (pagehide).
-  playListened: (playId, ms) => request(`/me/plays/${playId}/listened`, { method: 'POST', body: { ms }, keepalive: true }),
+  playListened: (playId, ms) => request(`/me/plays/${enc(playId)}/listened`, { method: 'POST', body: { ms }, keepalive: true }),
   recent: () => request('/me/recent'),
   libraryTimes: () => request('/me/library/times'), // -> { added: {"album:ID": ts}, played: {…} } — сортировка медиатеки
   // Миксы — подборки из истории и лайков: { mixes: [{ id, kind, tag?, artists, covers }] };
@@ -146,7 +146,7 @@ export const api = {
   genre: (slug) => request(`/genres/${enc(slug)}`),
   mix: (id) => request(`/me/mixes/${enc(id)}`),
   // Last.fm: cb — куда Last.fm вернёт с ?token=… после «Разрешить».
-  lastfm: (cb) => request(`/me/lastfm?cb=${encodeURIComponent(cb)}`), // -> { available, auth_url, username?, scrobble?, love?, pending? }
+  lastfm: (cb) => request(`/me/lastfm?cb=${enc(cb)}`), // -> { available, auth_url, username?, scrobble?, love?, pending? }
   lastfmLink: (token) => request('/me/lastfm', { method: 'POST', body: { token } }),
   lastfmSettings: (patch) => request('/me/lastfm', { method: 'PATCH', body: patch }),
   lastfmUnlink: () => request('/me/lastfm', { method: 'DELETE' }),
@@ -159,34 +159,34 @@ export const api = {
   // Итоги года (без year — текущий) в часовом поясе браузера.
   wrapped: (year) => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    return request(`/me/wrapped?tz=${encodeURIComponent(tz)}${year ? `&year=${encodeURIComponent(year)}` : ''}`);
+    return request(`/me/wrapped?tz=${enc(tz)}${year ? `&year=${enc(year)}` : ''}`);
   }, // -> { items: [{ kind, album? | artist? | playlist? }] }
   // Все альбомы, прослушанные за год, от самого слушаемого: { year, albums: [{ id, title, artist, cover_url, plays }] }.
   wrappedAlbums: (year) => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    return request(`/me/wrapped/albums?tz=${encodeURIComponent(tz)}&year=${encodeURIComponent(year)}`);
+    return request(`/me/wrapped/albums?tz=${enc(tz)}&year=${enc(year)}`);
   },
   suggestions: () => request('/me/suggestions'), // -> { artists, based_on }
   playlists: () => request('/playlists'), // -> { mine, others }
   createPlaylist: (fields) => request('/playlists', { method: 'POST', body: fields }),
-  getPlaylist: (id) => request(`/playlists/${id}`), // -> { playlist, tracks }
-  updatePlaylist: (id, fields) => request(`/playlists/${id}`, { method: 'PUT', body: fields }),
-  deletePlaylist: (id) => request(`/playlists/${id}`, { method: 'DELETE' }),
+  getPlaylist: (id) => request(`/playlists/${enc(id)}`), // -> { playlist, tracks }
+  updatePlaylist: (id, fields) => request(`/playlists/${enc(id)}`, { method: 'PUT', body: fields }),
+  deletePlaylist: (id) => request(`/playlists/${enc(id)}`, { method: 'DELETE' }),
   // download: false — не ставить на скачивание (импорт целого плейлиста).
   addToPlaylist: (id, deezerIds, { download } = {}) =>
-    request(`/playlists/${id}/tracks`, { method: 'POST', body: { deezer_ids: deezerIds, ...(download === false ? { download } : {}) } }),
+    request(`/playlists/${enc(id)}/tracks`, { method: 'POST', body: { deezer_ids: deezerIds, ...(download === false ? { download } : {}) } }),
   // Импорт: треки плейлиста Spotify по ссылке → { title, tracks, truncated };
   // поиск пачки треков в каталоге → { matches: [трек Deezer | null] }.
-  importSpotify: (link) => request(`/import/spotify?link=${encodeURIComponent(link)}`),
+  importSpotify: (link) => request(`/import/spotify?link=${enc(link)}`),
   importMatch: (tracks) => request('/import/match', { method: 'POST', body: { tracks } }),
   importAlbums: (tracks) => request('/import/albums', { method: 'POST', body: { tracks } }),
-  removeFromPlaylist: (id, itemId) => request(`/playlists/${id}/tracks/${itemId}`, { method: 'DELETE' }),
+  removeFromPlaylist: (id, itemId) => request(`/playlists/${enc(id)}/tracks/${enc(itemId)}`, { method: 'DELETE' }),
   // Переставить трек: встать перед beforeItemId (null — в конец).
   movePlaylistItem: (id, itemId, beforeItemId) =>
-    request(`/playlists/${id}/tracks/${itemId}/position`, { method: 'PUT', body: { before: beforeItemId } }),
+    request(`/playlists/${enc(id)}/tracks/${enc(itemId)}/position`, { method: 'PUT', body: { before: beforeItemId } }),
   // Своя обложка — Blob JPEG (lib/image.js → toSquareJpeg); ответ — плейлист.
-  uploadPlaylistCover: (id, blob) => request(`/playlists/${id}/cover`, { method: 'PUT', body: blob }),
-  deletePlaylistCover: (id) => request(`/playlists/${id}/cover`, { method: 'DELETE' }),
+  uploadPlaylistCover: (id, blob) => request(`/playlists/${enc(id)}/cover`, { method: 'PUT', body: blob }),
+  deletePlaylistCover: (id) => request(`/playlists/${enc(id)}/cover`, { method: 'DELETE' }),
   // Профили и подписки: профиль по нику -> { user, me, playlists, people? };
   // подписаться / отписаться -> человек; свои люди -> { people } (друзья —
   // подписаны в обе стороны: их зовут в соавторы).
@@ -195,54 +195,54 @@ export const api = {
   unfollowUser: (id) => request(`/users/${enc(id)}/follow`, { method: 'DELETE' }),
   people: () => request('/me/people'),
   // Совместные плейлисты: позвать друга / убрать (или выйти самому).
-  addCollaborator: (id, userId) => request(`/playlists/${id}/collaborators/${enc(userId)}`, { method: 'PUT' }),
-  removeCollaborator: (id, userId) => request(`/playlists/${id}/collaborators/${enc(userId)}`, { method: 'DELETE' }),
+  addCollaborator: (id, userId) => request(`/playlists/${enc(id)}/collaborators/${enc(userId)}`, { method: 'PUT' }),
+  removeCollaborator: (id, userId) => request(`/playlists/${enc(id)}/collaborators/${enc(userId)}`, { method: 'DELETE' }),
 
-  discoverArtist: (id) => request(`/discover/artists/${id}`), // -> { artist, albums, top }
-  discoverAlbum: (id) => request(`/discover/albums/${id}`), // -> { album, tracks }
-  discoverArtistAlbums: (id) => request(`/discover/artists/${id}/albums`), // -> { albums }
-  discoverTrack: (id) => request(`/discover/tracks/${id}`), // -> трек со всеми исполнителями
-  relatedArtists: (id) => request(`/discover/artists/${id}/related`), // -> { artists }
+  discoverArtist: (id) => request(`/discover/artists/${enc(id)}`), // -> { artist, albums, top }
+  discoverAlbum: (id) => request(`/discover/albums/${enc(id)}`), // -> { album, tracks }
+  discoverArtistAlbums: (id) => request(`/discover/artists/${enc(id)}/albums`), // -> { albums }
+  discoverTrack: (id) => request(`/discover/tracks/${enc(id)}`), // -> трек со всеми исполнителями
+  relatedArtists: (id) => request(`/discover/artists/${enc(id)}/related`), // -> { artists }
   // Описание артиста: { text, source: custom|deezer|lastfm|none, url, editable, tags: [жанр] }; text "" — нет.
-  artistBio: (id, lang) => request(`/discover/artists/${id}/bio?lang=${lang}`),
-  setArtistBio: (id, text) => request(`/discover/artists/${id}/bio`, { method: 'PUT', body: { text } }),
-  resetArtistBio: (id) => request(`/discover/artists/${id}/bio`, { method: 'DELETE' }),
+  artistBio: (id, lang) => request(`/discover/artists/${enc(id)}/bio?lang=${enc(lang)}`),
+  setArtistBio: (id, text) => request(`/discover/artists/${enc(id)}/bio`, { method: 'PUT', body: { text } }),
+  resetArtistBio: (id) => request(`/discover/artists/${enc(id)}/bio`, { method: 'DELETE' }),
   // Свои жанры артиста (до 5) и сброс к автоматическим -> { tags, tags_custom }.
-  setArtistTags: (id, tags) => request(`/discover/artists/${id}/tags`, { method: 'PUT', body: { tags } }),
-  resetArtistTags: (id) => request(`/discover/artists/${id}/tags`, { method: 'DELETE' }),
-  artistRadio: (id) => request(`/discover/artists/${id}/radio`), // -> { tracks }
+  setArtistTags: (id, tags) => request(`/discover/artists/${enc(id)}/tags`, { method: 'PUT', body: { tags } }),
+  resetArtistTags: (id) => request(`/discover/artists/${enc(id)}/tags`, { method: 'DELETE' }),
+  artistRadio: (id) => request(`/discover/artists/${enc(id)}/radio`), // -> { tracks }
 
   // Наши строки артиста/альбома (по id из claim) — для правки админом.
-  getArtist: (id) => request(`/artists/${id}`),
-  getAlbum: (id) => request(`/albums/${id}`),
+  getArtist: (id) => request(`/artists/${enc(id)}`),
+  getAlbum: (id) => request(`/albums/${enc(id)}`),
 
-  streamUrl: (trackId) => request(`/tracks/${trackId}/stream-url`),
+  streamUrl: (trackId) => request(`/tracks/${enc(trackId)}/stream-url`),
   // Трек не из медиатеки: ставит его на добавление и даёт ссылку на поток
   // во время скачивания (или /media, если он уже есть) — см. internal/api/stream.go.
-  deezerStream: (deezerTrackId) => request(`/stream/deezer/${deezerTrackId}/url`),
+  deezerStream: (deezerTrackId) => request(`/stream/deezer/${enc(deezerTrackId)}/url`),
 
   // Правка (админ). Картинка — Blob JPEG (lib/image.js → toSquareJpeg).
-  updateArtist: (id, fields) => request(`/artists/${id}`, { method: 'PUT', body: fields }),
-  updateAlbum: (id, fields) => request(`/albums/${id}`, { method: 'PUT', body: fields }),
-  resetArtist: (id) => request(`/artists/${id}/reset`, { method: 'POST' }),
+  updateArtist: (id, fields) => request(`/artists/${enc(id)}`, { method: 'PUT', body: fields }),
+  updateAlbum: (id, fields) => request(`/albums/${enc(id)}`, { method: 'PUT', body: fields }),
+  resetArtist: (id) => request(`/artists/${enc(id)}/reset`, { method: 'POST' }),
   // Артист/альбом, которых ещё нет в медиатеке: завести запись по Deezer ID → { id }.
-  claim: (kind, deezerId) => request(`/${kind}s/deezer/${deezerId}/claim`, { method: 'POST' }),
+  claim: (kind, deezerId) => request(`/${kind}s/deezer/${enc(deezerId)}/claim`, { method: 'POST' }),
   // Трек правится по Deezer ID, скачан он или нет (сервер сам решает, где хранить правку).
-  getDeezerTrackEdit: (deezerId) => request(`/tracks/deezer/${deezerId}/edit`),
-  updateDeezerTrack: (deezerId, fields) => request(`/tracks/deezer/${deezerId}`, { method: 'PUT', body: fields }),
-  resetDeezerTrack: (deezerId) => request(`/tracks/deezer/${deezerId}/reset`, { method: 'POST' }),
-  resetAlbum: (id) => request(`/albums/${id}/reset`, { method: 'POST' }),
+  getDeezerTrackEdit: (deezerId) => request(`/tracks/deezer/${enc(deezerId)}/edit`),
+  updateDeezerTrack: (deezerId, fields) => request(`/tracks/deezer/${enc(deezerId)}`, { method: 'PUT', body: fields }),
+  resetDeezerTrack: (deezerId) => request(`/tracks/deezer/${enc(deezerId)}/reset`, { method: 'POST' }),
+  resetAlbum: (id) => request(`/albums/${enc(id)}/reset`, { method: 'POST' }),
   // Артист Deezer по ID (имя, фото) — для правки исполнителей по ссылке.
-  artistInfo: (deezerId) => request(`/discover/artists/${encodeURIComponent(deezerId)}/info`),
+  artistInfo: (deezerId) => request(`/discover/artists/${enc(deezerId)}/info`),
   // Скрыть/показать релиз (по Deezer ID) -> { id, hidden }.
-  setAlbumHidden: (deezerId, hidden) => request(`/albums/deezer/${deezerId}/hidden`, { method: 'PUT', body: { hidden } }),
+  setAlbumHidden: (deezerId, hidden) => request(`/albums/deezer/${enc(deezerId)}/hidden`, { method: 'PUT', body: { hidden } }),
   // Забыть релиз в кеше Deezer: следующий заход возьмёт его с Deezer заново.
-  refreshAlbum: (deezerId) => request(`/albums/deezer/${deezerId}/refresh`, { method: 'POST' }),
+  refreshAlbum: (deezerId) => request(`/albums/deezer/${enc(deezerId)}/refresh`, { method: 'POST' }),
   // Перекачать аудио трека из медиатеки (заново найти видео) -> { status: 'queued' }.
-  redownloadTrack: (deezerId) => request(`/tracks/deezer/${deezerId}/redownload`, { method: 'POST' }),
+  redownloadTrack: (deezerId) => request(`/tracks/deezer/${enc(deezerId)}/redownload`, { method: 'POST' }),
   // Трек релиза — другим треком Deezer (не та версия) -> { album, tracks }.
   replaceAlbumTrack: (albumDeezerId, track, withId) =>
-    request(`/albums/deezer/${albumDeezerId}/tracklist/replace`, { method: 'POST', body: { track, with: withId } }),
+    request(`/albums/deezer/${enc(albumDeezerId)}/tracklist/replace`, { method: 'POST', body: { track, with: withId } }),
   // «Не нашлось» (админ): упавшие скачивания -> { tracks }; повторить; скачать
   // трек с видео по ссылке YouTube.
   missing: () => request('/admin/missing'),
@@ -251,11 +251,11 @@ export const api = {
   // Заменить аудио трека своим файлом (или дать его треку, который не
   // нашёлся) -> { status: replaced|added, gain_db }.
   // Через XHR: у fetch нет прогресса отправки, а файл бывает в десятки МБ.
-  uploadTrackAudio: (deezerId, file, onProgress) => sendFile('PUT', `/tracks/deezer/${deezerId}/audio`, file, { onProgress }),
+  uploadTrackAudio: (deezerId, file, onProgress) => sendFile('PUT', `/tracks/deezer/${enc(deezerId)}/audio`, file, { onProgress }),
   // Заново найти текст -> как lyrics().
-  refreshLyrics: (deezerId) => request(`/lyrics/${encodeURIComponent(deezerId)}/refresh`, { method: 'POST' }),
-  uploadArtistPicture: (id, blob) => request(`/artists/${id}/picture`, { method: 'PUT', body: blob }),
-  uploadAlbumCover: (id, blob) => request(`/albums/${id}/cover`, { method: 'PUT', body: blob }),
+  refreshLyrics: (deezerId) => request(`/lyrics/${enc(deezerId)}/refresh`, { method: 'POST' }),
+  uploadArtistPicture: (id, blob) => request(`/artists/${enc(id)}/picture`, { method: 'PUT', body: blob }),
+  uploadAlbumCover: (id, blob) => request(`/albums/${enc(id)}/cover`, { method: 'PUT', body: blob }),
 
   // Свои релизы (загрузка): черновик → треки и поля → публикация.
   uploads: () => request('/uploads'), // -> { releases: [album + draft] }
