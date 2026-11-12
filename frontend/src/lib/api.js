@@ -77,8 +77,8 @@ function sendFile(method, path, file, { onProgress, signal } = {}) {
       } catch {
         // nginx отвечает на слишком большой файл HTML-страницей
       }
-      if (xhr.status >= 200 && xhr.status < 300) return resolve(proxyImages(data));
       renew(token, xhr.getResponseHeader('X-Auth-Token'));
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(proxyImages(data));
       if (xhr.status === 401 && token && get(auth) === token) auth.logout();
       const err = new Error(data?.error || `HTTP ${xhr.status}`);
       err.status = xhr.status;
