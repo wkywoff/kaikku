@@ -168,6 +168,28 @@ func imageURL(urls ...string) string {
 	return ""
 }
 
+// coverURL returns an album's cover: Deezer's own link, or one built from
+// md5_image when the links are missing. A release that has just come out can
+// have null cover_* fields for hours while its picture is already on the CDN.
+func coverURL(md5 string, urls ...string) string {
+	if u := imageURL(urls...); u != "" || !isMD5(md5) {
+		return u
+	}
+	return "https://cdn-images.dzcdn.net/images/cover/" + md5 + "/1000x1000-000000-80-0-0.jpg"
+}
+
+func isMD5(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func convertRefs(refs []deezerArtistRef) []ArtistRef {
 	var out []ArtistRef
 	for _, r := range refs {
@@ -184,6 +206,7 @@ type deezerAlbumRef struct {
 	Title    string `json:"title"`
 	CoverXL  string `json:"cover_xl"`
 	CoverBig string `json:"cover_big"`
+	MD5Image string `json:"md5_image"`
 }
 
 type deezerTrack struct {
@@ -212,6 +235,7 @@ type deezerAlbum struct {
 	Title        string            `json:"title"`
 	CoverXL      string            `json:"cover_xl"`
 	CoverBig     string            `json:"cover_big"`
+	MD5Image     string            `json:"md5_image"`
 	ReleaseDate  string            `json:"release_date"`
 	RecordType   string            `json:"record_type"`
 	NbTracks     int               `json:"nb_tracks"`
@@ -584,7 +608,7 @@ func (c *Client) GetAlbumTracks(album *Album, limit int) ([]Track, error) {
 }
 
 func convertTrack(t deezerTrack) Track {
-	coverURL := imageURL(t.Album.CoverXL, t.Album.CoverBig)
+	coverURL := coverURL(t.Album.MD5Image, t.Album.CoverXL, t.Album.CoverBig)
 	return Track{
 		ID:           strconv.FormatInt(t.ID, 10),
 		Title:        t.Title,
@@ -613,7 +637,7 @@ func convertArtist(a deezerArtist) Artist {
 }
 
 func convertAlbum(a deezerAlbum, artistRef deezerArtistRef) Album {
-	cover := imageURL(a.CoverXL, a.CoverBig)
+	cover := coverURL(a.MD5Image, a.CoverXL, a.CoverBig)
 	artistID := artistRef.ID
 	artistName := artistRef.Name
 	if artistID == 0 {

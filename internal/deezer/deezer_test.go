@@ -265,6 +265,50 @@ func TestImageURL_EmptyHashMeansNoImage(t *testing.T) {
 	}
 }
 
+// У только что вышедшего релиза Deezer отдаёт cover_* = null, а md5_image уже
+// есть: обложка собирается из него — и у альбома, и у его треков.
+func TestClient_CoverFromMD5Image(t *testing.T) {
+	const md5 = "d79fe52ec5be63f9381b1ae147c5c5ce"
+	const want = "https://cdn-images.dzcdn.net/images/cover/" + md5 + "/1000x1000-000000-80-0-0.jpg"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/album/7":
+			w.Write([]byte(`{"id":7,"title":"Fresh","cover_xl":null,"cover_big":null,"md5_image":"` + md5 + `","artist":{"id":1,"name":"A"}}`))
+		case "/track/1":
+			w.Write([]byte(`{"id":1,"title":"One","artist":{"id":1,"name":"A"},"album":{"id":7,"title":"Fresh","cover_xl":null,"md5_image":"` + md5 + `"}}`))
+		}
+	}))
+	defer srv.Close()
+	c := NewClientWithBaseURL(srv.URL)
+
+	album, err := c.GetAlbum("7")
+	if err != nil {
+		t.Fatalf("GetAlbum: %v", err)
+	}
+	if album.CoverURL != want {
+		t.Errorf("album CoverURL = %q, want %q", album.CoverURL, want)
+	}
+	track, err := c.GetTrack("1")
+	if err != nil {
+		t.Fatalf("GetTrack: %v", err)
+	}
+	if track.CoverURL != want {
+		t.Errorf("track CoverURL = %q, want %q", track.CoverURL, want)
+	}
+}
+
+func TestCoverURL(t *testing.T) {
+	const own = "https://cdn-images.dzcdn.net/images/cover/638e69b9caaf9f9f3f8826febea7b543/1000x1000-000000-80-0-0.jpg"
+	if got := coverURL("d79fe52ec5be63f9381b1ae147c5c5ce", own); got != own {
+		t.Errorf("Deezer's own link must win: got %q", got)
+	}
+	for _, md5 := range []string{"", "abc", "D79FE52EC5BE63F9381B1AE147C5C5CE", "../../../artist/638e69b9caaf9f9f3f88"} {
+		if got := coverURL(md5, ""); got != "" {
+			t.Errorf("md5_image %q: got %q, want no cover", md5, got)
+		}
+	}
+}
+
 // У плодовитых артистов больше 100 релизов: Deezer отдаёт их страницами,
 // и старые синглы оказываются на второй — их тоже надо забрать.
 func TestClient_GetArtistAlbums_WalksPages(t *testing.T) {
