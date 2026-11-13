@@ -2,7 +2,6 @@ import { writable, readable, get } from 'svelte/store';
 import { appleTouch } from '../platform.js';
 import { api } from '../api.js';
 import { settings, lang } from './settings.js';
-import { artworkFor } from '../imageproxy.js';
 import { toast } from './toast.js';
 import { translate } from '../i18n.js';
 import { loadSavedModes, saveModes, loadSavedQueue, saveQueue, loadSavedVolume, saveVolume } from './player/persist.js';
@@ -20,6 +19,7 @@ import {
   withoutAutoplayed,
 } from './player/queue.js';
 import { createListenTracker } from './player/listen.js';
+import { setPlaybackState, showTrack, updatePositionState, clearTrack } from './player/mediasession.js';
 
 // Позиция в сохранённой очереди обновляется не чаще этого.
 const QUEUE_SAVE_INTERVAL_MS = 5000;
@@ -550,40 +550,8 @@ function createPlayerStore() {
     await goTo(nextIndex, true);
   }
 
-  // Кнопка на экране блокировки (iOS, Android) — по тому, что на самом деле:
-  // без этого после паузы в приложении она так и показывала «пауза».
-  function setPlaybackState(value) {
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = value;
-  }
-
-  function updateMediaSession(track) {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.title,
-      artist: track.artist || '',
-      album: track.album || '',
-      artwork: artworkFor(track.coverUrl),
-    });
-    navigator.mediaSession.setActionHandler('play', () => resume());
-    navigator.mediaSession.setActionHandler('pause', () => pause());
-    navigator.mediaSession.setActionHandler('previoustrack', () => prev());
-    navigator.mediaSession.setActionHandler('nexttrack', () => next());
-    navigator.mediaSession.setActionHandler('seekto', (d) => seek(d.seekTime));
-  }
-
-  function updatePositionState(el) {
-    if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
-    if (!Number.isFinite(el.duration) || el.duration <= 0) return;
-    try {
-      navigator.mediaSession.setPositionState({
-        duration: el.duration,
-        position: Math.min(el.currentTime, el.duration),
-        playbackRate: 1,
-      });
-    } catch {
-      /* некоторые браузеры кидают на граничных значениях — не критично */
-    }
-  }
+  // Системный плеер (player/mediasession.js): трек и что делают его кнопки.
+  const updateMediaSession = (track) => showTrack(track, { play: resume, pause, prev, next, seek });
 
   // Номер последней загрузки: ссылку на нескачанный трек сервер ищет
   // секунды, и если за это время включили другой трек, запоздавший ответ не
@@ -768,8 +736,7 @@ function createPlayerStore() {
     unshuffled = null;
     restoredPending = false;
     state.update((s) => ({ ...s, queue: [], index: -1, isPlaying: false, isLoading: false, currentTime: 0, duration: 0, error: null }));
-    if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
-    setPlaybackState('none');
+    clearTrack();
   }
 
   // Восстановленная после перезагрузки очередь: трек ещё не загружен.
