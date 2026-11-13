@@ -5,10 +5,7 @@ import { settings, lang } from './settings.js';
 import { artworkFor } from '../imageproxy.js';
 import { toast } from './toast.js';
 import { translate } from '../i18n.js';
-
-const VOLUME_STORAGE_KEY = 'kaikku_volume';
-const MODES_STORAGE_KEY = 'kaikku_modes';
-const QUEUE_STORAGE_KEY = 'kaikku_queue';
+import { loadSavedModes, saveModes, loadSavedQueue, saveQueue, loadSavedVolume, saveVolume } from './player/persist.js';
 
 // Прослушивание записывается в историю, когда трек проиграл столько секунд
 // (короткий — половину), как у Spotify.
@@ -71,15 +68,6 @@ function dbToGain(db) {
   return Math.pow(10, (Number(db) || 0) / 20);
 }
 
-function loadSavedModes() {
-  try {
-    const m = JSON.parse(localStorage.getItem(MODES_STORAGE_KEY) || '{}');
-    return { shuffle: !!m.shuffle, repeat: ['off', 'all', 'one'].includes(m.repeat) ? m.repeat : 'off' };
-  } catch {
-    return { shuffle: false, repeat: 'off' };
-  }
-}
-
 /** Fisher–Yates; random — для тестов. */
 export function shuffled(items, random = Math.random) {
   const out = [...items];
@@ -88,42 +76,6 @@ export function shuffled(items, random = Math.random) {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
-}
-
-// Очередь переживает перезагрузку страницы: треки, какой играл и с какого
-// места (как Spotify, трек ждёт на паузе). source — одноразовая ссылка, её
-// не сохраняем.
-function loadSavedQueue() {
-  try {
-    const q = JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) || 'null');
-    if (!q || !Array.isArray(q.queue) || q.queue.length === 0) return null;
-    const index = Number.isInteger(q.index) && q.index >= 0 && q.index < q.queue.length ? q.index : 0;
-    const order = Array.isArray(q.order) && q.order.length === q.queue.length ? q.order : null;
-    return { queue: q.queue, index, time: Math.max(0, Number(q.time) || 0), order };
-  } catch {
-    return null;
-  }
-}
-
-function saveQueue(s, unshuffled) {
-  try {
-    if (s.queue.length === 0) {
-      localStorage.removeItem(QUEUE_STORAGE_KEY);
-      return;
-    }
-    const queue = s.queue.map(({ source, ...rest }) => rest);
-    const order = unshuffled ? unshuffled.map((e) => s.queue.indexOf(e)) : null;
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify({ queue, index: s.index, time: s.currentTime, order }));
-  } catch {
-    /* переполнено или приватный режим — после перезагрузки очередь просто пустая */
-  }
-}
-
-function loadSavedVolume() {
-  const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
-  if (saved === null) return 1;
-  const n = Number(saved);
-  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1;
 }
 
 function createPlayerStore() {
@@ -733,11 +685,6 @@ function createPlayerStore() {
     await loadTrack(queue[index], 0, !chosen);
   }
 
-  function saveModes() {
-    const { shuffle, repeat } = get(state);
-    localStorage.setItem(MODES_STORAGE_KEY, JSON.stringify({ shuffle, repeat }));
-  }
-
   // toggleShuffle перемешивает всё после текущего трека (текущий остаётся
   // играть) и запоминает исходный порядок, чтобы вернуть его при выключении.
   function toggleShuffle() {
@@ -755,14 +702,14 @@ function createPlayerStore() {
       unshuffled = null;
       state.update((x) => ({ ...x, shuffle: false, queue, index }));
     }
-    saveModes();
+    saveModes(get(state));
   }
 
   // off → all → one → off, как в Spotify.
   function cycleRepeat() {
     cancelPendingCrossfade();
     state.update((x) => ({ ...x, repeat: x.repeat === 'off' ? 'all' : x.repeat === 'all' ? 'one' : 'off' }));
-    saveModes();
+    saveModes(get(state));
   }
 
   function playTrack(track) {
@@ -1197,7 +1144,7 @@ function createPlayerStore() {
   function setVolume(v) {
     const clamped = Math.min(1, Math.max(0, v));
     if (gains[activeSlot]) gains[activeSlot].gain.value = clamped * trackGain(activeSlot);
-    localStorage.setItem(VOLUME_STORAGE_KEY, String(clamped));
+    saveVolume(clamped);
     state.update((s) => ({ ...s, volume: clamped }));
   }
 
