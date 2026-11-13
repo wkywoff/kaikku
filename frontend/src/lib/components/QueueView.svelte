@@ -6,7 +6,7 @@
   // стрелками с клавиатуры); смахнуть влево — убрать из очереди (на
   // компьютере ещё крестик при наведении).
   import { sized } from '../imageproxy.js';
-  import { player } from '../stores/player.js';
+  import { player, queueState } from '../stores/player.js';
   import { settings } from '../stores/settings.js';
   import { t } from '../i18n.js';
   import Shuffle from '@lucide/svelte/icons/shuffle';
@@ -17,7 +17,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import X from '@lucide/svelte/icons/x';
 
-  $: s = $player;
+  $: s = $queueState; // без позиции трека: очередь не пересобирается на каждый тик
   $: current = s.queue[s.index];
   $: after = s.queue.map((item, i) => ({ item, i })).filter(({ i }) => i > s.index);
   $: sections = [

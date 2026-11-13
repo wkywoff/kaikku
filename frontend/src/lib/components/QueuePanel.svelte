@@ -8,7 +8,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { backCloses } from '../stores/nav.js';
   import { fly } from 'svelte/transition';
-  import { player, formatTime } from '../stores/player.js';
+  import { player, queueState, formatTime } from '../stores/player.js';
   import { t } from '../i18n.js';
   import { settings } from '../stores/settings.js';
   import ArtistLinks from './ArtistLinks.svelte';
@@ -23,7 +23,7 @@
     if (matchMedia('(max-width: 768px)').matches) return backCloses(() => dispatch('close'));
   });
 
-  $: s = $player;
+  $: s = $queueState; // без позиции трека: очередь не пересобирается на каждый тик
   $: current = s.queue[s.index];
   $: after = s.queue.map((item, i) => ({ item, i })).filter(({ i }) => i > s.index);
   $: upcoming = after.filter(({ item }) => !item.autoplay);

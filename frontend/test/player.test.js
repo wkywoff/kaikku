@@ -1055,6 +1055,32 @@ test('select: subscribers hear only about their part, not every position tick', 
   offPlaying();
 });
 
+test('queueState: the queue lists hear about the queue and modes, not about position ticks', async () => {
+  const { queueState } = await import('../src/lib/stores/player.js');
+  await player.playQueue([{ id: 'qs1', title: 'QS1' }, { id: 'qs2', title: 'QS2' }], 0);
+  const seen = [];
+  const stop = queueState.subscribe((q) => seen.push(q));
+  try {
+    const el = FakeAudio.instances.find((e) => e.src.includes('qs1'));
+    for (const t of [1, 2, 3]) {
+      el.currentTime = t;
+      el.dispatch('timeupdate');
+    }
+    assert.equal(seen.length, 1, 'тики позиции не доходят');
+
+    await player.next();
+    assert.equal(seen.at(-1).index, 1);
+    player.cycleRepeat();
+    assert.equal(seen.at(-1).repeat, 'all');
+    player.cycleRepeat();
+    player.cycleRepeat();
+    assert.equal(seen.at(-1).repeat, 'off');
+    assert.deepEqual(seen.at(-1).queue.map((e) => e.id), ['qs1', 'qs2']);
+  } finally {
+    stop();
+  }
+});
+
 test('a late answer for an earlier song does not replace the song picked after it', async () => {
   // Ссылку на нескачанный трек сервер ищет секунды; за это время включили
   // другой, скачанный, — он отвечает сразу и должен остаться играть.

@@ -1018,3 +1018,10 @@ export { formatTime, select };
 export const nowPlaying = select(player, (s) => [s.queue, s.index], (s) => s.queue[s.index] ?? null);
 export const isPlaying = select(player, (s) => [s.isPlaying]);
 export const shuffleOn = select(player, (s) => [s.shuffle]);
+// Очередь и режимы без позиции трека — для списков очереди: с $player
+// они пересобирались бы на каждый тик.
+export const queueState = select(
+  player,
+  (s) => [s.queue, s.index, s.shuffle, s.repeat],
+  (s) => ({ queue: s.queue, index: s.index, shuffle: s.shuffle, repeat: s.repeat }),
+);
