@@ -244,6 +244,7 @@ function createPlayerStore() {
       state.update((s) => ({ ...s, currentTime: el.currentTime }));
       sleepTimer.check(); // на случай, если таймер в фоне сработал не вовремя
       listening.tick(el);
+      if (sleepFade !== null) return; // таймер сна уже глушит звук — следующий трек не готовим
       maybeStartPreload(el);
       maybeStartCrossfade(el);
       maybeScheduleGapless(el);
@@ -441,7 +442,9 @@ function createPlayerStore() {
     // таймера сна) — уже новое.
     listening.newPlay();
     let s = get(state);
-    if (s.sleep?.endOfTrack) {
+    // Таймер сна: «до конца трека» или трек кончился, пока шло затухание.
+    if (s.sleep?.endOfTrack || sleepFade !== null) {
+      endSleepFade();
       sleepAfterTrack(s);
       return;
     }
@@ -574,6 +577,7 @@ function createPlayerStore() {
     loadAuto = auto;
     if (!auto) skipsInRow = 0;
     ensureContext();
+    endSleepFade(); // включили другой трек, пока таймер сна глушил звук, — играем дальше
     restoredPending = false;
     // Перезапрос ссылки после ошибки (resumeAt > 0) — то же прослушивание.
     if (resumeAt === 0) listening.newPlay();
@@ -729,6 +733,7 @@ function createPlayerStore() {
 
   function pause() {
     if (elements[activeSlot]) elements[activeSlot].pause();
+    endSleepFade();
   }
 
   // Выход из аккаунта: тишина и пустая очередь — следующий, кто войдёт на
@@ -738,6 +743,7 @@ function createPlayerStore() {
     loadSeq++; // запоздавшая ссылка не включит трек уже после выхода
     cancelPendingCrossfade();
     for (const el of elements) el?.pause();
+    endSleepFade();
     setSleepTimer(null);
     unshuffled = null;
     restoredPending = false;
@@ -758,6 +764,7 @@ function createPlayerStore() {
 
   function resume() {
     if (restoredPending) return playRestored();
+    endSleepFade();
     if (elements[activeSlot]) elements[activeSlot].play();
   }
 
@@ -767,8 +774,12 @@ function createPlayerStore() {
     if (restoredPending) return playRestored();
     const el = elements[activeSlot];
     if (!el) return;
-    if (el.paused) el.play();
-    else el.pause();
+    if (el.paused) {
+      endSleepFade();
+      el.play();
+    } else {
+      pause();
+    }
   }
 
   async function goTo(index, auto = false) {
@@ -879,7 +890,12 @@ function createPlayerStore() {
     sleepTimer.set(minutes);
   }
 
-  // Время таймера сна вышло.
+  // Время таймера сна вышло: короткое затухание, потом пауза. Пока оно
+  // идёт, следующий трек не готовится (иначе музыка продолжилась бы им), а
+  // если текущий за это время кончился — следующий ждёт на паузе. Человек
+  // что-то включил или нажал паузу — затухание отменяется (endSleepFade).
+  let sleepFade = null; // таймер конца затухания, пока оно идёт
+
   function fadeOutAndPause() {
     const el = elements[activeSlot];
     if (!el || el.paused) return;
@@ -893,12 +909,16 @@ function createPlayerStore() {
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(gain.gain.value, now);
     gain.gain.linearRampToValueAtTime(0, now + SLEEP_FADE_SECONDS);
-    setTimeout(() => {
-      el.pause();
-      gain.gain.cancelScheduledValues(ctxTime());
-      // За время затухания трек мог смениться — тогда этот слот уже тихий.
-      gain.gain.value = gain === gains[activeSlot] ? get(state).volume * trackGain(activeSlot) : 0;
-    }, SLEEP_FADE_SECONDS * 1000);
+    sleepFade = setTimeout(pause, SLEEP_FADE_SECONDS * 1000);
+  }
+
+  // Затухание кончилось или отменено: громкость — какой была.
+  function endSleepFade() {
+    if (sleepFade === null) return;
+    clearTimeout(sleepFade);
+    sleepFade = null;
+    gains[activeSlot].gain.cancelScheduledValues(ctxTime());
+    gains[activeSlot].gain.value = get(state).volume * trackGain(activeSlot);
   }
 
   // Трек доиграл при таймере «до конца трека»: следующий ждёт на паузе (как

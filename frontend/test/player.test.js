@@ -942,6 +942,53 @@ test('sleep timer in minutes fades out and pauses; switching it off cancels it',
   }
 });
 
+test('a song picked while the sleep timer fades out keeps playing', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const realNow = Date.now;
+  try {
+    await player.playQueue([{ id: 'sf1', title: 'SF1' }, { id: 'sf2', title: 'SF2' }], 0);
+    const el = FakeAudio.instances.find((e) => e.src.includes('sf1'));
+    player.setSleepTimer(30);
+    Date.now = () => realNow() + 31 * 60000;
+    el.dispatch('timeupdate'); // время вышло — звук затухает
+    await player.next();
+    const el2 = FakeAudio.instances.find((e) => e.src.includes('sf2'));
+    t.mock.timers.tick(3000);
+    assert.equal(el2.paused, false, 'включённый после этого трек не останавливается');
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('the sleep timer stops the music also when it goes off in the last seconds of a song', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const realNow = Date.now;
+  try {
+    await player.playQueue([{ id: 'se1', title: 'SE1' }, { id: 'se2', title: 'SE2', durationMs: 90000 }], 0);
+    const el = FakeAudio.instances.find((e) => e.src.includes('se1'));
+    const other = FakeAudio.instances.find((e) => e !== el);
+    el.duration = 200;
+    el.currentTime = 198;
+    player.setSleepTimer(30);
+    Date.now = () => realNow() + 31 * 60000;
+    streamedUrls.length = 0;
+    el.dispatch('timeupdate'); // время вышло за 2 с до конца трека
+    await new Promise((r) => setImmediate(r));
+    assert.ok(!streamedUrls.some((u) => u.includes('se2')), 'следующий трек не готовится');
+
+    el.finish(); // трек кончился раньше, чем затухание
+    let s;
+    player.subscribe((v) => (s = v))();
+    assert.equal(s.isPlaying, false);
+    assert.equal(s.index, 1, 'следующий трек ждёт на паузе');
+    t.mock.timers.tick(3000);
+    assert.equal(other.paused, true);
+    assert.ok(!streamedUrls.some((u) => u.includes('se2')));
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test('a song played from search continues with similar songs, not the next search result', async () => {
   const { playWithSimilar } = await import('../src/lib/library.js');
   radioTracks['77'] = [
