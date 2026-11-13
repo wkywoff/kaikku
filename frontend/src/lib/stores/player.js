@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { settings, lang } from './settings.js';
 import { toast } from './toast.js';
 import { translate } from '../i18n.js';
-import { loadSavedModes, saveModes, loadSavedQueue, saveQueue, loadSavedVolume, saveVolume } from './player/persist.js';
+import { loadSavedModes, saveModes, loadSavedQueue, saveQueue, saveQueuePosition, loadSavedVolume, saveVolume } from './player/persist.js';
 import {
   followingIndex,
   startQueue,
@@ -120,16 +120,20 @@ function createPlayerStore() {
   let autoplayPending = null;
   let autoplayFailedAfter = null; // последний элемент очереди, после которого подобрать не вышло
 
-  let lastSaved = { queue: null, index: null, at: 0 };
+  // Очередь — когда изменилась она сама, а позиция в ней — на смене трека
+  // и раз в несколько секунд (player/persist.js).
+  let lastSaved = { queue: null, unshuffled: null, index: null, at: 0 };
   state.subscribe((s) => {
     const now = Date.now();
-    if (s.queue === lastSaved.queue && s.index === lastSaved.index && now - lastSaved.at < QUEUE_SAVE_INTERVAL_MS) return;
-    lastSaved = { queue: s.queue, index: s.index, at: now };
-    saveQueue(s, unshuffled);
+    const queueChanged = s.queue !== lastSaved.queue || unshuffled !== lastSaved.unshuffled;
+    if (!queueChanged && s.index === lastSaved.index && now - lastSaved.at < QUEUE_SAVE_INTERVAL_MS) return;
+    lastSaved = { queue: s.queue, unshuffled, index: s.index, at: now };
+    if (queueChanged) saveQueue(s, unshuffled);
+    else saveQueuePosition(s);
   });
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('pagehide', () => {
-      saveQueue(get(state), unshuffled);
+      saveQueuePosition(get(state)); // сама очередь уже записана
       listening.flush();
     });
     if (typeof document !== 'undefined') {

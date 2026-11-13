@@ -770,6 +770,37 @@ test('the queue survives a reload: same track, paused, resumes from the saved sp
   assert.equal(el.paused, false);
 });
 
+test('while a song plays only its position is saved, not the whole queue again', async () => {
+  const { loadSavedQueue } = await import('../src/lib/stores/player/persist.js');
+  await player.playQueue([{ id: 'sv1', title: 'SV1' }, { id: 'sv2', title: 'SV2' }], 0);
+  const el = FakeAudio.instances.find((e) => e.src.includes('sv1'));
+  const written = [];
+  const setItem = localStorage.setItem;
+  const realNow = Date.now;
+  localStorage.setItem = (k, v) => {
+    written.push(k);
+    setItem(k, v);
+  };
+  try {
+    Date.now = () => realNow() + 6000; // позиция пишется не чаще раза в 5 с
+    el.currentTime = 33;
+    el.dispatch('timeupdate');
+    assert.deepEqual(written, ['kaikku_queue_pos']);
+    assert.equal(loadSavedQueue().time, 33);
+
+    await player.next();
+    assert.ok(!written.includes('kaikku_queue'), 'смена трека — тоже только позиция');
+    assert.equal(loadSavedQueue().index, 1);
+
+    player.addToQueue({ id: 'sv3', title: 'SV3' });
+    assert.ok(written.includes('kaikku_queue'), 'очередь изменилась — пишется она');
+    assert.deepEqual(loadSavedQueue().queue.map((e) => e.id), ['sv1', 'sv2', 'sv3']);
+  } finally {
+    Date.now = realNow;
+    localStorage.setItem = setItem;
+  }
+});
+
 test('patchEntry fills in a queue entry in place (e.g. all artists of the playing song)', async () => {
   let started = [];
   player.setHooks({ onTrackStart: (e) => started.push(e.id) });
@@ -1186,6 +1217,7 @@ test('logging out stops the music and forgets the queue, also after a reload', a
   assert.equal(s.index, -1);
   assert.equal(el.paused, true, 'аудио живёт вне страницы — его надо остановить');
   assert.equal(localStorage.getItem('kaikku_queue'), null, 'следующий вход не увидит чужую очередь');
+  assert.equal(localStorage.getItem('kaikku_queue_pos'), null);
 });
 
 test('a library song whose file the server removed plays again through Deezer', async () => {
