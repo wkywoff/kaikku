@@ -92,7 +92,7 @@ export function trackMenuItems(row, { playlist = null, onRemove = null, onEdit =
   const artists = (row.artists || []).filter((a) => a.href);
   const go = [];
   if (artists.length === 1) go.push({ label: tr('menu.goToArtist'), icon: UserRound, href: artists[0].href });
-  else if (artists.length > 1) go.push({ label: tr('menu.goToArtist'), icon: UserRound, submenu: artists.map((a) => ({ label: a.name, href: a.href })) });
+  else if (artists.length > 1) go.push({ label: tr('menu.goToArtist'), icon: UserRound, submenu: artists.map((a) => ({ label: a.name, href: a.href, image: a.picture || null })) });
   if (row.album?.href) go.push({ label: tr('menu.goToAlbum'), icon: Disc3, href: row.album.href });
   if (go.length) items.push({ separator: true }, ...go);
 

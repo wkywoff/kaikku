@@ -5,7 +5,7 @@ import { paths } from './route.js';
 
 export function artistsOf(t) {
   if (t.contributors?.length) {
-    return t.contributors.map((c) => ({ id: c.id || null, name: c.name, href: c.id ? paths.artist(c.id) : null }));
+    return t.contributors.map((c) => ({ id: c.id || null, name: c.name, href: c.id ? paths.artist(c.id) : null, picture: c.picture_url || null }));
   }
   return [{ id: t.artist_id || null, name: t.artist, href: t.artist_id ? paths.artist(t.artist_id) : null }];
 }

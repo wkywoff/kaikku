@@ -16,6 +16,7 @@
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Check from '@lucide/svelte/icons/check';
+  import UserRound from '@lucide/svelte/icons/user-round';
 
   export let menu; // { items, header } — см. stores/contextMenu.js
 
@@ -30,7 +31,7 @@
   $: list = sub ? sub.submenu : shown.items;
   // Значки — одной колонкой: строкам без значка оставляем под него место,
   // если в этом списке значки вообще есть.
-  $: hasIcons = list.some((item) => item.icon);
+  $: hasIcons = list.some((item) => item.icon || item.image !== undefined);
 
   let root;
   let backdrop;
@@ -132,7 +133,15 @@
           <div class="heading">{item.heading}</div>
         {:else}
           <button class="item" class:danger={item.danger} class:checked={item.checked} role="menuitem" aria-haspopup={item.submenu ? 'menu' : undefined} on:click={() => run(item)}>
-            {#if item.icon}<svelte:component this={item.icon} size={22} />{:else if hasIcons}<span class="no-icon"></span>{/if}
+            {#if item.image}
+              <img class="pic" src={sized(item.image, 64)} alt="" />
+            {:else if item.image !== undefined}
+              <span class="pic ph"><UserRound size={18} /></span>
+            {:else if item.icon}
+              <svelte:component this={item.icon} size={22} />
+            {:else if hasIcons}
+              <span class="no-icon"></span>
+            {/if}
             <span class="label">{item.label}</span>
             {#if item.submenu}<span class="hint"><ChevronRight size={20} /></span>{/if}
             {#if item.checked}<Check size={22} />{/if}
@@ -275,6 +284,21 @@
   .no-icon {
     width: 22px;
     flex-shrink: 0;
+  }
+  /* Фото исполнителя вместо значка; без фото — кружок с человечком. */
+  .pic {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-press);
+  }
+  .pic.ph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
   }
   .hint {
     display: flex;

@@ -3,7 +3,8 @@ import { backCloses } from './nav.js';
 
 // Одно контекстное меню на всё приложение (components/ContextMenu.svelte).
 // items: [{ label, icon?, onClick?, href?, submenu?: items, danger?, checked?, separator?, heading? }]
-//   checked — выбранный вариант (зелёный, с галочкой); heading — подпись группы, не кликается.
+//   checked — выбранный вариант (зелёный, с галочкой); heading — подпись группы, не кликается;
+//   image — круглая картинка вместо значка (фото исполнителя); null — фото нет, заглушка.
 // header: { title, subtitle?, image?, round? } — о чём меню (трек, альбом,
 //   артист). Показывается только на телефоне: там меню — шторка снизу
 //   (components/MenuSheet.svelte), и строки, по которой нажали, под ней не видно.

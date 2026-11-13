@@ -11,6 +11,8 @@
   import MenuSheet from './MenuSheet.svelte';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Check from '@lucide/svelte/icons/check';
+  import UserRound from '@lucide/svelte/icons/user-round';
+  import { sized } from '../imageproxy.js';
 
   let menuEl;
   let subEl;
@@ -111,7 +113,13 @@
           <div class="sep"></div>
         {:else}
           <button class="item" class:checked={item.checked} role="menuitem" on:click={() => run(item)}>
-            {#if item.icon}<svelte:component this={item.icon} size={16} />{/if}
+            {#if item.image}
+              <img class="pic" src={sized(item.image, 64)} alt="" />
+            {:else if item.image !== undefined}
+              <span class="pic ph"><UserRound size={14} /></span>
+            {:else if item.icon}
+              <svelte:component this={item.icon} size={16} />
+            {/if}
             <span class="label">{item.label}</span>
             {#if item.checked}<Check size={18} />{/if}
           </button>
@@ -186,6 +194,22 @@
   .no-icon {
     width: 16px;
     flex-shrink: 0;
+  }
+  /* Фото исполнителя вместо значка; строка при этом не выше остальных. */
+  .pic {
+    width: 24px;
+    height: 24px;
+    margin: -4px 0;
+    flex-shrink: 0;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-press);
+  }
+  .pic.ph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
   }
   .sep {
     height: 1px;
