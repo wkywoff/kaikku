@@ -35,7 +35,7 @@
   import { lyricsOpen } from '../stores/lyrics.js';
   import { openMenu, contextMenu } from '../stores/contextMenu.js';
   import { get } from 'svelte/store';
-  import { trackMenuItems } from '../trackMenu.js';
+  import { trackMenuItems, trackMenuHeader } from '../trackMenu.js';
   import { rowFromEntry } from '../library.js';
   import { focusTrap } from '../focusTrap.js';
 
@@ -101,11 +101,16 @@
 
   // «…» рядом с лайком: меню трека и таймер сна.
   function openMore(e) {
-    openMenu(e, [
-      ...trackMenuItems(rowFromEntry(track)),
-      { separator: true },
-      { label: sleepLabel(s.sleep, $t), icon: Moon, submenu: sleepMenuItems().filter((i) => !i.heading) },
-    ]);
+    const row = rowFromEntry(track);
+    openMenu(
+      e,
+      [
+        ...trackMenuItems(row),
+        { separator: true },
+        { label: sleepLabel(s.sleep, $t), icon: Moon, submenu: sleepMenuItems().filter((i) => !i.heading) },
+      ],
+      trackMenuHeader(row),
+    );
   }
 
   // Свайп вниз закрывает плеер, как шторку в Apple Music/Spotify. Пока

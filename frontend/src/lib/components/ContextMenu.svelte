@@ -1,12 +1,14 @@
 <script>
   // Контекстное меню (правый клик по треку или кнопка «…»), как в Spotify.
   // Одно на всё приложение — App.svelte; что показать, задаёт
-  // stores/contextMenu.js → openMenu. Пункт с submenu раскрывает вложенное
-  // меню сбоку (наведением или кликом — на телефоне наведения нет). Меню не
+  // stores/contextMenu.js → openMenu. На телефоне (menu.sheet) это шторка
+  // снизу — MenuSheet; здесь — всплывающее меню для компьютера. Пункт с
+  // submenu раскрывает вложенное меню сбоку (наведением или кликом). Меню не
   // вылезает за края экрана; закрывается по Esc, клику мимо и смене окна.
   import { tick } from 'svelte';
   import { contextMenu, closeMenu } from '../stores/contextMenu.js';
   import { navigateAfterPaint } from '../stores/nav.js';
+  import MenuSheet from './MenuSheet.svelte';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Check from '@lucide/svelte/icons/check';
 
@@ -23,7 +25,7 @@
   async function place(m) {
     openSub = -1;
     pos = null;
-    if (!m) return;
+    if (!m || m.sheet) return;
     await tick();
     if (!menuEl) return;
     const r = menuEl.getBoundingClientRect();
@@ -65,9 +67,14 @@
   }
 </script>
 
-<svelte:window on:keydown={onKey} on:resize={onResize} on:blur={closeMenu} on:popstate={closeMenu} />
+<!-- У шторки своя запись в истории: «назад» закрывает её через
+     stores/contextMenu.js, а popstate от снятия этой записи приходит уже
+     после закрытия и не должен закрыть следующее меню. -->
+<svelte:window on:keydown={onKey} on:resize={onResize} on:blur={closeMenu} on:popstate={() => !menu?.sheet && closeMenu()} />
 
-{#if menu}
+{#if menu?.sheet}
+  <MenuSheet {menu} />
+{:else if menu}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="backdrop" on:pointerdown={closeMenu} on:contextmenu|preventDefault={closeMenu}></div>
   <div class="menu" role="menu" bind:this={menuEl} style="left: {pos?.x ?? menu.x}px; top: {pos?.y ?? menu.y}px; visibility: {pos ? 'visible' : 'hidden'}">

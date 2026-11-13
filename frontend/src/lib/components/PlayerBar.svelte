@@ -31,7 +31,7 @@
   import Moon from '@lucide/svelte/icons/moon';
   import LikeButton from './LikeButton.svelte';
   import { openMenu } from '../stores/contextMenu.js';
-  import { trackMenuItems } from '../trackMenu.js';
+  import { trackMenuItems, trackMenuHeader } from '../trackMenu.js';
   import { rowFromEntry } from '../library.js';
   import { sleepMenuItems, sleepLabel } from '../sleepMenu.js';
   import { wheelVolume } from '../wheelVolume.js';
@@ -47,11 +47,16 @@
 
   // Меню трека — как в списках, плюс таймер сна (как в «…» полноэкранного).
   function openTrackMenu(e) {
-    openMenu(e, [
-      ...trackMenuItems(rowFromEntry(track)),
-      { separator: true },
-      { label: sleepLabel(s.sleep, $t), icon: Moon, submenu: sleepMenuItems().filter((i) => !i.heading) },
-    ]);
+    const row = rowFromEntry(track);
+    openMenu(
+      e,
+      [
+        ...trackMenuItems(row),
+        { separator: true },
+        { label: sleepLabel(s.sleep, $t), icon: Moon, submenu: sleepMenuItems().filter((i) => !i.heading) },
+      ],
+      trackMenuHeader(row),
+    );
   }
 
   let lastVolume = 1;

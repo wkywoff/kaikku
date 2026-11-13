@@ -117,7 +117,7 @@
     if (playlist.is_public) items.push(shareItem(paths.playlist(playlist.id), playlist.title));
     // Соавтор может выйти сам — плейлист пропадёт из его медиатеки.
     if (!playlist.mine && playlist.can_edit) items.push({ separator: true }, { label: $t('playlist.leave'), icon: LogOut, danger: true, onClick: leave });
-    if (items.length) openMenu(e, items);
+    if (items.length) openMenu(e, items, { title: playlist.title, subtitle: playlist.owner.username, image: playlist.covers[0] || null });
   }
 
   async function leave() {

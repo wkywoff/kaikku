@@ -146,7 +146,7 @@
   }
 
   function moreMenu(e) {
-    openMenu(e, [
+    const items = [
       {
         label: $t('menu.addToQueue'),
         icon: ListEnd,
@@ -167,7 +167,8 @@
             { label: $t('admin.refreshRelease'), icon: RefreshCw, onClick: refreshFromDeezer },
           ]
         : []),
-    ]);
+    ];
+    openMenu(e, items, { title: album.title, subtitle: album.artists.map((a) => a.name).join(', '), image: album.coverUrl });
   }
 
   async function refreshFromDeezer() {

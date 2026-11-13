@@ -15,7 +15,7 @@
   export let menu = false;
 
   function artistMenu(e, a) {
-    openMenu(e, [{ label: get(t)('menu.goToArtist'), icon: UserRound, href: a.href }, ...linkItems(a.href, a.name)]);
+    openMenu(e, [{ label: get(t)('menu.goToArtist'), icon: UserRound, href: a.href }, ...linkItems(a.href, a.name)], { title: a.name });
   }
   // Долгое нажатие на имени — меню исполнителя, а не всего трека вокруг.
   const own = (e) => menu && e.pointerType !== 'mouse' && e.stopPropagation();

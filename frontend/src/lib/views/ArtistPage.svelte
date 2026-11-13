@@ -127,7 +127,7 @@
 
   // Меню артиста — у «…», по правому клику и долгому нажатию на шапке.
   function artistMenu(e) {
-    openMenu(e, artistMenuItems(artist));
+    openMenu(e, artistMenuItems(artist), { title: artist.name, image: artist.picture_url, round: true });
   }
 
   function onRadio() {

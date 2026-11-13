@@ -62,7 +62,7 @@
   }
 
   function menu(e) {
-    openMenu(e, linkItems(paths.user(user.username), user.username));
+    openMenu(e, linkItems(paths.user(user.username), user.username), { title: user.username });
   }
 
   const followLabel = (p) => (p.i_follow ? (p.follows_me ? 'people.friends' : 'people.following') : p.follows_me ? 'people.followBack' : 'people.follow');

@@ -26,7 +26,7 @@
   export let first = false; // главная картинка экрана (LCP): раньше остальных
   export let menu = null; // () => пункты меню
 
-  const showMenu = (e) => menu && openMenu(e, menu());
+  const showMenu = (e) => menu && openMenu(e, menu(), { title, subtitle, image, round });
 
   // Страницу открыли «назад»/«вперёд»: картинки уже в кеше — сразу, без
   // отложенной загрузки (Safari рисовал их сначала пустыми).

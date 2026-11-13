@@ -23,7 +23,7 @@
   import { libraryState, playRows, playWithSimilar, isCurrentRow } from '../library.js';
   import { likedIds, toggleLike } from '../stores/collection.js';
   import { openMenu } from '../stores/contextMenu.js';
-  import { trackMenuItems } from '../trackMenu.js';
+  import { trackMenuItems, trackMenuHeader } from '../trackMenu.js';
   import ArtistLinks from './ArtistLinks.svelte';
   import { createEventDispatcher, tick, onDestroy } from 'svelte';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
@@ -205,6 +205,7 @@
         // Свои треки (загрузка, k…) правятся в окне загрузки, не здесь.
         onEdit: row.deezerId && !isLocalId(row.deezerId) ? () => (editingTrack = row.deezerId) : null,
       }),
+      trackMenuHeader(row),
     );
   }
 </script>
