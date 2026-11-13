@@ -35,9 +35,13 @@ let replaceAfterBack = null; // адрес, которым заменить ст
 
 /** Окно открылось: «назад» вызовет close. Вернёт функцию «окно закрылось». */
 export function backCloses(close) {
-  const entry = { id: ++overlaySeq, close };
-  history.pushState({ ...history.state, overlay: entry.id }, '');
+  const entry = { id: ++overlaySeq, close, pushed: false };
   overlays.push(entry);
+  settled(() => {
+    if (!overlays.includes(entry)) return; // закрыли раньше, чем дошла очередь
+    history.pushState({ ...history.state, overlay: entry.id }, '');
+    entry.pushed = true;
+  });
   return () => {
     const i = overlays.indexOf(entry);
     if (i < 0) return; // уже закрыто «назад»
@@ -45,7 +49,7 @@ export function backCloses(close) {
     // Всё ещё на записи окна (или на записи окна поверх него: id растут) —
     // снять её. Если уже ушли на другую страницу, navigate() эту запись
     // заменил, и overlay в состоянии нет.
-    if (history.state?.overlay >= entry.id) popOverlayEntries(1);
+    if (entry.pushed && history.state?.overlay >= entry.id) popOverlayEntries(1);
   };
 }
 
@@ -62,6 +66,31 @@ function popOverlayEntries(n) {
     });
   }
   pendingPops += n;
+}
+
+// Запись окна снимается не сразу: history.go() срабатывает позже, своим
+// popstate. Пока он не пришёл, новая запись или переход попали бы не туда:
+// пункт меню на телефоне закрывает меню (его запись снимается) и тут же
+// открывает окно или другую страницу. Такие записи ждут (settled). Если
+// popstate так и не пришёл, через секунду ждать перестаём — иначе встала
+// бы вся навигация.
+const waiting = [];
+let giveUpWaiting = null;
+const historyBusy = () => pendingPops > 0 || skipPops > 0;
+function settled(fn) {
+  if (!historyBusy()) return fn();
+  waiting.push(fn);
+  giveUpWaiting ??= setTimeout(() => {
+    skipPops = 0;
+    runWaiting();
+  }, 1000);
+}
+function runWaiting() {
+  while (waiting.length && !historyBusy()) waiting.shift()();
+  if (!waiting.length) {
+    clearTimeout(giveUpWaiting);
+    giveUpWaiting = null;
+  }
 }
 
 // Страница, с которой нельзя просто уйти (окно загрузки с несохранённым
@@ -87,6 +116,7 @@ window.addEventListener('popstate', () => {
   }
   if (skipPops) {
     skipPops--;
+    runWaiting();
     return;
   }
   if (overlays.length) {
@@ -109,6 +139,7 @@ window.addEventListener('popstate', () => {
 // (например, пока человек печатает поисковый запрос), а не плодить новую
 // на каждую букву.
 export function navigate(path, { replace = false } = {}) {
+  if (historyBusy()) return settled(() => navigate(path, { replace }));
   if (path === location.pathname + location.search) return;
   if (!mayLeave()) return;
   for (const s of scrollers) s.flush();
