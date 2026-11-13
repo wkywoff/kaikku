@@ -462,6 +462,9 @@ function createPlayerStore() {
     if (nextIndex === null) {
       state.update((x) => ({ ...x, isPlaying: false, currentTime: 0 }));
       elements[activeSlot].currentTime = 0;
+      // 'pause' на конце трека за паузу не считается (см. слушатель) —
+      // системному плееру говорим сами, что музыка кончилась.
+      setPlaybackState('paused');
       return;
     }
     // Следующий трек уже загружен, но таймер бесшовного старта не успел —
@@ -925,6 +928,7 @@ function createPlayerStore() {
   // после перезагрузки — первый play() его загрузит).
   function sleepAfterTrack(s) {
     cancelPendingCrossfade();
+    setPlaybackState('paused');
     const nextIndex = followingIndex(s);
     if (nextIndex === null || nextIndex === s.index) {
       state.update((x) => ({ ...x, sleep: null, isPlaying: false, currentTime: 0 }));

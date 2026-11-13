@@ -1198,6 +1198,24 @@ test('the lock screen knows whether music plays and gets the cover in several si
   assert.equal(mediaSession.playbackState, 'paused');
 });
 
+test('the lock screen shows a pause when the queue or the sleep timer ends the music', async () => {
+  await player.playQueue([{ id: 'ls1', title: 'LS1' }], 0);
+  const el = FakeAudio.instances.find((e) => e.src.includes('ls1'));
+  el.play();
+  assert.equal(mediaSession.playbackState, 'playing');
+  el.finish(); // очередь кончилась
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(mediaSession.playbackState, 'paused');
+
+  await player.playQueue([{ id: 'ls2', title: 'LS2' }, { id: 'ls3', title: 'LS3' }], 0);
+  const el2 = FakeAudio.instances.find((e) => e.src.includes('ls2'));
+  el2.play();
+  assert.equal(mediaSession.playbackState, 'playing');
+  player.setSleepTimer('track');
+  el2.finish();
+  assert.equal(mediaSession.playbackState, 'paused');
+});
+
 test('the system player gets the position on jumps, not on every tick', async () => {
   const sent = [];
   mediaSession.setPositionState = (p) => sent.push(p.position);
