@@ -20,6 +20,7 @@ import {
 } from './player/queue.js';
 import { createListenTracker } from './player/listen.js';
 import { setPlaybackState, showTrack, updatePositionState, clearTrack } from './player/mediasession.js';
+import { createSleepTimer } from './player/sleep.js';
 
 // Позиция в сохранённой очереди обновляется не чаще этого.
 const QUEUE_SAVE_INTERVAL_MS = 5000;
@@ -239,7 +240,7 @@ function createPlayerStore() {
     el.addEventListener('timeupdate', () => {
       if (slot !== activeSlot) return; // тихий (неактивный) элемент не должен трогать видимое состояние
       state.update((s) => ({ ...s, currentTime: el.currentTime }));
-      maybeSleep(); // на случай, если таймер в фоне сработал не вовремя
+      sleepTimer.check(); // на случай, если таймер в фоне сработал не вовремя
       listening.tick(el);
       maybeStartPreload(el);
       maybeStartCrossfade(el);
@@ -861,33 +862,20 @@ function createPlayerStore() {
     state.update((x) => ({ ...x, queue: q.queue }));
   }
 
-  // --- таймер сна ---
+  // --- таймер сна (player/sleep.js) ---
   // Через N минут — пауза с коротким затуханием; «до конца трека» — после
-  // текущего трека дальше не играем. Таймер живёт до перезагрузки страницы.
+  // текущего трека дальше не играем.
   const SLEEP_FADE_SECONDS = 3;
-  let sleepHandle = null;
+  const sleepTimer = createSleepTimer(state, fadeOutAndPause);
 
   /** minutes: число минут, 'track' — до конца трека, null — выключить. */
   function setSleepTimer(minutes) {
-    clearTimeout(sleepHandle);
-    sleepHandle = null;
-    let sleep = null;
-    if (minutes === 'track') {
-      sleep = { endOfTrack: true };
-      cancelPendingCrossfade(); // переход в следующий трек больше не нужен
-    } else if (minutes > 0) {
-      sleep = { at: Date.now() + minutes * 60000 };
-      sleepHandle = setTimeout(maybeSleep, minutes * 60000);
-    }
-    state.update((s) => ({ ...s, sleep }));
+    if (minutes === 'track') cancelPendingCrossfade(); // переход в следующий трек больше не нужен
+    sleepTimer.set(minutes);
   }
 
-  function maybeSleep() {
-    const at = get(state).sleep?.at;
-    if (!at || Date.now() < at) return;
-    clearTimeout(sleepHandle);
-    sleepHandle = null;
-    state.update((s) => ({ ...s, sleep: null }));
+  // Время таймера сна вышло.
+  function fadeOutAndPause() {
     const el = elements[activeSlot];
     if (!el || el.paused) return;
     cancelPendingCrossfade();
