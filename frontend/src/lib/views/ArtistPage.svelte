@@ -167,7 +167,7 @@
       <Shuffle size={28} />
     </button>
     <button class="pill outline follow" aria-pressed={following} on:click={() => toggleFollow(artist.id)}>
-      {following ? $t('artist.following') : $t('artist.follow')}
+      <span class="label">{following ? $t('artist.following') : $t('artist.follow')}</span>
     </button>
     <button class="icon-btn" title={$t('artist.radio')} aria-label={$t('artist.radio')} on:click={onRadio}>
       <Radio size={24} />
@@ -288,25 +288,42 @@
     font-weight: 700;
   }
   /* На телефоне кнопки в строку не влезали («Вы подписаны», радио, «…», у
-     админа ещё карандаш) — строка вылезала за экран, и страница ездила
-     вбок. Теснее, а подписка при нехватке места сокращается многоточием. */
+     админа ещё карандаш): строка вылезала за экран, а потом подпись кнопки
+     обрезалась на полуслове. Расстояние между кнопками здесь — ширина самих
+     кнопок-иконок (значок по центру) и поля, а не gap: при нехватке места
+     сначала сжимаются иконки, и только когда теснее некуда, подписка
+     сокращается многоточием. Пока места хватает, всё стоит так же, как
+     при gap 12px. */
   @media (max-width: 768px) {
     .actions {
-      gap: 12px;
+      gap: 0;
+    }
+    .actions > :global(.play-button) {
+      margin-right: 6px;
+    }
+    /* flex-shrink в миллион раз больше, чем у подписки: её доля сжатия
+       меньше точности вёрстки (1/64 px). При 1000 она теряла сотые доли
+       пикселя, и текст, который влезал, всё равно получал многоточие. */
+    .actions > .icon-btn {
+      flex: 0 1000000 48px;
+      min-width: 30px;
+      border-radius: 999px;
+    }
+    .actions > .icon-btn.big {
+      flex-basis: 56px;
+      min-width: 36px;
     }
     .follow {
+      flex: 0 1 auto;
       min-width: 0;
-      flex-shrink: 1;
+      margin: 0 6px;
       padding: 0 12px;
       font-size: 13px;
     }
-    .follow,
-    .follow :global(*) {
+    /* Многоточие — у текста внутри: сама кнопка — flex, у неё его не бывает. */
+    .follow .label {
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-    .actions > :global(*:not(.follow)) {
-      flex-shrink: 0;
     }
   }
   section {
