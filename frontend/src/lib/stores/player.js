@@ -6,6 +6,19 @@ import { artworkFor } from '../imageproxy.js';
 import { toast } from './toast.js';
 import { translate } from '../i18n.js';
 import { loadSavedModes, saveModes, loadSavedQueue, saveQueue, loadSavedVolume, saveVolume } from './player/persist.js';
+import {
+  followingIndex,
+  startQueue,
+  shuffleRest,
+  restoreOrder,
+  beforeAutoplay,
+  afterUpNext,
+  insertEntries,
+  removeEntry,
+  swapEntries,
+  moveEntry,
+  withoutAutoplayed,
+} from './player/queue.js';
 
 // Прослушивание записывается в историю, когда трек проиграл столько секунд
 // (короткий — половину), как у Spotify.
@@ -68,16 +81,6 @@ function dbToGain(db) {
   return Math.pow(10, (Number(db) || 0) / 20);
 }
 
-/** Fisher–Yates; random — для тестов. */
-export function shuffled(items, random = Math.random) {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
 function createPlayerStore() {
   const saved = loadSavedQueue();
   const state = writable({
@@ -97,6 +100,8 @@ function createPlayerStore() {
   // Порядок очереди без перемешивания: к нему возвращаемся, когда shuffle
   // выключают. Элементы — те же объекты, что в queue.
   let unshuffled = saved?.order ? saved.order.map((i) => saved.queue[i]).filter(Boolean) : null;
+  // Очередь для функций из player/queue.js.
+  const queueOf = (s) => ({ queue: s.queue, index: s.index, unshuffled });
 
   // Очередь восстановлена из localStorage, но трек ещё не загружен: первый
   // play() загрузит его с сохранённого места.
@@ -188,15 +193,6 @@ function createPlayerStore() {
 
   function inactiveSlot() {
     return activeSlot === 0 ? 1 : 0;
-  }
-
-  // Какой трек следующий с учётом повтора: repeat 'all' зацикливает
-  // очередь. Повтор одного трека здесь не учитывается — его обрабатывает
-  // handleActiveEnded (перемотка в начало, без кроссфейда в самого себя).
-  function followingIndex(s) {
-    if (s.index + 1 < s.queue.length) return s.index + 1;
-    if (s.repeat !== 'off' && s.queue.length > 0) return 0;
-    return null;
   }
 
   function ensureContext() {
@@ -671,18 +667,10 @@ function createPlayerStore() {
   // startIndex null — трек не выбирали (Play альбома, плейлиста): играет
   // первый, а с перемешиванием — случайный.
   async function playQueue(tracks, startIndex = 0, { chosen = true } = {}) {
-    let queue = tracks;
-    let index = startIndex ?? 0;
-    if (get(state).shuffle) {
-      // Выбранный трек играет первым, остальные — в случайном порядке.
-      unshuffled = tracks;
-      queue = startIndex === null ? shuffled(tracks) : [tracks[startIndex], ...shuffled(tracks.filter((_, i) => i !== startIndex))];
-      index = 0;
-    } else {
-      unshuffled = null;
-    }
-    state.update((s) => ({ ...s, queue, index }));
-    await loadTrack(queue[index], 0, !chosen);
+    const q = startQueue(tracks, startIndex, get(state).shuffle);
+    unshuffled = q.unshuffled;
+    state.update((s) => ({ ...s, queue: q.queue, index: q.index }));
+    await loadTrack(q.queue[q.index], 0, !chosen);
   }
 
   // toggleShuffle перемешивает всё после текущего трека (текущий остаётся
@@ -690,18 +678,9 @@ function createPlayerStore() {
   function toggleShuffle() {
     cancelPendingCrossfade();
     const s = get(state);
-    const current = s.queue[s.index];
-    if (!s.shuffle) {
-      unshuffled = s.queue;
-      const rest = s.queue.filter((_, i) => i !== s.index);
-      const queue = current ? [current, ...shuffled(rest)] : shuffled(rest);
-      state.update((x) => ({ ...x, shuffle: true, queue, index: current ? 0 : -1 }));
-    } else {
-      const queue = unshuffled && unshuffled.length ? unshuffled : s.queue;
-      const index = current ? queue.indexOf(current) : -1;
-      unshuffled = null;
-      state.update((x) => ({ ...x, shuffle: false, queue, index }));
-    }
+    const q = s.shuffle ? restoreOrder(queueOf(s)) : shuffleRest(queueOf(s));
+    unshuffled = q.unshuffled;
+    state.update((x) => ({ ...x, shuffle: !s.shuffle, queue: q.queue, index: q.index }));
     saveModes(get(state));
   }
 
@@ -717,53 +696,31 @@ function createPlayerStore() {
   }
 
   // В очередь — после уже добавленного руками, но перед подобранным
-  // автовоспроизведением, как в Spotify: иначе трек заиграл бы только
-  // после всего радио. addToQueue — один трек, appendToQueue — несколько.
+  // автовоспроизведением (beforeAutoplay). addToQueue — один трек,
+  // appendToQueue — несколько.
   function addToQueue(track) {
     return appendToQueue([track]);
   }
 
   function appendToQueue(tracks) {
     if (tracks.length === 0) return Promise.resolve();
-    const s = get(state);
-    if (s.queue.length === 0) {
-      return playQueue(tracks, 0);
-    }
-    const insertAt = (list, from) => {
-      const i = list.findIndex((e, j) => j > from && e.autoplay);
-      return i < 0 ? list.length : i;
-    };
-    const at = insertAt(s.queue, s.index);
-    // Подготовленный к переходу трек стоял на этом месте — он больше не следующий.
-    if (preloadedForIndex !== null && at <= preloadedForIndex) cancelPendingCrossfade();
-    if (unshuffled) {
-      const u = insertAt(unshuffled, unshuffled.indexOf(s.queue[s.index]));
-      unshuffled = [...unshuffled.slice(0, u), ...tracks, ...unshuffled.slice(u)];
-    }
-    state.update((x) => ({ ...x, queue: [...x.queue.slice(0, at), ...tracks, ...x.queue.slice(at)] }));
-    return Promise.resolve();
+    if (get(state).queue.length === 0) return playQueue(tracks, 0);
+    return insert(tracks, beforeAutoplay);
   }
 
   // «Играть следующим» — сразу после текущего трека, но после того, что уже
-  // поставили следующим раньше (по порядку добавления).
+  // поставили следующим раньше (afterUpNext).
   function playNext(track) {
-    const s = get(state);
-    if (s.queue.length === 0) {
-      return playQueue([track], 0);
-    }
-    const entry = { ...track, upNext: true };
-    const insertAt = (list, from) => {
-      let i = from + 1;
-      while (i < list.length && list[i].upNext) i++;
-      return i;
-    };
-    const at = insertAt(s.queue, s.index);
-    if (preloadedForIndex !== null && at <= preloadedForIndex) cancelPendingCrossfade();
-    if (unshuffled) {
-      const u = insertAt(unshuffled, unshuffled.indexOf(s.queue[s.index]));
-      unshuffled = [...unshuffled.slice(0, u), entry, ...unshuffled.slice(u)];
-    }
-    state.update((x) => ({ ...x, queue: [...x.queue.slice(0, at), entry, ...x.queue.slice(at)] }));
+    if (get(state).queue.length === 0) return playQueue([track], 0);
+    return insert([{ ...track, upNext: true }], afterUpNext);
+  }
+
+  function insert(entries, place) {
+    const q = insertEntries(queueOf(get(state)), entries, place);
+    // Подготовленный к переходу трек стоял на этом месте — он больше не следующий.
+    if (preloadedForIndex !== null && q.at <= preloadedForIndex) cancelPendingCrossfade();
+    unshuffled = q.unshuffled;
+    state.update((x) => ({ ...x, queue: q.queue }));
     return Promise.resolve();
   }
 
@@ -772,23 +729,12 @@ function createPlayerStore() {
     if (idx < 0 || idx >= s.queue.length) return;
     cancelPendingCrossfade();
 
-    const newQueue = s.queue.filter((_, i) => i !== idx);
-    if (unshuffled) unshuffled = unshuffled.filter((t) => t !== s.queue[idx]);
-
-    if (idx === s.index) {
-      if (newQueue.length === 0) {
-        pause();
-        state.update((x) => ({ ...x, queue: [], index: -1 }));
-        return;
-      }
-      const newIndex = Math.min(idx, newQueue.length - 1);
-      state.update((x) => ({ ...x, queue: newQueue, index: newIndex }));
-      await loadTrack(newQueue[newIndex], 0, true);
-      return;
-    }
-
-    const newIndex = idx < s.index ? s.index - 1 : s.index;
-    state.update((x) => ({ ...x, queue: newQueue, index: newIndex }));
+    const q = removeEntry(queueOf(s), idx);
+    unshuffled = q.unshuffled;
+    const wasCurrent = idx === s.index;
+    if (wasCurrent && q.queue.length === 0) pause();
+    state.update((x) => ({ ...x, queue: q.queue, index: q.index }));
+    if (wasCurrent && q.queue.length > 0) await loadTrack(q.queue[q.index], 0, true);
   }
 
   function moveInQueue(fromIdx, direction) {
@@ -796,15 +742,8 @@ function createPlayerStore() {
     const toIdx = fromIdx + direction;
     if (toIdx < 0 || toIdx >= s.queue.length) return;
     cancelPendingCrossfade();
-
-    const newQueue = [...s.queue];
-    [newQueue[fromIdx], newQueue[toIdx]] = [newQueue[toIdx], newQueue[fromIdx]];
-
-    let newIndex = s.index;
-    if (s.index === fromIdx) newIndex = toIdx;
-    else if (s.index === toIdx) newIndex = fromIdx;
-
-    state.update((x) => ({ ...x, queue: newQueue, index: newIndex }));
+    const q = swapEntries(queueOf(s), fromIdx, toIdx);
+    state.update((x) => ({ ...x, queue: q.queue, index: q.index }));
   }
 
   // Перетаскивание в очереди: трек fromIdx встаёт на место toIdx.
@@ -813,11 +752,8 @@ function createPlayerStore() {
     const n = s.queue.length;
     if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= n || toIdx >= n) return;
     cancelPendingCrossfade();
-    const newQueue = [...s.queue];
-    const [moved] = newQueue.splice(fromIdx, 1);
-    newQueue.splice(toIdx, 0, moved);
-    const current = s.queue[s.index];
-    state.update((x) => ({ ...x, queue: newQueue, index: newQueue.indexOf(current) }));
+    const q = moveEntry(queueOf(s), fromIdx, toIdx);
+    state.update((x) => ({ ...x, queue: q.queue, index: q.index }));
   }
 
   async function jumpTo(idx) {
@@ -1022,9 +958,9 @@ function createPlayerStore() {
     const s = get(state);
     if (!s.queue.some((e, i) => e.autoplay && i > s.index)) return;
     cancelPendingCrossfade();
-    const queue = s.queue.filter((e, i) => !e.autoplay || i <= s.index);
-    if (unshuffled) unshuffled = unshuffled.filter((e) => queue.includes(e));
-    state.update((x) => ({ ...x, queue }));
+    const q = withoutAutoplayed(queueOf(s));
+    unshuffled = q.unshuffled;
+    state.update((x) => ({ ...x, queue: q.queue }));
   }
 
   // --- таймер сна ---
