@@ -69,7 +69,7 @@
       <PlayButton size={56} label={$t('player.play')} on:click={play} />
     {/if}
     {#if page.mix_id}
-      <a class="pill" href={paths.mix(page.mix_id)} use:link><Sparkles size={16} /> {$t('genre.mix', { name: title })}</a>
+      <a class="pill mix" href={paths.mix(page.mix_id)} use:link><Sparkles size={16} /> <span class="label">{$t('genre.mix', { name: title })}</span></a>
     {/if}
   </div>
 
@@ -121,6 +121,19 @@
     gap: 24px;
     padding-top: 20px;
     padding-bottom: 24px;
+  }
+  /* Длинное название жанра: кнопка микса уезжала за экран, и страница
+     ездила вбок. Сжимается кнопка, а текст в ней сокращается многоточием
+     (у текста, а не у кнопки: она flex, у неё многоточия не бывает). */
+  .mix {
+    min-width: 0;
+  }
+  .mix :global(svg) {
+    flex-shrink: 0;
+  }
+  .mix .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   section {
     margin-bottom: 32px;
