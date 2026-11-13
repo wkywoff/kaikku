@@ -1,4 +1,4 @@
-import { writable, readable, get } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { appleTouch } from '../platform.js';
 import { api } from '../api.js';
 import { settings, lang } from './settings.js';
@@ -21,6 +21,8 @@ import {
 import { createListenTracker } from './player/listen.js';
 import { setPlaybackState, showTrack, updatePositionState, clearTrack } from './player/mediasession.js';
 import { createSleepTimer } from './player/sleep.js';
+import { createSmoothTime } from './player/smooth.js';
+import { select } from './player/select.js';
 
 // Позиция в сохранённой очереди обновляется не чаще этого.
 const QUEUE_SAVE_INTERVAL_MS = 5000;
@@ -933,35 +935,8 @@ function createPlayerStore() {
     return el && !restoredPending ? el.currentTime : get(state).currentTime;
   }
 
-  // Позиция для полосы прогресса: пока трек играет — на каждом кадре, иначе
-  // полоса двигалась бы рывками 4 раза в секунду. Кадры идут, только пока
-  // на неё кто-то подписан и вкладка видна.
-  const smoothTime = readable(0, (set) => {
-    let frame = 0;
-    let last = 0;
-    const tick = () => {
-      let time = position();
-      // currentTime в браузере иногда чуть отступает назад — полоса не должна дрожать.
-      if (time < last && last - time < 0.25) time = last;
-      last = time;
-      set(time);
-      frame = requestAnimationFrame(tick);
-    };
-    const unsubscribe = state.subscribe((s) => {
-      if (s.isPlaying && typeof requestAnimationFrame === 'function') {
-        if (!frame) frame = requestAnimationFrame(tick);
-        return;
-      }
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-      last = s.currentTime;
-      set(s.currentTime);
-    });
-    return () => {
-      unsubscribe();
-      if (frame) cancelAnimationFrame(frame);
-    };
-  });
+  // Позиция для полосы прогресса — на каждом кадре (player/smooth.js).
+  const smoothTime = createSmoothTime(state, position);
 
   function setVolume(v) {
     const clamped = Math.min(1, Math.max(0, v));
@@ -1009,25 +984,7 @@ function createPlayerStore() {
 }
 
 export const player = createPlayerStore();
-export { formatTime };
-
-/**
- * Часть состояния плеера, которая меняется редко. Сам плеер меняется
- * 4 раза в секунду (timeupdate — позиция трека), и всё, что подписано на
- * него целиком, пересчитывается на каждом тике. select выдаёт новое
- * значение (fn), только когда изменилось что-то из deps.
- */
-export function select(store, deps, fn = (s) => deps(s)[0]) {
-  return readable(undefined, (set) => {
-    let prev = null;
-    return store.subscribe((s) => {
-      const d = deps(s);
-      if (prev && d.every((x, i) => x === prev[i])) return;
-      prev = d;
-      set(fn(s));
-    });
-  });
-}
+export { formatTime, select };
 
 // Текущий элемент очереди. Зависит и от массива очереди: patchEntry правит
 // элемент на месте (догруженные исполнители) и заменяет только массив.
