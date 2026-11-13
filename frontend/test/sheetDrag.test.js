@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideDismiss, isBackSwipe } from '../src/lib/sheetDrag.js';
+import { decideDismiss, isBackSwipe, startsSideways } from '../src/lib/sheetDrag.js';
 
 test('a sheet closes when dragged far down or flicked, and stays otherwise', () => {
   assert.equal(decideDismiss({ dy: 150, dt: 600, height: 400 }), true); // больше 30 % высоты
@@ -15,4 +15,10 @@ test('a swipe right from the left edge means back, a vertical or short one does 
   assert.equal(isBackSwipe(60, -80), false); // больше вверх, чем вправо
   assert.equal(isBackSwipe(25, 0), false); // слишком коротко
   assert.equal(isBackSwipe(-60, 0), false); // влево
+});
+
+test('the first movement decides whether an edge swipe can be back', () => {
+  assert.equal(startsSideways(12, 3), true);
+  assert.equal(startsSideways(3, -12), false); // сначала вверх
+  assert.equal(startsSideways(2, 11), false); // сначала вниз
 });

@@ -100,6 +100,11 @@ export function isBackSwipe(dx, dy) {
   return dx > BACK_AT && dx > Math.abs(dy);
 }
 
+/** Первое движение пальца — вбок, а не вверх или вниз. */
+export function startsSideways(dx, dy) {
+  return Math.abs(dx) >= Math.abs(dy);
+}
+
 /**
  * Svelte-действие для слоя во весь экран (шторка меню): use:edgeBack={close}.
  * Свайп от края экрана на iPhone — системный «назад»: он увёл бы страницу
@@ -124,7 +129,14 @@ export function edgeBack(node, onBack) {
     if (!start) return;
     const dx = e.touches[0].clientX - start.x;
     const dy = e.touches[0].clientY - start.y;
-    if (Math.hypot(dx, dy) > TAP_SLOP) start.moved = true;
+    if (!start.moved) {
+      if (Math.hypot(dx, dy) <= TAP_SLOP) return;
+      start.moved = true;
+      // Направление решает первое движение, как у системного жеста: повели
+      // сначала вверх или вниз — это уже не «назад», даже если потом палец
+      // уйдёт вправо.
+      if (!startsSideways(dx, dy)) start.left = false;
+    }
     if (start.left && isBackSwipe(dx, dy)) {
       start = null;
       onBack?.();
