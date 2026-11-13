@@ -31,8 +31,7 @@ export function dragDismiss(node, opts) {
   };
   const onStart = (e) => {
     if (e.touches.length !== 1) return;
-    // От левого края — жест iPhone «назад»: он сам уводит страницу вбок, и
-    // шторка, идущая за тем же пальцем ещё и вниз, ездила бы в две стороны.
+    // От левого края — жест «назад» (edgeBack ниже), а не свайп вниз.
     if (e.touches[0].clientX < EDGE) return;
     const list = opts.scroller?.();
     if (list && list.scrollTop > 0 && e.target instanceof Node && list.contains(e.target)) return;
@@ -85,6 +84,68 @@ export function dragDismiss(node, opts) {
     },
     destroy() {
       cancelAnimationFrame(frame);
+      node.removeEventListener('touchstart', onStart);
+      node.removeEventListener('touchmove', onMove);
+      node.removeEventListener('touchend', onEnd);
+      node.removeEventListener('touchcancel', onEnd);
+    },
+  };
+}
+
+const BACK_AT = 40; // px вправо от левого края — это «назад»
+const TAP_SLOP = 10; // px: дальше — уже не нажатие
+
+/** Свайп от левого края — «назад»: палец ушёл вправо дальше, чем вбок по вертикали. */
+export function isBackSwipe(dx, dy) {
+  return dx > BACK_AT && dx > Math.abs(dy);
+}
+
+/**
+ * Svelte-действие для слоя во весь экран (шторка меню): use:edgeBack={close}.
+ * Свайп от края экрана на iPhone — системный «назад»: он увёл бы страницу
+ * вместе со шторкой вбок, а под ней показал бы снимок той же страницы.
+ * Касание у края забираем себе (preventDefault на touchstart системный жест
+ * отменяет), и свайп от левого края закрывает шторку как обычно, на месте.
+ * Забранное касание не даёт click — короткое нажатие у края превращаем в
+ * него сами, иначе у края не нажимались бы пункты.
+ */
+export function edgeBack(node, onBack) {
+  let start = null; // { x, y, left, moved }
+  const onStart = (e) => {
+    start = null;
+    if (e.touches.length !== 1) return;
+    const { clientX: x, clientY: y } = e.touches[0];
+    const left = x < EDGE;
+    if (!left && x <= window.innerWidth - EDGE) return;
+    if (e.cancelable) e.preventDefault();
+    start = { x, y, left, moved: false };
+  };
+  const onMove = (e) => {
+    if (!start) return;
+    const dx = e.touches[0].clientX - start.x;
+    const dy = e.touches[0].clientY - start.y;
+    if (Math.hypot(dx, dy) > TAP_SLOP) start.moved = true;
+    if (start.left && isBackSwipe(dx, dy)) {
+      start = null;
+      onBack?.();
+    }
+  };
+  const onEnd = (e) => {
+    const s = start;
+    start = null;
+    if (!s || s.moved || e.type === 'touchcancel') return;
+    const el = document.elementFromPoint(s.x, s.y);
+    if (el && node.contains(el)) (el.closest('button, a') || el).click?.();
+  };
+  node.addEventListener('touchstart', onStart, { passive: false });
+  node.addEventListener('touchmove', onMove, { passive: true });
+  node.addEventListener('touchend', onEnd);
+  node.addEventListener('touchcancel', onEnd);
+  return {
+    update(next) {
+      onBack = next;
+    },
+    destroy() {
       node.removeEventListener('touchstart', onStart);
       node.removeEventListener('touchmove', onMove);
       node.removeEventListener('touchend', onEnd);

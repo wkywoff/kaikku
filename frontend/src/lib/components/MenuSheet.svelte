@@ -10,7 +10,7 @@
   import { navigateAfterPaint } from '../stores/nav.js';
   import { focusTrap } from '../focusTrap.js';
   import { appleTouch } from '../platform.js';
-  import { dragDismiss } from '../sheetDrag.js';
+  import { dragDismiss, edgeBack } from '../sheetDrag.js';
   import { sized } from '../imageproxy.js';
   import { t } from '../i18n.js';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -79,9 +79,10 @@
     const h = node.offsetHeight;
     return { duration: 280, easing: cubicOut, css: (_t, u) => `transform: translate3d(0, ${u * h}px, 0)` };
   };
-  // Свайп от края экрана на iPhone — системный «назад»: он сам уводит
-  // страницу со шторкой вбок за пальцем. Анимация закрытия после него
-  // показала бы шторку ещё раз — убираем сразу (как полноэкранный плеер).
+  // Свайп от края экрана на iPhone мы забираем себе (edgeBack). Если
+  // системный «назад» всё же сработал, он сам увёл страницу со шторкой вбок:
+  // анимация закрытия после него показала бы шторку ещё раз — убираем сразу
+  // (как полноэкранный плеер).
   const gone = () => closedByBack() && appleTouch;
   // Уезжает с того места, где её отпустили (dragY).
   const drop = (node) => {
@@ -94,7 +95,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-<div class="layer" bind:this={root} on:pointerdown|capture={() => (pressed = true)} on:click|capture={onClickCapture}>
+<div class="layer" bind:this={root} use:edgeBack={closeMenu} on:pointerdown|capture={() => (pressed = true)} on:click|capture={onClickCapture}>
   <div class="backdrop" bind:this={backdrop} in:fade={{ duration: 200 }} out:dim on:click={closeMenu} on:contextmenu|preventDefault={closeMenu}></div>
   <div
     class="sheet"
