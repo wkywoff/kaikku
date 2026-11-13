@@ -622,6 +622,51 @@ test('the listened time counts only playback, not seeks, and goes out when the t
   }
 });
 
+test('a song resumed after the sleep timer is a play of its own, also when it was seeked first', async () => {
+  const played = [];
+  player.setHooks({ onPlayed: (e) => played.push(e.id) });
+  try {
+    await player.playQueue([{ id: 'sh1', title: 'SH1' }, { id: 'sh2', title: 'SH2', durationMs: 200000 }], 0);
+    const el = FakeAudio.instances.find((e) => e.src.includes('sh1'));
+    el.duration = 200;
+    el.currentTime = 40;
+    el.dispatch('timeupdate');
+    assert.deepEqual(played, ['sh1']);
+
+    player.setSleepTimer('track');
+    el.finish();
+    player.seek(50); // следующий трек ждёт на паузе — перемотали его и включили
+    await player.toggle();
+    const el2 = FakeAudio.instances.findLast((e) => e.src.includes('sh2'));
+    el2.duration = 200;
+    el2.currentTime = 90;
+    el2.dispatch('timeupdate');
+    assert.deepEqual(played, ['sh1', 'sh2']);
+  } finally {
+    player.setHooks({ onPlayed: null });
+  }
+});
+
+test('playing the last song again after the queue ended is a new play', async () => {
+  const played = [];
+  player.setHooks({ onPlayed: (e) => played.push(e.id) });
+  try {
+    await player.playQueue([{ id: 'again1', title: 'Again' }], 0);
+    const el = FakeAudio.instances.find((e) => e.src.includes('again1'));
+    el.duration = 200;
+    el.currentTime = 40;
+    el.dispatch('timeupdate');
+    el.finish();
+    await new Promise((r) => setTimeout(r, 0));
+    player.toggle();
+    el.currentTime = 40;
+    el.dispatch('timeupdate');
+    assert.deepEqual(played, ['again1', 'again1']);
+  } finally {
+    player.setHooks({ onPlayed: null });
+  }
+});
+
 test('a scrobble goes out at half the track or 4 minutes, never for a track of 30 s or less', async () => {
   const scrobbled = [];
   player.setHooks({ onScrobble: (e, startedAt) => scrobbled.push([e.id, startedAt]) });

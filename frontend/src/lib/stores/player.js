@@ -436,6 +436,10 @@ function createPlayerStore() {
   }
 
   async function handleActiveEnded() {
+    // Трек доигран — его прослушивание закончилось, что бы ни было дальше:
+    // тот же трек снова (повтор, Play после конца очереди, продолжение после
+    // таймера сна) — уже новое.
+    listening.newPlay();
     let s = get(state);
     if (s.sleep?.endOfTrack) {
       sleepAfterTrack(s);
@@ -444,7 +448,6 @@ function createPlayerStore() {
     if (s.repeat === 'one') {
       const el = elements[activeSlot];
       el.currentTime = 0;
-      listening.newPlay(); // повтор — новое прослушивание
       el.play();
       return;
     }
