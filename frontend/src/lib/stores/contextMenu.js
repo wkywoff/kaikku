@@ -13,9 +13,17 @@ export const contextMenu = writable(null); // { x, y, items, header, sheet }
 // Телефон — та же граница, что у остальной вёрстки (нижняя панель и т.п.).
 const PHONE = '(max-width: 768px)';
 
-// Шторка закрывается и жестом «назад» (как очередь и окна). Запись в
-// истории снимается здесь же, в closeMenu, а не когда шторка уедет с
-// экрана: пункт меню может сразу открыть окно со своей записью.
+// Шторка закрывается и кнопкой или жестом «назад».
+//
+// Chrome на Android на жест «назад» показывает переход между записями
+// истории: текущая страница уезжает вбок, под ней — снимок предыдущей
+// записи. Заведи шторка свою запись (backCloses, как окна) — вбок уезжала бы
+// страница вместе со шторкой, а под ней лежала бы та же страница. Поэтому
+// там, где есть CloseWatcher (Chrome), «назад» отдаёт нам сам браузер, без
+// записи в истории: шторка закрывается на месте. В остальных браузерах
+// (iPhone) — запись в истории; она снимается здесь же, в closeMenu, а не
+// когда шторка уедет с экрана: пункт меню может сразу открыть окно со своей
+// записью.
 let release = null;
 // Меню закрыли жестом «назад» (а не нажатием): MenuSheet на iPhone тогда
 // убирает шторку без анимации.
@@ -24,6 +32,22 @@ export const closedByBack = () => byBack;
 function dropHistoryEntry() {
   release?.();
   release = null;
+}
+function onBack() {
+  byBack = true;
+  closeMenu();
+}
+function watchBack() {
+  if (typeof CloseWatcher === 'function') {
+    try {
+      const watcher = new CloseWatcher();
+      watcher.onclose = onBack;
+      return () => watcher.destroy();
+    } catch {
+      // страница не активна — ниже обычный путь
+    }
+  }
+  return backCloses(onBack);
 }
 
 /** Открыть меню у курсора (правый клик) или под элементом (кнопка «…»). */
@@ -40,12 +64,7 @@ export function openMenu(event, items, header = null) {
   }
   const sheet = typeof matchMedia === 'function' && matchMedia(PHONE).matches;
   if (!sheet) dropHistoryEntry();
-  else {
-    release ??= backCloses(() => {
-      byBack = true;
-      closeMenu();
-    });
-  }
+  else release ??= watchBack();
   byBack = false;
   contextMenu.set({ x, y, items, header, sheet });
 }
