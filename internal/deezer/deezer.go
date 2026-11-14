@@ -134,6 +134,10 @@ type Album struct {
 	Label       string `json:"label,omitempty"`
 	// Главные исполнители альбома (с фото) — для шапки страницы альбома.
 	Contributors []ArtistRef `json:"contributors,omitempty"`
+	// MainArtistIDs — исполнители с ролью Main (без фитов): в списках релизов
+	// каждого из них Deezer показывает этот альбом. Есть только у альбома,
+	// запрошенного целиком (GetAlbum).
+	MainArtistIDs []string `json:"main_artist_ids,omitempty"`
 	// LibraryID — ID альбома в нашей медиатеке, если он там есть.
 	LibraryID string `json:"library_id,omitempty"`
 	// Explicit — релиз с ненормативной лексикой (у clean-версии false).
@@ -644,19 +648,26 @@ func convertAlbum(a deezerAlbum, artistRef deezerArtistRef) Album {
 		artistID = a.Artist.ID
 		artistName = a.Artist.Name
 	}
+	var main []string
+	for _, r := range a.Contributors {
+		if r.Role == "Main" {
+			main = append(main, strconv.FormatInt(r.ID, 10))
+		}
+	}
 	return Album{
-		ID:           strconv.FormatInt(a.ID, 10),
-		Title:        a.Title,
-		ArtistID:     strconv.FormatInt(artistID, 10),
-		ArtistName:   artistName,
-		CoverURL:     cover,
-		ReleaseDate:  a.ReleaseDate,
-		RecordType:   a.RecordType,
-		NbTracks:     a.NbTracks,
-		DurationSec:  a.Duration,
-		Label:        a.Label,
-		Explicit:     a.Explicit,
-		Contributors: convertRefs(a.Contributors),
+		ID:            strconv.FormatInt(a.ID, 10),
+		Title:         a.Title,
+		ArtistID:      strconv.FormatInt(artistID, 10),
+		ArtistName:    artistName,
+		CoverURL:      cover,
+		ReleaseDate:   a.ReleaseDate,
+		RecordType:    a.RecordType,
+		NbTracks:      a.NbTracks,
+		DurationSec:   a.Duration,
+		Label:         a.Label,
+		Explicit:      a.Explicit,
+		Contributors:  convertRefs(a.Contributors),
+		MainArtistIDs: main,
 	}
 }
 

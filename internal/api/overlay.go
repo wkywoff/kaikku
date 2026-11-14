@@ -384,13 +384,21 @@ func (s *Server) overlayFor(artists []*deezer.Artist, albums []*deezer.Album, tr
 // dropped. Added ones come from Deezer (its album cache), own uploads from
 // the database, newest first like the rest. For an own artist albums is nil
 // and everything comes from the database.
+//
+// Сюда же попадают релизы, которых в списке Deezer ещё нет, но которые уже
+// открывали (discography_extras, noteReleaseOutsideDiscography): первая
+// половина запроса, у релиза без правки исполнителей artist_ids — NULL.
 func (s *Server) creditedDiscography(artistID string, albums []deezer.Album) []deezer.Album {
 	ids := make([]string, len(albums))
 	for i, a := range albums {
 		ids[i] = a.ID
 	}
 	rows, err := s.DB.Query(
-		`SELECT deezer_id, artist_ids FROM albums
+		`SELECT e.album_id, a.artist_ids
+		   FROM discography_extras e LEFT JOIN albums a ON a.deezer_id = e.album_id
+		  WHERE e.artist_id = $1 AND e.album_id <> ALL($2)
+		 UNION ALL
+		 SELECT deezer_id, artist_ids FROM albums
 		  WHERE artist_ids IS NOT NULL AND (artist_ids @> ARRAY[$1] OR deezer_id = ANY($2))`,
 		artistID, pq.Array(ids))
 	if err != nil {
@@ -406,9 +414,9 @@ func (s *Server) creditedDiscography(artistID string, albums []deezer.Album) []d
 			continue
 		}
 		switch {
-		case !slices.Contains(credited, artistID):
+		case credited != nil && !slices.Contains(credited, artistID):
 			moved[dz] = true
-		case !slices.Contains(ids, dz):
+		case !slices.Contains(ids, dz) && !slices.Contains(add, dz):
 			add = append(add, dz)
 		}
 	}

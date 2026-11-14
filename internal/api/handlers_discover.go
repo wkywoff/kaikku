@@ -39,6 +39,44 @@ func (s *Server) artistDiscography(id string) ([]deezer.Album, error) {
 	})
 }
 
+// maxNotedArtists — у скольких исполнителей одного альбома сверяем список
+// релизов: у сборника с десятком главных исполнителей это десятки запросов.
+const maxNotedArtists = 4
+
+// noteReleaseOutsideDiscography запоминает релиз, которого нет в списке
+// релизов его артиста у Deezer: альбом уже открывается и находится поиском,
+// а в /artist/{id}/albums попадает на дни позже. Запомненное дискография
+// добавляет сама (creditedDiscography). Сверяем у всех главных исполнителей
+// (совместный релиз Deezer показывает у каждого), фиты не в счёт. Список
+// основного артиста тут почти всегда в кеше — его же грузит «Ещё альбомы».
+// album — ответ Deezer до наложения правок.
+func (s *Server) noteReleaseOutsideDiscography(album *deezer.Album) {
+	var artists []string
+	for _, id := range append([]string{album.ArtistID}, album.MainArtistIDs...) {
+		if validDeezerID(id) && !slices.Contains(artists, id) && len(artists) < maxNotedArtists {
+			artists = append(artists, id)
+		}
+	}
+	albumID := album.ID
+	s.inBackground(func() {
+		for _, artistID := range artists {
+			list, err := s.artistDiscography(artistID)
+			// Обрезанный список (Various Artists) ничего не говорит о том, чего в нём нет.
+			if err != nil || len(list) >= maxDiscography {
+				continue
+			}
+			if slices.ContainsFunc(list, func(a deezer.Album) bool { return a.ID == albumID }) {
+				continue
+			}
+			if _, err := s.DB.Exec(
+				`INSERT INTO discography_extras (artist_id, album_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+				artistID, albumID); err != nil {
+				log.Printf("discography extra %s of %s: %v", albumID, artistID, err)
+			}
+		}
+	})
+}
+
 func (s *Server) artistTop(id string) ([]deezer.Track, error) {
 	return storedCached(s, "top:"+id, artistTTL, func() ([]deezer.Track, error) {
 		return s.Deezer.GetArtistTop(id, topLimit)
@@ -222,6 +260,7 @@ func (s *Server) handleDiscoverAlbum(w http.ResponseWriter, r *http.Request) {
 		writeDeezerError(w, "deezer album tracks lookup failed", err)
 		return
 	}
+	s.noteReleaseOutsideDiscography(album)
 	if fromApp(r) { // enrich.go
 		s.enrichLater(s.Deezer.EnrichContributorsCached(tracks))
 		guessContributors(album, tracks)

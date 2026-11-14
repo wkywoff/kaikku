@@ -36,7 +36,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	// (registered second, runs first) still has an open connection to use.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(func() {
-		if _, err := db.Exec(`TRUNCATE ingest_jobs, tracks, albums, artists, users, track_edits, track_overrides RESTART IDENTITY CASCADE`); err != nil {
+		if _, err := db.Exec(`TRUNCATE ingest_jobs, tracks, albums, artists, users, track_edits, track_overrides, discography_extras RESTART IDENTITY CASCADE`); err != nil {
 			t.Logf("cleanup truncate failed: %v", err)
 		}
 	})
@@ -97,6 +97,18 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/album/10/tracks", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":12346,"title":"Old Song","duration":180,"track_position":1,"disk_number":1,"artist":{"id":1,"name":"Test Artist"}}],"total":1}`))
+	})
+	// Альбом 11 — свежий совместный релиз артистов 1 и 2 с гостем 3, которого
+	// ещё нет ни в чьём /artist/{id}/albums (discography_test.go).
+	mux.HandleFunc("/album/11", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":11,"title":"Late Album","release_date":"` + time.Now().Format("2006-01-02") + `","record_type":"album","artist":{"id":1,"name":"Test Artist"},
+			"contributors":[{"id":1,"name":"Test Artist","role":"Main"},{"id":2,"name":"Other Artist","role":"Main"},{"id":3,"name":"Feat Artist","role":"Featured"}]}`))
+	})
+	mux.HandleFunc("/artist/3/albums", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[],"total":0}`))
+	})
+	mux.HandleFunc("/album/11/tracks", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":12347,"title":"Late Song","duration":180,"track_position":1,"disk_number":1,"artist":{"id":1,"name":"Test Artist"}}],"total":1}`))
 	})
 	mux.HandleFunc("/album/9/tracks", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":12345,"title":"Test Song","duration":200,"track_position":3,"disk_number":1,"artist":{"id":1,"name":"Test Artist"}}],"total":1}`))
