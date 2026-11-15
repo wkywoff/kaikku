@@ -81,7 +81,9 @@
     }
   }
 
-  $: rows = (results?.tracks || []).map((tr) => rowFromDeezerTrack(tr));
+  // Треки из разных альбомов: место в альбоме тут ни при чём — иначе
+  // TrackList режет выдачу заголовками «Диск N».
+  $: rows = (results?.tracks || []).map((tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null }));
   $: topArtist = results?.artists?.[0];
   $: people = results?.users || [];
   $: empty = results && !rows.length && !results.artists?.length && !results.albums?.length && !people.length;
