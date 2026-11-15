@@ -3,11 +3,12 @@
   // «Исполнитель»), огромное название и строка метаданных (слот meta).
   // Фон — динамический цвет страницы (App.svelte), здесь только вёрстка.
   import { sized } from '../imageproxy.js';
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import Disc3 from '@lucide/svelte/icons/disc-3';
   import UserRound from '@lucide/svelte/icons/user-round';
   import EyeOff from '@lucide/svelte/icons/eye-off';
   import { t } from '../i18n.js';
+  import { fitFontSize } from '../fitTitle.js';
 
   export let image = null;
   export let round = false;
@@ -18,9 +19,40 @@
 
   const dispatch = createEventDispatcher();
 
-  // Длинные названия — мельче, чтобы не занимали пол-экрана (Unbounded
-  // широкий: пороги и размеры меньше, чем были для Onest).
-  $: size = title.length > 32 ? 'm' : title.length > 14 ? 'l' : 'xl';
+  // Кегль названия — по реальной ширине (lib/fitTitle.js): самый крупный,
+  // при котором оно встаёт в одну строку. Меряется невидимая копия названия
+  // (.probe, кегль PROBE_PX) в линейке шириной с колонку (.ruler): ни та, ни
+  // другая не зависят от кегля самого h1, поэтому наблюдатель не зацикливается.
+  // Он же ловит смену названия, ширины окна и догрузку шрифта.
+  const PROBE_PX = 100; // как font-size у .probe
+  const MARK_EM = 0.9; // значок скрытого релиза: 0.6em + отступ 0.3em
+
+  let ruler;
+  let probe;
+  let heading;
+  let fontSize = 0; // px; 0 — ещё не мерили, действует размер из стилей
+
+  function fit(mark = hidden) {
+    if (!ruler) return;
+    const cs = getComputedStyle(heading);
+    const unit = probe.getBoundingClientRect().width / PROBE_PX + (mark ? MARK_EM : 0);
+    fontSize = fitFontSize(
+      ruler.clientWidth,
+      unit,
+      parseFloat(cs.getPropertyValue('--fit-min')),
+      parseFloat(cs.getPropertyValue('--fit-max')),
+    );
+  }
+
+  $: fit(hidden);
+
+  onMount(() => {
+    const ro = new ResizeObserver(() => fit());
+    ro.observe(ruler);
+    ro.observe(probe);
+    fit();
+    return () => ro.disconnect();
+  });
 </script>
 
 <header class="hero">
@@ -41,7 +73,8 @@
   </div>
   <div class="info">
     {#if kind}<span class="kind">{kind}</span>{/if}
-    <h1 class={size}>{title}{#if hidden}<span class="hidden-mark" title={$t('admin.hiddenRelease')} aria-label={$t('admin.hiddenRelease')}><EyeOff /></span>{/if}</h1>
+    <div class="ruler" bind:this={ruler} aria-hidden="true"><span class="probe" bind:this={probe}>{title}</span></div>
+    <h1 bind:this={heading} style:font-size={fontSize ? `${fontSize}px` : null}>{title}{#if hidden}<span class="hidden-mark" title={$t('admin.hiddenRelease')} aria-label={$t('admin.hiddenRelease')}><EyeOff /></span>{/if}</h1>
     <div class="meta"><slot name="meta" /></div>
   </div>
 </header>
@@ -95,9 +128,12 @@
     color: var(--text-faint);
   }
   .info {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    /* Вся оставшаяся ширина шапки: по ней подбирается кегль названия. */
+    flex: 1;
     min-width: 0;
   }
   .kind {
@@ -105,11 +141,40 @@
     font-weight: 500;
   }
   h1 {
-    font-weight: 800;
+    /* Границы кегля; сам размер ставит fit() в пределах этих двух. */
+    --fit-min: 36px;
+    --fit-max: 80px;
+    font-size: var(--fit-min);
     line-height: 1.05;
-    letter-spacing: -0.03em;
     margin: 4px 0 10px;
     overflow-wrap: anywhere;
+  }
+  /* Начертание у названия и его мерной копии одно. Межбуквенное в em
+     наследуется уже в пикселях, поэтому задано обоим, а не только h1. */
+  h1,
+  .probe {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+  /* Линейка: ширина колонки, высоты нет, вне потока (не элемент флекса —
+     не добавляет gap). Копия названия внутри обрезана, страницу не ширит. */
+  .ruler {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .probe {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 100px;
+    white-space: nowrap;
   }
   /* Значок скрытого релиза — по высоте строки названия. */
   .hidden-mark {
@@ -121,15 +186,6 @@
   .hidden-mark :global(svg) {
     width: 0.6em;
     height: 0.6em;
-  }
-  h1.xl {
-    font-size: clamp(34px, 6vw, 80px);
-  }
-  h1.l {
-    font-size: clamp(28px, 4.2vw, 54px);
-  }
-  h1.m {
-    font-size: clamp(22px, 2.9vw, 38px);
   }
   .meta {
     font-size: 14px;
@@ -154,7 +210,13 @@
       height: min(62vw, 240px);
     }
     .info {
+      flex: none;
+      width: 100%;
       align-items: center;
+    }
+    h1 {
+      --fit-min: 24px;
+      --fit-max: 34px;
     }
     .meta {
       justify-content: center;
