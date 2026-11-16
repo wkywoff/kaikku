@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/lib/pq"
 
@@ -553,13 +554,19 @@ func (l localResults) empty() bool {
 	return len(l.tracks) == 0 && len(l.artists) == 0 && len(l.albums) == 0
 }
 
-// searchLocal ищет свои релизы, треки и артистов по подстроке названия
-// (без учёта регистра; своего каталога немного, индекс не нужен).
-// Черновики не ищутся.
+// searchLocal ищет свои релизы, треки и артистов (без учёта регистра;
+// своего каталога немного, индекс не нужен). Черновики не ищутся.
+//
+// Релизы и треки — по словам запроса, как в поиске Deezer: каждое слово
+// должно встретиться в названии или в именах исполнителей, и хотя бы одно —
+// в названии. Так «исполнитель название» находит трек, а запрос из одного
+// имени исполнителя не поднимает все его загрузки над выдачей Deezer (сам
+// артист и так есть в списке артистов). Название с запросом целиком — первым.
 func (s *Server) searchLocal(v viewer, q string, limit int) (localResults, error) {
 	var out localResults
+	words := strings.Fields(q)
 	ids := func(query string) ([]string, error) {
-		rows, err := s.DB.Query(query, q, limit)
+		rows, err := s.DB.Query(query, q, limit, pq.Array(words))
 		if err != nil {
 			return nil, err
 		}
@@ -574,19 +581,29 @@ func (s *Server) searchLocal(v viewer, q string, limit int) (localResults, error
 		}
 		return ids, rows.Err()
 	}
-	albumIDs, err := ids(`SELECT deezer_id FROM albums
-		WHERE deezer_id LIKE 'k%' AND NOT draft AND NOT hidden
-		  AND strpos(lower(title), lower($1)) > 0
-		ORDER BY released_at DESC NULLS LAST LIMIT $2`)
+	albumIDs, err := ids(`SELECT a.deezer_id FROM albums a
+		WHERE a.deezer_id LIKE 'k%' AND NOT a.draft AND NOT a.hidden
+		  AND EXISTS (SELECT 1 FROM unnest($3::text[]) w WHERE strpos(lower(a.title), lower(w)) > 0)
+		  AND (SELECT bool_and(strpos(lower(a.title || ' ' || coalesce(
+		         (SELECT string_agg(ar.name, ' ') FROM artists ar WHERE ar.deezer_id = ANY(a.artist_ids)), '')), lower(w)) > 0)
+		         FROM unnest($3::text[]) w)
+		ORDER BY strpos(lower(a.title), lower($1)) > 0 DESC, a.released_at DESC NULLS LAST LIMIT $2`)
 	if err != nil {
 		return out, err
 	}
 	if out.albums, err = s.localAlbumCards(albumIDs); err != nil {
 		return out, err
 	}
+	// Исполнители трека — свои (track_overrides), иначе как у релиза.
 	trackIDs, err := ids(`SELECT t.deezer_id FROM tracks t JOIN albums a ON a.id = t.album_id
-		WHERE t.deezer_id LIKE 'k%' AND NOT a.draft AND NOT a.hidden AND strpos(lower(t.title), lower($1)) > 0
-		ORDER BY a.released_at DESC NULLS LAST, t.track_no LIMIT $2`)
+		WHERE t.deezer_id LIKE 'k%' AND NOT a.draft AND NOT a.hidden
+		  AND EXISTS (SELECT 1 FROM unnest($3::text[]) w WHERE strpos(lower(t.title), lower(w)) > 0)
+		  AND (SELECT bool_and(strpos(lower(t.title || ' ' || coalesce(
+		         (SELECT string_agg(ar.name, ' ') FROM artists ar
+		           WHERE ar.deezer_id = ANY(coalesce(
+		             (SELECT o.artist_ids FROM track_overrides o WHERE o.deezer_id = t.deezer_id), a.artist_ids))), '')), lower(w)) > 0)
+		         FROM unnest($3::text[]) w)
+		ORDER BY strpos(lower(t.title), lower($1)) > 0 DESC, a.released_at DESC NULLS LAST, t.track_no LIMIT $2`)
 	if err != nil {
 		return out, err
 	}

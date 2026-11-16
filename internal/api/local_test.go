@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -432,6 +433,38 @@ func TestOwnRelease_StreamLookupLyricsSearch(t *testing.T) {
 	json.Unmarshal(call(t, router, "GET", "/api/search?q=FIRST", stranger, "", http.StatusOK), &found)
 	if len(found.Tracks) == 0 || found.Tracks[0].ID != pub.tracks[0] {
 		t.Errorf("track search = %+v", found.Tracks)
+	}
+	// «Исполнитель название» в любом порядке; у второго трека исполнители
+	// свои (Own Artist и Other Artist), а не релиза (Own Artist и Test Artist).
+	hasTrack := func(q, id string) bool {
+		found.Tracks, found.Albums = nil, nil
+		json.Unmarshal(call(t, router, "GET", "/api/search?q="+url.QueryEscape(q), stranger, "", http.StatusOK), &found)
+		return slices.ContainsFunc(found.Tracks, func(tr pageTrack) bool { return tr.ID == id })
+	}
+	for _, q := range []string{"own artist first", "FIRST own", "test artist first", "other second"} {
+		id := pub.tracks[0]
+		if strings.Contains(q, "second") {
+			id = pub.tracks[1]
+		}
+		if !hasTrack(q, id) {
+			t.Errorf("search %q doesn't find the upload", q)
+		}
+	}
+	if hasTrack("test second", pub.tracks[1]) {
+		t.Error("a track with its own credits is found by the release's artist")
+	}
+	if hasTrack("stranger first", pub.tracks[0]) {
+		t.Error("a word found nowhere still matches")
+	}
+	// Одно имя исполнителя не поднимает его загрузки над выдачей Deezer.
+	if hasTrack("own artist", pub.tracks[0]) || hasTrack("own artist", pub.tracks[1]) {
+		t.Error("an artist's name alone lists their uploads as tracks")
+	}
+	if hasTrack("own artist first", draft.tracks[0]) {
+		t.Error("a draft's track is found by search")
+	}
+	if hasTrack("own artist ep", ""); !slices.ContainsFunc(found.Albums, func(a pageAlbum) bool { return a.ID == pub.album }) {
+		t.Errorf("album search by artist and title = %+v", found.Albums)
 	}
 
 	var picker struct{ Artists []struct{ ID, Name string } }
