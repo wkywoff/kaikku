@@ -99,8 +99,82 @@ func (s *Server) searchDeezer(q string) (searchResult, error) {
 		if err := errors.Join(errs[:]...); err != nil {
 			return searchResult{}, err
 		}
+		res.tracks = s.tracksFromAlbums(q, res.tracks, res.albums)
 		return res, nil
 	})
+}
+
+// albumsForTracks — из скольких найденных альбомов добирать треки.
+const albumsForTracks = 3
+
+// tracksFromAlbums добирает треки из найденных альбомов, если поиск треков
+// Deezer не нашёл ни одного подходящего. У небольших артистов Deezer ищет
+// альбомы, а их треков в поиске треков нет вовсе: «mortrivial time
+// distortion» находит альбом TIME DISTORTION, но не трек, а на «mortrivial»
+// отдаёт треки Mortician. Тогда из первых альбомов, к которым относится
+// хоть одно слово запроса, берутся треки, где каждое слово есть в названии
+// или исполнителе, — они идут первыми. Есть подходящий трек — ничего не
+// добираем: это лишние запросы к Deezer.
+func (s *Server) tracksFromAlbums(q string, tracks []deezer.Track, albums []deezer.Album) []deezer.Track {
+	words := strings.Fields(strings.ToLower(q))
+	if len(words) == 0 || slices.ContainsFunc(tracks, func(t deezer.Track) bool { return hasAllWords(words, t.Title, t.Artist) }) {
+		return tracks
+	}
+	var picked []deezer.Album
+	for _, a := range albums {
+		if len(picked) == albumsForTracks {
+			break
+		}
+		if text := strings.ToLower(a.Title + " " + a.ArtistName); slices.ContainsFunc(words, func(w string) bool { return strings.Contains(text, w) }) {
+			picked = append(picked, a)
+		}
+	}
+	lists := make([][]deezer.Track, len(picked))
+	var wg sync.WaitGroup
+	for i := range picked {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Не вышло — остаётся то, что нашёл поиск треков.
+			if err := guard("search album tracks", func() (err error) {
+				lists[i], err = s.Deezer.GetAlbumTracks(&picked[i], 100)
+				return
+			}); err != nil {
+				log.Printf("search %q: tracks of album %s: %v", q, picked[i].ID, err)
+			}
+		}()
+	}
+	wg.Wait()
+	seen := map[string]bool{}
+	var found []deezer.Track
+	for _, list := range lists {
+		for _, t := range list {
+			if !seen[t.ID] && hasAllWords(words, t.Title, t.Artist) {
+				seen[t.ID] = true
+				found = append(found, t)
+			}
+		}
+	}
+	if len(found) == 0 {
+		return tracks
+	}
+	for _, t := range tracks {
+		if !seen[t.ID] {
+			found = append(found, t)
+		}
+	}
+	return found
+}
+
+// hasAllWords — каждое слово (уже в нижнем регистре) есть хотя бы в одном из полей.
+func hasAllWords(words []string, fields ...string) bool {
+	text := strings.ToLower(strings.Join(fields, " "))
+	for _, w := range words {
+		if !strings.Contains(text, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // handleSearchArtists — артисты для выбора исполнителей при загрузке
