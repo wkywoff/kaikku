@@ -490,8 +490,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Название — крупнее и чуть плотнее остального текста (Onest вариативный,
+     вес между обычным и средним): при 15 px и весе 400 светлый текст на
+     тёмном выглядел тонким и мелким рядом с тем же списком в Spotify. */
   .title {
-    font-size: 15px;
+    font-size: 16px;
+    font-weight: 450;
     min-width: 0;
   }
   .row.playing .title {
