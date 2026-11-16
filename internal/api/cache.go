@@ -57,6 +57,19 @@ func cached[T any](c *ttlCache, key string, ttl time.Duration, load func() (T, e
 	})
 }
 
+// peekCached — значение из кеша, если оно там есть и не истекло; ничего не
+// загружает.
+func peekCached[T any](c *ttlCache, key string) (T, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.m[key]; ok && time.Now().Before(e.exp) {
+		v, ok := e.v.(T)
+		return v, ok
+	}
+	var zero T
+	return zero, false
+}
+
 // cachedUntil — cached, но срок записи называет сам load.
 func cachedUntil[T any](c *ttlCache, key string, load func() (T, time.Time, error)) (T, error) {
 	now := time.Now()

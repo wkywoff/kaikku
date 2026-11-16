@@ -163,6 +163,95 @@ func TestSearch_TracksFromAlbums(t *testing.T) {
 	}
 }
 
+// Свежий сингл: в поиске Deezer его ещё нет, а в списке релизов артиста уже
+// есть. Список релизов спрашивается один раз на артиста, пока человек печатает.
+func TestSearch_TracksFromFreshReleases(t *testing.T) {
+	var releaseLists, byName atomic.Int32
+	today := time.Now().Format("2006-01-02")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":41,"title":"Казино","duration":100,"artist":{"id":3,"name":"5opka"},"album":{"id":2,"title":"Казино"}}],"total":1}`))
+	})
+	mux.HandleFunc("/search/album", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[],"total":0}`)) })
+	// Как у Deezer: артист находится только по своему имени, не по «имя название».
+	mux.HandleFunc("/search/artist", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("q") {
+		case "5opka":
+			byName.Add(1)
+			w.Write([]byte(`{"data":[{"id":4,"name":"5opka band"},{"id":3,"name":"5opka","nb_fan":5}],"total":2}`))
+		default:
+			w.Write([]byte(`{"data":[],"total":0}`))
+		}
+	})
+	mux.HandleFunc("/artist/3/albums", func(w http.ResponseWriter, r *http.Request) {
+		releaseLists.Add(1)
+		w.Write([]byte(`{"data":[
+			{"id":20,"title":"Старый Русский","release_date":"2020-01-01","record_type":"single"},
+			{"id":21,"title":"Русский Канье","release_date":"` + today + `","record_type":"single"}
+		],"total":2}`))
+	})
+	mux.HandleFunc("/album/20/tracks", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("an old release was opened: it is in Deezer's search already")
+	})
+	mux.HandleFunc("/album/21/tracks", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":51,"title":"Русский Канье","duration":150,"track_position":1,"disk_number":1,"artist":{"id":3,"name":"5opka"}}],"total":1}`))
+	})
+	dz := httptest.NewServer(mux)
+	defer dz.Close()
+	router := NewRouter(&Server{
+		DB:        openTestDB(t),
+		JWTSecret: []byte("test-secret-at-least-32-bytes-long!!"),
+		Deezer:    deezer.NewClientWithBaseURL(dz.URL),
+	})
+	token := registerTestUser(t, router)
+	search := func(q string) []string {
+		t.Helper()
+		rec := request(router, http.MethodGet, "/api/search?q="+url.QueryEscape(q), token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("search %q: %d %s", q, rec.Code, rec.Body.String())
+		}
+		var got struct{ Tracks []deezer.Track }
+		json.Unmarshal(rec.Body.Bytes(), &got)
+		var ids []string
+		for _, tr := range got.Tracks {
+			ids = append(ids, tr.ID+" "+tr.Title)
+			if tr.ID == "51" && (tr.AlbumID != "21" || tr.Album != "Русский Канье") {
+				t.Errorf("a fresh track without its release: %+v", tr)
+			}
+		}
+		return ids
+	}
+
+	// Одно имя — список релизов не нужен.
+	if got := search("5opka"); !slices.Equal(got, []string{"41 Казино"}) || releaseLists.Load() != 0 {
+		t.Errorf("artist only: %v, %d release lists", got, releaseLists.Load())
+	}
+	// Печатает по буквам — поиск артиста по имени и список релизов по разу.
+	for _, q := range []string{"5opka р", "5opka русс", "5opka русский", "5opka Русский Канье"} {
+		if got := search(q); !slices.Equal(got, []string{"51 Русский Канье", "41 Казино"}) {
+			t.Errorf("%q: %v", q, got)
+		}
+	}
+	// Артиста по имени Deezer уже искал на запросе «5opka»: берётся из кеша.
+	if releaseLists.Load() != 1 || byName.Load() != 1 {
+		t.Errorf("Deezer asked %d times for the release list and %d for the artist", releaseLists.Load(), byName.Load())
+	}
+	// Сразу «имя название», без набора по буквам: артист по имени — один запрос.
+	if got := search("5OPKA канье"); !slices.Equal(got, []string{"51 Русский Канье", "41 Казино"}) {
+		t.Errorf("typed at once: %v", got)
+	}
+	// Слов из названия нет ни в одном свежем релизе — ничего не добавляется.
+	if got := search("5opka завоз"); !slices.Equal(got, []string{"41 Казино"}) {
+		t.Errorf("no such release: %v", got)
+	}
+	// Без имени артиста в начале свежий трек не ищется: непонятно, у кого.
+	for _, q := range []string{"русский канье", "русский канье 5opka"} {
+		if got := search(q); slices.Contains(got, "51 Русский Канье") {
+			t.Errorf("%q: %v", q, got)
+		}
+	}
+}
+
 // Пустая выдача — пустые массивы, не null: страница поиска читает
 // artists.length и с null зависала на «Ищем…».
 func TestSearch_EmptyListsNotNull(t *testing.T) {

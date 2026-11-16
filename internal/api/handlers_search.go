@@ -100,6 +100,7 @@ func (s *Server) searchDeezer(q string) (searchResult, error) {
 			return searchResult{}, err
 		}
 		res.tracks = s.tracksFromAlbums(q, res.tracks, res.albums)
+		res.tracks = s.tracksFromFreshReleases(q, res.tracks, res.artists)
 		return res, nil
 	})
 }
@@ -129,18 +130,138 @@ func (s *Server) tracksFromAlbums(q string, tracks []deezer.Track, albums []deez
 			picked = append(picked, a)
 		}
 	}
-	lists := make([][]deezer.Track, len(picked))
+	found := s.albumTracksMatching(q, picked, func(t deezer.Track) bool { return hasAllWords(words, t.Title, t.Artist) })
+	return prependNew(found, tracks)
+}
+
+// Свежий релиз Deezer добавляет в поиск через несколько дней, а в список
+// релизов артиста — сразу.
+const (
+	freshReleaseAge   = 60 * 24 * time.Hour
+	freshReleasesOpen = 2   // сколько свежих релизов открывать
+	freshArtists      = 2   // у скольких найденных артистов смотреть
+	freshReleasesPage = 100 // одна страница списка релизов — один запрос
+)
+
+// tracksFromFreshReleases ищет трек среди свежих релизов артиста, если ни
+// поиск, ни найденные альбомы подходящего не дали: «5opka русский канье» в
+// день выхода сингла — Deezer уже знает артиста и релиз, но поиск его ещё не
+// находит. Срабатывает, только когда в запросе есть имя артиста и кроме
+// имени что-то ещё; смотрит релизы за freshReleaseAge, в названии которых
+// есть остальные слова. Список релизов берётся у страницы артиста (её кеш)
+// или одной страницей и кешируется на час, треклисты — кеш Deezer: пока
+// человек печатает запрос по буквам, Deezer спрашивают один-два раза.
+func (s *Server) tracksFromFreshReleases(q string, tracks []deezer.Track, artists []deezer.Artist) []deezer.Track {
+	lq := strings.ToLower(q)
+	words := strings.Fields(lq)
+	if len(words) < 2 || slices.ContainsFunc(tracks, func(t deezer.Track) bool { return hasAllWords(words, t.Title, t.Artist) }) {
+		return tracks
+	}
+	for _, a := range s.artistsNamedIn(q, lq, words, artists) {
+		rest := strings.Fields(strings.Replace(lq, strings.ToLower(strings.TrimSpace(a.Name)), " ", 1))
+		if len(rest) == 0 {
+			continue // запрос — одно имя: его треки и так в выдаче
+		}
+		releases, err := s.freshReleases(a.ID)
+		if err != nil {
+			log.Printf("search %q: releases of artist %s: %v", q, a.ID, err)
+			continue
+		}
+		var picked []deezer.Album
+		for _, r := range releases {
+			if len(picked) < freshReleasesOpen && slices.ContainsFunc(rest, func(w string) bool { return strings.Contains(strings.ToLower(r.Title), w) }) {
+				picked = append(picked, r)
+			}
+		}
+		found := s.albumTracksMatching(q, picked, func(t deezer.Track) bool { return hasAllWords(words, t.Title, t.Artist, a.Name) })
+		if len(found) > 0 {
+			return prependNew(found, tracks)
+		}
+	}
+	return tracks
+}
+
+// artistsNamedIn — до freshArtists артистов, чьё имя целиком есть в запросе.
+// Сначала из выдачи поиска (бесплатно), но на «артист название» Deezer её
+// обычно не даёт: он ищет артиста по всем словам. Тогда — поиск артистов по
+// первому слову, а если в запросе от трёх слов — и по двум первым (имя
+// пишут первым). Эти поиски кешируются: пока дописывается название, первое
+// слово то же, и Deezer его больше не спрашивают.
+func (s *Server) artistsNamedIn(q, lq string, words []string, found []deezer.Artist) []deezer.Artist {
+	named := func(artists []deezer.Artist) []deezer.Artist {
+		var out []deezer.Artist
+		for _, a := range artists {
+			name := strings.ToLower(strings.TrimSpace(a.Name))
+			if len(out) < freshArtists && len([]rune(name)) >= 2 && strings.Contains(lq, name) && validDeezerID(a.ID) {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	if out := named(found); len(out) > 0 {
+		return out
+	}
+	for n := 1; n <= 2 && n < len(words); n++ {
+		if n == 2 && len(words) < 3 {
+			break // второе слово ещё дописывается — по нему каждый раз новый запрос
+		}
+		prefix := strings.Join(words[:n], " ")
+		artists, err := cached(&s.cache, "search-artists:"+prefix, searchTTL, func() ([]deezer.Artist, error) {
+			// Человек печатал запрос по буквам — поиск по одному этому слову
+			// уже был и лежит в кеше вместе с артистами.
+			if res, ok := peekCached[searchResult](&s.cache, "search:"+prefix); ok {
+				return res.artists, nil
+			}
+			return s.Deezer.SearchArtists(prefix, 10)
+		})
+		if err != nil {
+			log.Printf("search %q: artists named %q: %v", q, prefix, err)
+			return nil
+		}
+		if out := named(artists); len(out) > 0 {
+			return out
+		}
+	}
+	return nil
+}
+
+// freshReleases — релизы артиста за freshReleaseAge, новые первыми.
+func (s *Server) freshReleases(artistID string) ([]deezer.Album, error) {
+	all, ok := peekCached[[]deezer.Album](&s.cache, "discography:"+artistID) // открывали страницу артиста
+	if !ok {
+		var err error
+		all, err = storedCached(s, "releases:"+artistID, discographyTTL, func() ([]deezer.Album, error) {
+			return s.Deezer.GetArtistAlbums(artistID, freshReleasesPage)
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	since := time.Now().Add(-freshReleaseAge).Format("2006-01-02")
+	var fresh []deezer.Album
+	for _, a := range all {
+		if a.ReleaseDate >= since { // даты Deezer — YYYY-MM-DD, сравниваются строками
+			fresh = append(fresh, a)
+		}
+	}
+	slices.SortStableFunc(fresh, func(a, b deezer.Album) int { return strings.Compare(b.ReleaseDate, a.ReleaseDate) })
+	return fresh, nil
+}
+
+// albumTracksMatching — треки альбомов (треклисты параллельно), подходящие
+// под match, без повторов. Альбом, который не открылся, пропускается.
+func (s *Server) albumTracksMatching(q string, albums []deezer.Album, match func(deezer.Track) bool) []deezer.Track {
+	lists := make([][]deezer.Track, len(albums))
 	var wg sync.WaitGroup
-	for i := range picked {
+	for i := range albums {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// Не вышло — остаётся то, что нашёл поиск треков.
 			if err := guard("search album tracks", func() (err error) {
-				lists[i], err = s.Deezer.GetAlbumTracks(&picked[i], 100)
+				lists[i], err = s.Deezer.GetAlbumTracks(&albums[i], 100)
 				return
 			}); err != nil {
-				log.Printf("search %q: tracks of album %s: %v", q, picked[i].ID, err)
+				log.Printf("search %q: tracks of album %s: %v", q, albums[i].ID, err)
 			}
 		}()
 	}
@@ -149,21 +270,27 @@ func (s *Server) tracksFromAlbums(q string, tracks []deezer.Track, albums []deez
 	var found []deezer.Track
 	for _, list := range lists {
 		for _, t := range list {
-			if !seen[t.ID] && hasAllWords(words, t.Title, t.Artist) {
+			if !seen[t.ID] && match(t) {
 				seen[t.ID] = true
 				found = append(found, t)
 			}
 		}
 	}
+	return found
+}
+
+// prependNew — found, а за ним треки из tracks, которых в found нет.
+func prependNew(found, tracks []deezer.Track) []deezer.Track {
 	if len(found) == 0 {
 		return tracks
 	}
+	out := slices.Clone(found)
 	for _, t := range tracks {
-		if !seen[t.ID] {
-			found = append(found, t)
+		if !slices.ContainsFunc(found, func(f deezer.Track) bool { return f.ID == t.ID }) {
+			out = append(out, t)
 		}
 	}
-	return found
+	return out
 }
 
 // hasAllWords — каждое слово (уже в нижнем регистре) есть хотя бы в одном из полей.
