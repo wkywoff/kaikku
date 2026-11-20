@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"kaikku/internal/deezer"
 	"kaikku/internal/lyrics"
 	"kaikku/internal/media"
 )
@@ -561,6 +562,43 @@ func TestRecordPlay_StrangersDraftContext(t *testing.T) {
 	}
 	if body := call(t, router, "GET", "/api/me/wrapped", stranger, "", http.StatusOK); strings.Contains(string(body), "Secret Draft") {
 		t.Error("the year in review shows a stranger's draft")
+	}
+}
+
+// Трек с другого релиза, прослушанный в треклисте сборника, записан под
+// сборником, но исполнители у него свои — и в снимке, и после правок поверх
+// (история, миксы, страница жанра).
+func TestRecordPlay_TracklistTrackKeepsItsArtists(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	own := seedOwnRelease(t, db, "", false)
+	host := seedOwnRelease(t, db, "", false)
+	db.Exec(`UPDATE artists SET name = 'Host Artist' WHERE deezer_id = $1`, host.artist)
+	if _, err := db.Exec(`UPDATE albums SET title = 'Mixtape', tracklist = $1 WHERE deezer_id = $2`, "{"+host.tracks[0]+","+own.tracks[0]+"}", host.album); err != nil {
+		t.Fatal(err)
+	}
+	user := invitedUser(t, router, admin, "mixtape-listener")
+	call(t, router, "POST", "/api/me/plays", user, `{"deezer_id":"`+own.tracks[0]+`","context":{"kind":"album","id":"`+host.album+`"}}`, http.StatusOK)
+	var meta []byte
+	if err := db.QueryRow(`SELECT meta FROM plays ORDER BY id DESC LIMIT 1`).Scan(&meta); err != nil {
+		t.Fatal(err)
+	}
+	tracks := make([]deezer.Track, 1)
+	if err := json.Unmarshal(meta, &tracks[0]); err != nil {
+		t.Fatal(err)
+	}
+	if tracks[0].AlbumID != host.album || tracks[0].ArtistID != own.artist {
+		t.Fatalf("snapshot: album %s, artist %s; want %s by %s", tracks[0].AlbumID, tracks[0].ArtistID, host.album, own.artist)
+	}
+	srv.overlayFor(nil, nil, tracks)
+	if got := tracks[0]; got.AlbumID != host.album || got.ArtistID != own.artist || got.Artist != "Own Artist" {
+		t.Errorf("after overlay: album %s, artist %s %q; want %s by %s", got.AlbumID, got.ArtistID, got.Artist, host.album, own.artist)
+	}
+
+	// Свой трек сборника — по-прежнему исполнители сборника.
+	tracks = []deezer.Track{{ID: host.tracks[0], AlbumID: host.album}}
+	srv.overlayFor(nil, nil, tracks)
+	if tracks[0].ArtistID != host.artist {
+		t.Errorf("the mixtape's own track: artist %s, want %s", tracks[0].ArtistID, host.artist)
 	}
 }
 

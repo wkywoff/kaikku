@@ -61,6 +61,7 @@ type overlay struct {
 	albums  map[string]albumOverride
 	tracks  map[string]trackOverride
 	credits map[string]trackCredits
+	home    map[string]string // свой трек → релиз, где он лежит на самом деле
 }
 
 // loadOverlay reads library rows for the given Deezer IDs. Errors leave an
@@ -71,6 +72,33 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 		albums:  map[string]albumOverride{},
 		tracks:  map[string]trackOverride{},
 		credits: map[string]trackCredits{},
+		home:    map[string]string{},
+	}
+
+	// Свой трек, добавленный в треклист чужого релиза и прослушанный там,
+	// записан в снимке под тем релизом (asTracklistOf), а исполнители у него —
+	// от своего: исполнители релиза переходят только на его собственные треки.
+	var local []string
+	for _, id := range trackIDs {
+		if isLocalID(id) {
+			local = append(local, id)
+		}
+	}
+	if len(local) > 0 {
+		if rows, err := s.DB.Query(
+			`SELECT t.deezer_id, a.deezer_id FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.deezer_id = ANY($1)`,
+			pq.Array(local)); err == nil {
+			for rows.Next() {
+				var track, album string
+				if rows.Scan(&track, &album) == nil {
+					o.home[track] = album
+					albumIDs = append(albumIDs, album)
+				}
+			}
+			closeRows("overlay: track albums", rows)
+		} else {
+			log.Printf("overlay: track albums: %v", err)
+		}
 	}
 
 	if rows, err := s.DB.Query(
@@ -308,12 +336,12 @@ func (o *overlay) track(t *deezer.Track) {
 	}
 	al, hasAlbum := o.albums[t.AlbumID]
 	ids := tc.artists
-	if len(ids) == 0 && hasAlbum && len(al.artists) > 0 {
-		if isLocalID(t.AlbumID) {
-			ids = al.artists // свой релиз: исполнители трека — как у релиза
-		} else {
-			ids = replaceCredits(refIDs(trackRefs(t)), al.from, al.artists)
-		}
+	if home, ok := o.home[t.ID]; ok && len(ids) == 0 {
+		// Свой трек: исполнители — как у его релиза, а не у того, под чьим
+		// названием он показан.
+		ids = o.albums[home].artists
+	} else if len(ids) == 0 && hasAlbum && len(al.artists) > 0 && !isLocalID(t.AlbumID) {
+		ids = replaceCredits(refIDs(trackRefs(t)), al.from, al.artists)
 	}
 	if len(ids) > 0 {
 		refs := o.creditRefs(ids, trackRefs(t))
