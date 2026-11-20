@@ -22,7 +22,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="backdrop" use:modal={() => dispatch('close')} transition:fade={{ duration: 150 }} on:click|self={() => dispatch('close')} role="dialog" tabindex="-1" aria-modal="true" aria-label={alt}>
+<div class="backdrop" use:modal={{ close: () => dispatch('close'), keepPlayer: true }} transition:fade={{ duration: 150 }} on:click|self={() => dispatch('close')} role="dialog" tabindex="-1" aria-modal="true" aria-label={alt}>
   <img src={sized(src, 640)} {alt} transition:scale={{ start: 0.92, duration: 180 }} />
   <button bind:this={closeButton} class="close" on:click={() => dispatch('close')}>{$t('album.close')}</button>
 </div>
@@ -46,6 +46,18 @@
     aspect-ratio: 1;
     object-fit: cover;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  }
+  /* На телефоне мини-плеер и нижняя панель видны поверх (lib/modal.js) —
+     обложка по центру места над ними, а не всего экрана. */
+  @media (max-width: 768px) {
+    .backdrop {
+      --below: calc(var(--tabbar-h) + 68px + env(safe-area-inset-bottom));
+      padding-bottom: calc(24px + var(--below));
+    }
+    img {
+      width: min(640px, 86vw, calc(100vh - 140px - var(--below)));
+      width: min(640px, 86vw, calc(100dvh - 140px - var(--below)));
+    }
   }
   .close {
     font-weight: 700;

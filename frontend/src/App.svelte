@@ -339,6 +339,13 @@
   :global(body.modal-open) main {
     z-index: 85;
   }
+  /* Обложка во весь экран — так же, но на телефоне мини-плеер и нижняя
+     панель остаются над ней (lib/modal.js, keepPlayer). */
+  @media not all and (max-width: 768px) {
+    :global(body.modal-keep-player) main {
+      z-index: 85;
+    }
+  }
   /* На широком экране — колонкой по центру, как у Spotify (lib/layout.js):
      подкраска страницы остаётся во всю ширину, а текст и сетки не
      растягиваются на весь монитор. */
