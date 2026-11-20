@@ -209,8 +209,10 @@ export const DEFAULT_PALETTE = {
  *  dark   — фон плеера/полноэкранного режима;
  *  accent — кнопка Play, полоса прогресса, галочки; всегда светлый, чтобы
  *           читался на тёмном фоне. У серых обложек — почти белый;
- *  header — шапка страницы, как у Spotify: насыщенный цвет средней яркости
- *           (к низу шапки затемняется и уходит в фон — App.svelte, .tint);
+ *  header — шапка страницы, как у Spotify: насыщенный, как page, но
+ *           светлее — настолько, насколько позволяет белый текст
+ *           (headerTone; к низу шапки затемняется и уходит в фон —
+ *           App.svelte, .tint);
  *  page   — вся страница, как у Apple Music: ровный глубокий цвет, темнее
  *           и насыщеннее обложки (белый текст читается); у серых обложек —
  *           почти чёрный. Оттенок тот же, что у шапки и плеера;
@@ -220,7 +222,7 @@ export const DEFAULT_PALETTE = {
  */
 export function paletteFrom(rgb, clusters = []) {
   if (!rgb) return DEFAULT_PALETTE;
-  let { h, s } = rgbToHsl(rgb);
+  let { h, s, l } = rgbToHsl(rgb);
   const grey = s < 0.12;
   // Тёмная блёклая обложка (тёмно-синий фон, фиолетовые пряди) ярких
   // цветов не даёт, но она и не серая: как у Apple Music, берём её
@@ -245,10 +247,32 @@ export function paletteFrom(rgb, clusters = []) {
     dark: hsl(h, grey ? 0 : clamp(s, 0.3, 0.5), 0.15),
     accent: grey ? hsl(0, 0, 0.91) : hsl(h, clamp(s, 0.55, 0.85), 0.66),
     accentText: '#121212',
-    header: grey ? hsl(0, 0, 0.33) : hsl(h, clamp(s, 0.45, 0.75), 0.4),
+    header: grey ? hsl(0, 0, 0.33) : headerTone(h, clamp(s * 1.25, 0.55, 0.95), l),
     page: grey ? hsl(0, 0, 0.11) : hsl(h, clamp(s * 1.25, 0.55, 0.95), 0.18),
     mesh: meshFrom(grey ? null : { h, s: clamp(s * 1.2, 0.55, 0.85), l: 0.36 }, clusters),
   };
+}
+
+// Шапка: та же насыщенность, что у page, — иначе цвет блёклый и не
+// попадает в обложку (красная обложка давала кирпичный). Светлота — самая
+// большая (до 40%), при которой яркость цвета (WCAG) не выше 0.1: белый
+// текст читается (контраст ≥ 7). Красный и синий выходят яркими (красный —
+// почти как у Spotify, #b30505), жёлтый и зелёный — тёмными (оливковый,
+// тёмно-зелёный): при 40% они слепят и текст на них не читается.
+// И не светлее цвета самой обложки больше чем на 10 пунктов (но не ниже
+// 22%, чтобы шапка была светлее page): у тёмной обложки с бордовыми
+// пятнами (светлота 14%) иначе выходил ярко-красный, которого на ней нет.
+const MAX_HEADER_LUMINANCE = 0.1;
+const linear = (c) => {
+  c /= 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+};
+const luminance = ({ r, g, b }) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+
+function headerTone(h, s, coverL) {
+  let l = Math.round(clamp(coverL * 100 + 10, 22, 40));
+  while (l > 22 && luminance(hslToRgb(hsl(h, s, l / 100))) > MAX_HEADER_LUMINANCE) l--;
+  return hsl(h, s, l / 100);
 }
 
 const chroma = (c) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;

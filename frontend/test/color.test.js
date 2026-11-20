@@ -80,8 +80,27 @@ test('whole-page colour: deep and saturated, the same hue as the header and the 
   assert.equal(hue(bw.page), hue(bw.base));
   // Совсем серая — почти чёрный фон.
   assert.equal(paletteFrom(pickColor(image([[15, 15, 15, 700], [220, 220, 220, 300]]))).page, 'hsl(0 0% 11%)');
-  // Шапка ярче фона страницы, как у Spotify.
-  assert.match(red.header, / 40%\)$/);
+  // Шапка ярче фона страницы, как у Spotify, и так же насыщенна: красная
+  // обложка — красная шапка, а не кирпичная.
+  const [, hh, hs, hl] = red.header.match(/hsl\((\d+) (\d+)% (\d+)%\)/).map(Number);
+  assert.equal(hh, rh);
+  assert.equal(hs, rs);
+  assert.ok(hl > rl + 10, red.header);
+});
+
+test('header colour is bright where white text allows it and darker where it would not', () => {
+  const header = (rgb) => paletteFrom(rgb).header;
+  const light = (c) => Number(c.match(/ (\d+)%\)$/)[1]);
+  const red = header({ r: 200, g: 10, b: 10 });
+  const blue = header({ r: 20, g: 40, b: 200 });
+  const yellow = header({ r: 220, g: 200, b: 20 });
+  assert.ok(light(red) >= 34, red);
+  assert.ok(light(blue) >= 38, blue);
+  // Жёлтый при той же светлоте слепит — шапка темнее (оливковая).
+  assert.ok(light(yellow) <= 26, yellow);
+  // Тёмная обложка с бордовыми пятнами — бордовая шапка, а не ярко-красная.
+  const maroon = header({ r: 62, g: 15, b: 14 });
+  assert.ok(light(maroon) >= 22 && light(maroon) <= 25, maroon);
 });
 
 test('clusterColours keeps dark tinted areas apart from dark warm ones', () => {
