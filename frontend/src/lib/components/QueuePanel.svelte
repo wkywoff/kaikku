@@ -83,7 +83,7 @@
     position: fixed;
     top: calc(var(--topbar-h) + 8px);
     right: 8px;
-    bottom: calc(var(--player-h) + 8px);
+    bottom: calc(var(--player-h) + var(--player-pad, 0px) + 8px);
     width: 360px;
     z-index: 30;
     padding: 16px 12px;

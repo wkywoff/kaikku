@@ -14,7 +14,7 @@
   .toast {
     position: fixed;
     left: 50%;
-    bottom: calc(var(--player-h) + 16px);
+    bottom: calc(var(--player-h) + var(--player-pad, 0px) + 16px);
     transform: translateX(-50%);
     z-index: 95;
     max-width: min(480px, calc(100vw - 32px));

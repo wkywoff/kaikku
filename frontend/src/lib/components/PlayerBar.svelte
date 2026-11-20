@@ -162,19 +162,22 @@
     background: #000;
     position: relative;
   }
-  /* Весь плеер цвета обложки: та же скруглённая плашка с теми же отступами
-     (8 px от краёв), только во всю ширину и без ухода в чёрный. */
+  /* Весь плеер — скруглённая панель ровного цвета обложки, отступы 8 px
+     как у страницы над ним. Цвет — page, глубокий тон обложки, как у
+     страницы альбома в режиме «Вся страница». header (верх шапки) для
+     целого плеера слишком яркий: белый текст на нём плохо читается; base
+     темнее и серее — он для плашки, уходящей в чёрный. Высота та же, что у чёрного плеера, панель
+     выше на нижний отступ: --player-pad учитывают очередь и тосты. */
   .player.tint-full {
-    isolation: isolate;
-  }
-  .player.tint-full::before {
-    content: '';
-    position: absolute;
-    inset: 8px;
-    z-index: -1;
-    border-radius: 8px;
-    background-color: color-mix(in srgb, var(--player-base) 65%, #000);
+    margin: 8px;
+    border-radius: var(--radius);
+    background: var(--player-flat);
     transition: background-color 0.6s;
+  }
+  @media (min-width: 769px) {
+    :global(:root:has(.player.tint-full)) {
+      --player-pad: 8px;
+    }
   }
   .tint-full .now::before,
   .tint-off .now::before {
@@ -362,9 +365,12 @@
     .like-slot {
       margin-left: auto;
     }
-    .now::before,
-    .player.tint-full::before {
+    .now::before {
       display: none;
+    }
+    .player.tint-full {
+      margin: 0;
+      background: color-mix(in srgb, var(--player-base) 65%, #000);
     }
     /* Без цвета мини-плеер — серая плашка, чтобы выделялся на странице. */
     .player.tint-off {
