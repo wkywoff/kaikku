@@ -236,6 +236,17 @@
         <span class="knob"></span>
       </button>
     </div>
+    <div class="row">
+      <div class="label">
+        <span>{$t('settings.playerTint')}</span>
+        <small>{$t('settings.playerTintHint')}</small>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label={$t('settings.playerTint')}>
+        {#each ['full', 'plate', 'off'] as mode}
+          <button role="radio" aria-checked={$settings.playerTint === mode} class:active={$settings.playerTint === mode} on:click={() => settings.set('playerTint', mode)}>{$t(`settings.playerTint.${mode}`)}</button>
+        {/each}
+      </div>
+    </div>
   </section>
 
   {#if lastfm?.available}

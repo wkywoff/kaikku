@@ -18,6 +18,9 @@ export const DEFAULT_SETTINGS = {
   pageTint: 'full',
   // Цвета обложки в полноэкранном плеере медленно переливаются.
   animatedBg: true,
+  // Цвет обложки в нижнем плеере: 'full' — весь плеер, 'plate' — только
+  // плашка с названием слева, 'off' — без цвета.
+  playerTint: 'full',
   // Когда очередь кончилась — продолжать похожими треками (радио артиста).
   autoplay: false,
 };
@@ -40,6 +43,7 @@ export function sanitize(s) {
     trackView: s.trackView === 'compact' ? 'compact' : 'list',
     pageTint: s.pageTint === 'header' ? 'header' : 'full',
     animatedBg: s.animatedBg !== false,
+    playerTint: ['full', 'plate', 'off'].includes(s.playerTint) ? s.playerTint : 'full',
     autoplay: !!s.autoplay,
   };
 }

@@ -4,7 +4,9 @@
   // справа очередь, громкость, полноэкранный режим. Таймер сна — в меню
   // трека (правый клик, долгое нажатие). Обложка с названием
   // лежит на скруглённой плашке цвета обложки (тот же цвет, что у шапки
-  // страницы альбома), уходящей в чёрный. На телефоне — компактная полоса, нажатие
+  // страницы альбома), уходящей в чёрный. Настройка playerTint: 'full' —
+  // весь плеер цвета обложки (без плашки), 'plate' — только плашка, 'off' —
+  // без цвета. На телефоне — компактная полоса, нажатие
   // открывает полноэкранный плеер.
   import { sized } from '../imageproxy.js';
   import { longpress } from '../longpress.js';
@@ -71,7 +73,7 @@
 </script>
 
 {#if track}
-  <footer class="player">
+  <footer class="player" class:tint-full={$settings.playerTint === 'full'} class:tint-off={$settings.playerTint === 'off'}>
     <!-- Правый клик по треку — то же меню, что в списках. -->
     <div
       class="now"
@@ -159,6 +161,24 @@
     padding: 0 16px 0 8px;
     background: #000;
     position: relative;
+  }
+  /* Весь плеер цвета обложки: та же скруглённая плашка с теми же отступами
+     (8 px от краёв), только во всю ширину и без ухода в чёрный. */
+  .player.tint-full {
+    isolation: isolate;
+  }
+  .player.tint-full::before {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    z-index: -1;
+    border-radius: 8px;
+    background-color: color-mix(in srgb, var(--player-base) 65%, #000);
+    transition: background-color 0.6s;
+  }
+  .tint-full .now::before,
+  .tint-off .now::before {
+    display: none;
   }
   .now {
     display: flex;
@@ -342,8 +362,13 @@
     .like-slot {
       margin-left: auto;
     }
-    .now::before {
+    .now::before,
+    .player.tint-full::before {
       display: none;
+    }
+    /* Без цвета мини-плеер — серая плашка, чтобы выделялся на странице. */
+    .player.tint-off {
+      background: var(--bg-press);
     }
     .cover {
       width: 44px;
