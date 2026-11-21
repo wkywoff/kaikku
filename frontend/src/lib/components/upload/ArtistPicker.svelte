@@ -1,10 +1,12 @@
 <script>
-  // Исполнители релиза или трека в окне загрузки. Чипы — выбранные, первый
-  // — основной. Поле: имя — подсказки (свои артисты kaikku, потом Deezer)
+  // Исполнители релиза или трека в окне загрузки. Выбранные — строками, как
+  // треки: первый — основной, порядок — перетаскиванием за ручку (или
+  // стрелками с фокусом на ручке), как в TrackRows. Поле: имя — подсказки (свои артисты kaikku, потом Deezer)
   // и в конце «Создать артиста»; ссылка на артиста Deezer или kaikku —
   // сразу этот артист. Созданный здесь — пока только имя (newArtist): его
   // заводит на сервере сохранение релиза или правки (createNewArtists).
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  import { createEventDispatcher, onDestroy, tick } from 'svelte';
+  import { dropRest, nextPaint, rowStep } from '../../dragDrop.js';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
   import { lang } from '../../stores/settings.js';
@@ -13,7 +15,7 @@
   import { artistIdFrom, isShortDeezerLink, isLocalId } from '../../links.js';
   import { newArtist, isNewArtist } from '../../uploads.js';
   import X from '@lucide/svelte/icons/x';
-  import ArrowUp from '@lucide/svelte/icons/arrow-up';
+  import AlignJustify from '@lucide/svelte/icons/align-justify';
   import UserRound from '@lucide/svelte/icons/user-round';
   import UserPlus from '@lucide/svelte/icons/user-plus';
   import Link from '@lucide/svelte/icons/link';
@@ -134,25 +136,88 @@
     artists = artists.filter((_, j) => j !== i);
     dispatch('change');
   }
-  function makeMain(i) {
-    artists = [artists[i], ...artists.filter((_, j) => j !== i)];
+
+  // --- порядок: перетаскивание за ручку (как в TrackRows) ---
+  function move(from, to) {
+    if (from === to || to < 0 || to >= artists.length) return;
+    const next = artists.slice();
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    artists = next;
     dispatch('change');
   }
+  let drag = null; // { i, y0, dy, h, id }
+  function startDrag(e, i) {
+    if (e.button !== 0 || artists.length < 2) return;
+    e.preventDefault();
+    drag = { i, y0: e.clientY, dy: 0, h: rowStep(e.currentTarget.closest('.slot')), id: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function moveDrag(e) {
+    if (drag && e.pointerId === drag.id) drag = { ...drag, dy: e.clientY - drag.y0 };
+  }
+  let settling = null; // { id, dy } — отпущенная строка доезжает на место (dragDrop.js)
+  async function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = { ...drag, dy: e.clientY - drag.y0 };
+    const to = targetOf(d);
+    const mine = (settling = { id: artists[d.i].id, dy: dropRest(d, to) });
+    drag = null;
+    move(d.i, to);
+    await tick();
+    await nextPaint();
+    if (settling === mine) settling = null;
+  }
+  const targetOf = (d) => (d ? Math.max(0, Math.min(artists.length - 1, d.i + Math.round(d.dy / d.h))) : -1);
+  $: target = targetOf(drag);
+  function shift(i, d, to) {
+    if (!d) return 0;
+    if (i === d.i) return d.dy;
+    if (d.i < to && i > d.i && i <= to) return -d.h;
+    if (d.i > to && i < d.i && i >= to) return d.h;
+    return 0;
+  }
+  function dragKey(e, i) {
+    const dir = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    move(i, i + dir);
+  }
+  // Подпись под именем: откуда артист — только если в списке есть и свои
+  // (kaikku), и из Deezer; новый (ещё не заведён) — всегда.
+  const sourceOf = (a) => (isNewArtist(a) || isLocalId(a.id) ? 'kaikku' : 'Deezer');
+  $: mixed = new Set(artists.map(sourceOf)).size > 1;
+  $: noteOf = (a) => (isNewArtist(a) ? $t('upload.newArtistHint') : mixed ? sourceOf(a) : '');
 </script>
 
 <div class="picker" class:invalid>
   {#if artists.length}
-    <ul class="chips">
+    <ul class="rows" class:dragging={!!drag} class:settling={!!settling} class:single={artists.length < 2}>
       {#each artists as a, i (a.id)}
-        <li class="chip">
-          {#if a.picture_url}<img src={sized(a.picture_url, 64)} alt="" />{:else}<span class="ph"><UserRound size={14} /></span>{/if}
-          <span class="cname">{a.name}</span>
-          {#if isNewArtist(a)}<span class="main">{$t('upload.newArtist')}</span>{/if}
-          {#if i === 0 && artists.length > 1}<span class="main">{$t('edit.mainArtist')}</span>{/if}
-          {#if i > 0}
-            <button type="button" class="mini" title={$t('edit.makeMain')} aria-label={$t('edit.makeMain')} on:click={() => makeMain(i)}><ArrowUp size={14} /></button>
-          {/if}
-          <button type="button" class="mini" title={$t('upload.removeArtist')} aria-label={$t('upload.removeArtist')} on:click={() => remove(i)}><X size={14} /></button>
+        <li
+          class="slot"
+          class:lifted={drag?.i === i || settling?.id === a.id}
+          style:transform={drag ? `translateY(${shift(i, drag, target)}px)` : settling?.id === a.id ? `translateY(${settling.dy}px)` : null}
+        >
+          <div class="row">
+            <span
+              class="handle"
+              role="button"
+              tabindex={artists.length > 1 ? 0 : -1}
+              aria-label={$t('edit.moveArtist')}
+              title={artists.length > 1 ? $t('edit.moveArtist') : null}
+              on:pointerdown={(e) => startDrag(e, i)}
+              on:pointermove={moveDrag}
+              on:pointerup={endDrag}
+              on:pointercancel={endDrag}
+              on:keydown={(e) => dragKey(e, i)}><AlignJustify size={18} /></span
+            >
+            {#if a.picture_url}<img src={sized(a.picture_url, 64)} alt="" />{:else}<span class="ph"><UserRound size={16} /></span>{/if}
+            <span class="who">
+              <span class="cname">{a.name}</span>
+              {#if noteOf(a)}<span class="role">{noteOf(a)}</span>{/if}
+            </span>
+            <button type="button" class="icon-btn" title={$t('upload.removeArtist')} aria-label={$t('upload.removeArtist')} on:click={() => remove(i)}><X size={18} /></button>
+          </div>
         </li>
       {/each}
     </ul>
@@ -206,25 +271,79 @@
     flex-direction: column;
     gap: 8px;
   }
-  .chips {
+  /* Строки — как у треков в TrackRows: ручка, картинка, имя и подпись. */
+  .rows {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-direction: column;
+    gap: 4px;
     list-style: none;
     margin: 0;
     padding: 0;
   }
-  .chip {
+  .slot {
+    position: relative;
+    border-radius: 6px;
+    transition: transform 0.15s ease;
+  }
+  .dragging .slot.lifted,
+  .settling .slot {
+    transition: none;
+  }
+  .slot.lifted {
+    z-index: 3;
+  }
+  .lifted .row {
+    background: #3a3a3a;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 4px 4px 4px 0;
+    border-radius: 6px;
+    background: #2e2e2e;
+  }
+  .handle {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    max-width: 100%;
-    height: 34px;
-    padding: 0 4px 0 4px;
-    border-radius: 999px;
-    background: var(--bg-press);
+    justify-content: center;
+    width: 36px;
+    height: 44px;
+    margin-right: -4px;
+    flex-shrink: 0;
+    color: var(--text-dim);
+    cursor: grab;
+    touch-action: none; /* тащить, а не прокручивать */
   }
-  .chip img,
+  .dragging .handle {
+    cursor: grabbing;
+  }
+  .single .handle {
+    cursor: default;
+    opacity: 0.35;
+  }
+  .row img,
+  .row .ph {
+    width: 36px;
+    height: 36px;
+  }
+  .who {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .role {
+    font-size: 12px;
+    color: var(--text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  img,
   .ph {
     width: 26px;
     height: 26px;
@@ -244,29 +363,10 @@
     color: var(--bg);
   }
   .cname {
-    font-size: 14px;
+    font-size: 15px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .main {
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-  .mini {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .mini:hover {
-      color: var(--text);
-      background: #4a4a4a;
-    }
   }
   .field {
     position: relative;
