@@ -1,6 +1,6 @@
 <script>
   // Треки в окне загрузки: зона для файлов, строки по порядку (перетащить
-  // за ручку или стрелками — как в TracklistEditor), у каждой — название,
+  // за ручку или стрелками — как в DeezerTrackRows), у каждой — название,
   // метка E, длительность и состояние загрузки; в меню — исполнители и
   // текст трека, другой файл, удалить.
   // Строка: { key, id (k… — когда файл обработан), title, durationMs,
@@ -105,7 +105,7 @@
   }
   const artistNames = (row) => (row.artists || releaseArtists).map((a) => a.name).join(', ');
 
-  // --- порядок: перетаскивание за ручку (как в очереди и TracklistEditor) ---
+  // --- порядок: перетаскивание за ручку (как в очереди и DeezerTrackRows) ---
   function move(from, to) {
     if (from === to || to < 0 || to >= rows.length) return;
     const next = rows.slice();

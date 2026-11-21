@@ -1,15 +1,13 @@
 <script>
-  // Правка метаданных админом: артист (имя, фото), альбом (название, дата
-  // релиза, тип, обложка, исполнители, скрыть), трек (название, номер, диск,
-  // исполнители, метка E). Артист и альбом правятся по записи в медиатеке
-  // (id — наш); если её ещё нет — по deezerId сервер её заводит. Трек
-  // правится по Deezer ID, скачивать его не нужно.
-  // Исполнители задаются ссылками на артистов (Deezer залил релиз дубликату
-  // артиста — ссылка на настоящего переносит релиз к нему).
-  // Альбом можно привязать версией к основному релизу (делюкс, clean):
-  // пропадёт из дискографии, будет в «Других версиях» основного.
-  // У альбома — треклист: порядок и трек с другого релиза по ссылке
-  // (TracklistEditor); у трека, открытого со страницы альбома, — та же замена.
+  // Правка метаданных админом: артист (имя, фото), трек (название, номер,
+  // диск, исполнители, метка E). Релиз правится на своей странице
+  // (/album/<id>/edit, views/ReleaseEditPage.svelte). Артист правится по
+  // записи в медиатеке (id — наш); если её ещё нет — по deezerId сервер её
+  // заводит. Трек правится по Deezer ID, скачивать его не нужно.
+  // Исполнители задаются ссылками на артистов (Deezer залил трек дубликату
+  // артиста — ссылка на настоящего переносит его к нему).
+  // У трека, открытого со страницы альбома, — замена на трек с другого
+  // релиза по ссылке.
   // У трека ещё «перекачать аудио», «загрузить свой файл» и «найти текст заново».
   // «Сбросить» возвращает данные и картинку из Deezer.
   // Своего артиста (загрузка, k…) здесь правит тот, кто его завёл: имя и
@@ -35,15 +33,14 @@
   import { toast } from '../stores/toast.js';
   import { forgetLyrics } from './LyricsView.svelte';
   import { clearPageCaches } from '../lru.js';
-  import TracklistEditor from './TracklistEditor.svelte';
-  import { trackIdFrom, albumIdFrom, isShortDeezerLink, isLocalId } from '../links.js';
+  import { trackIdFrom, isShortDeezerLink, isLocalId } from '../links.js';
   import { AUDIO_ACCEPT, MAX_AUDIO_BYTES } from '../uploads.js';
   import { paths, link } from '../stores/nav.js';
   import Pencil from '@lucide/svelte/icons/pencil';
 
-  export let kind; // 'artist' | 'album' | 'track'
-  export let id = null; // артист/альбом в медиатеке
-  export let deezerId = null; // артист/альбом, если id ещё нет; трек — всегда
+  export let kind; // 'artist' | 'track'
+  export let id = null; // артист в медиатеке
+  export let deezerId = null; // артист, если id ещё нет; трек — всегда
   export let albumId = null; // трек: Deezer ID альбома, со страницы которого открыли
   const byDeezer = kind === 'track';
   const own = kind === 'track' && isLocalId(deezerId); // свой трек: /api/uploads/tracks
@@ -54,28 +51,18 @@
   let error = '';
   let busy = false;
   let name = '';
-  let releasedAt = '';
-  let recordType = 'album';
   let trackNo = '';
   let discNo = '';
   let explicit = false;
-  let hidden = false;
   let artists = []; // [{ id, name, picture_url }] — основной первый
-  let initial = { explicit: false, hidden: false, artists: '' };
+  let initial = { explicit: false, artists: '' };
   let toolBusy = '';
   let newImage = null; // Blob
   let newImageUrl = null;
   let fileInput;
   let audioInput;
   let uploadPct = null; // 0..1 — отправка; 1 — сервер обрабатывает
-  let tracklist = null; // альбом: [{ id, title, artist, other }]
-  let initialTracklist = '';
   let swapLink = '';
-  let versionOf = null; // альбом: { id, title, cover_url, release_date } основного релиза или null
-  let initialVersionOf = '';
-  let versionLink = '';
-  let versionError = '';
-  let versionBusy = false;
   let ownArtists = false; // свой трек: свои исполнители, а не как у релиза
   let lyrics; // свой трек: текст (undefined — ещё грузится)
   let lyricsInitial = '';
@@ -108,75 +95,23 @@
       } else if (byDeezer) item = await api.getDeezerTrackEdit(deezerId);
       else {
         if (!id) id = (await api.claim(kind, deezerId)).id;
-        item = kind === 'artist' ? await api.getArtist(id) : await api.getAlbum(id);
+        item = await api.getArtist(id);
       }
       fill(item);
-      if (kind === 'album') {
-        loadTracklist();
-        initialVersionOf = item.version_of || '';
-        if (initialVersionOf) loadVersionOf(initialVersionOf);
-      }
     } catch (e) {
       error = e.message;
     }
   }
 
-  async function loadVersionOf(dz) {
-    try {
-      const { album } = await api.discoverAlbum(dz);
-      versionOf = album;
-    } catch {
-      versionOf = { id: dz, title: dz };
-    }
-  }
-
-  async function linkVersion() {
-    versionError = '';
-    if (isShortDeezerLink(versionLink)) {
-      versionError = $t('edit.shortLink');
-      return;
-    }
-    const dz = albumIdFrom(versionLink);
-    if (!dz) {
-      versionError = $t('edit.badAlbumLink');
-      return;
-    }
-    versionBusy = true;
-    try {
-      const { album } = await api.discoverAlbum(dz);
-      versionOf = album;
-      versionLink = '';
-    } catch (e) {
-      versionError = e.message;
-    } finally {
-      versionBusy = false;
-    }
-  }
-
-  async function loadTracklist() {
-    const dz = item.deezer_id;
-    if (!dz) return;
-    try {
-      const { tracks } = await api.discoverAlbum(dz);
-      tracklist = tracks.map((tr) => ({ id: String(tr.id), title: tr.title, artist: tr.artist, other: String(tr.album_id) !== String(dz) }));
-      initialTracklist = tracklist.map((r) => r.id).join(',');
-    } catch {
-      // Deezer недоступен — без треклиста, остальное править можно
-    }
-  }
-
   function fill(it) {
     name = kind === 'artist' ? it.name : it.title;
-    releasedAt = it.released_at || '';
-    recordType = it.record_type || 'album';
     trackNo = it.track_no ?? '';
     discNo = it.disc_no ?? '';
     explicit = !!it.explicit;
-    hidden = !!it.hidden;
     // Свой трек без своих исполнителей — как у релиза: с них и начинать, если отметят «свои».
     artists = (it.artists || (own && it.release_artists) || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null }));
     ownArtists = own && !!it.artists;
-    initial = { explicit, hidden, artists: ids(artists) };
+    initial = { explicit, artists: ids(artists) };
   }
 
   const ids = (list) => list.map((a) => a.id).join(',');
@@ -300,15 +235,6 @@
       if (kind === 'artist') {
         await api.updateArtist(id, { name });
         if (newImage) await api.uploadArtistPicture(id, newImage);
-      } else if (kind === 'album') {
-        // Исполнители и скрытие — только если их меняли.
-        const fields = { title: name, released_at: releasedAt || '', record_type: recordType };
-        if (editCredits && ids(artists) !== initial.artists) fields.artists = artists.map((a) => a.id);
-        if (hidden !== initial.hidden) fields.hidden = hidden;
-        if (tracklist && tracklist.map((r) => r.id).join(',') !== initialTracklist) fields.tracklist = tracklist.map((r) => r.id);
-        if ((versionOf ? String(versionOf.id) : '') !== initialVersionOf) fields.version_of = versionOf ? String(versionOf.id) : '';
-        await api.updateAlbum(id, fields);
-        if (newImage) await api.uploadAlbumCover(id, newImage);
       } else if (own) {
         await api.saveOwnTrack(deezerId, { title: name, explicit, artists: ownArtists ? artists.map((a) => a.id) : null });
         if (lyrics !== undefined && lyrics !== lyricsInitial) await api.saveTrackLyrics(deezerId, lyrics);
@@ -337,7 +263,6 @@
     error = '';
     try {
       if (kind === 'artist') await api.resetArtist(id);
-      else if (kind === 'album') await api.resetAlbum(id);
       else await api.resetDeezerTrack(deezerId);
       clearPageCaches(); // релиз мог переехать к другому артисту — его страницы в кеше устарели
       dispatch('saved');
@@ -348,7 +273,7 @@
     }
   }
 
-  const titles = { artist: 'edit.artistTitle', album: 'edit.albumTitle', track: 'edit.trackTitle' };
+  const titles = { artist: 'edit.artistTitle', track: 'edit.trackTitle' };
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -380,22 +305,7 @@
             <input type="text" bind:value={name} maxlength="300" autofocus />
           </label>
 
-          {#if kind === 'album'}
-            <div class="row2">
-              <label>
-                <span>{$t('edit.releaseDate')}</span>
-                <input type="date" bind:value={releasedAt} />
-              </label>
-              <label>
-                <span>{$t('edit.type')}</span>
-                <select bind:value={recordType}>
-                  {#each ['album', 'ep', 'single', 'compile'] as type}
-                    <option value={type}>{$t(`type.${type}`)}</option>
-                  {/each}
-                </select>
-              </label>
-            </div>
-          {:else if own}
+          {#if own}
             <label class="check">
               <input type="checkbox" bind:checked={explicit} />
               <span>{$t('edit.explicit')}</span>
@@ -414,12 +324,6 @@
             <label class="check">
               <input type="checkbox" bind:checked={explicit} />
               <span>{$t('edit.explicit')}</span>
-            </label>
-          {/if}
-          {#if kind === 'album'}
-            <label class="check">
-              <input type="checkbox" bind:checked={hidden} />
-              <span>{$t('edit.hideRelease')}<small>{$t('edit.hideHint')}</small></span>
             </label>
           {/if}
         </div>
@@ -441,33 +345,6 @@
           <span class="caption">{$t('edit.artists')}</span>
           <ArtistPicker bind:artists invalid={!artists.length} inputId="edit-artists" label={$t('edit.artists')} />
         </div>
-      {/if}
-
-      {#if kind === 'album' && item.deezer_id}
-        <div class="credits">
-          <span class="caption">{$t('edit.versionOf')}</span>
-          {#if versionOf}
-            <div class="credit">
-              {#if versionOf.cover_url}<img class="sq" src={sized(versionOf.cover_url, 64)} alt="" />{/if}
-              <span class="cname">{versionOf.title}</span>
-              <button type="button" class="icon-btn small" title={$t('edit.unlinkVersion')} aria-label={$t('edit.unlinkVersion')} on:click={() => (versionOf = null)}><X size={16} /></button>
-            </div>
-          {:else}
-            <div class="add-artist">
-              <input type="text" bind:value={versionLink} placeholder={$t('edit.albumLink')} on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), linkVersion())} />
-              <button type="button" class="add" disabled={!versionLink.trim() || versionBusy} on:click={linkVersion}>
-                {#if versionBusy}<LoaderCircle class="spin" size={16} />{/if}
-                {$t('edit.linkVersion')}
-              </button>
-            </div>
-          {/if}
-          {#if versionError}<p class="error-text">{versionError}</p>{/if}
-          <small class="hint">{$t('edit.versionHint')}</small>
-        </div>
-      {/if}
-
-      {#if kind === 'album' && tracklist}
-        <TracklistEditor bind:list={tracklist} albumDeezerId={item.deezer_id} />
       {/if}
 
       {#if kind === 'track' && albumId && !own}
@@ -656,8 +533,7 @@
     font-weight: 600;
     color: var(--text-dim);
   }
-  input,
-  select {
+  input {
     height: 40px;
     padding: 0 10px;
     border-radius: 4px;
@@ -668,8 +544,7 @@
     font-family: inherit;
     color-scheme: dark;
   }
-  input:focus,
-  select:focus {
+  input:focus {
     outline: none;
     border-color: #6a6a6a;
     background: #333;
@@ -728,33 +603,6 @@
     font-weight: 600;
     color: var(--text-dim);
     margin-bottom: 2px;
-  }
-  .credit {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 0 4px 0 6px;
-    border-radius: 6px;
-    background: #333;
-  }
-  .credit img {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0;
-  }
-  .credit img.sq {
-    border-radius: 4px;
-  }
-  .cname {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 15px;
   }
   .hint {
     font-size: 12px;
