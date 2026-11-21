@@ -11,13 +11,6 @@ name: kaikku
 
 x-app: &app
   image: ghcr.io/wkywoff/kaikku-app:${KAIKKU_VERSION:-latest}
-  build:
-    context: .
-    target: app
-    args:
-      # Shown in Settings when you build from source, e.g.
-      # KAIKKU_BUILD_VERSION=$(git describe --tags --always) docker compose up -d --build
-      VERSION: ${KAIKKU_BUILD_VERSION:-dev}
   restart: unless-stopped
   # tini as PID 1: reaps yt-dlp/ffmpeg zombies and passes SIGTERM on.
   init: true
@@ -43,6 +36,15 @@ services:
   # Migrations: on every `up`, before the API and the worker.
   migrate:
     <<: *app
+    # The app image is built here only: api and worker use the same image,
+    # and a build: on each of them would build it three times over.
+    build:
+      context: .
+      target: app
+      args:
+        # Shown in Settings when you build from source, e.g.
+        # KAIKKU_BUILD_VERSION=$(git describe --tags --always) docker compose up -d --build
+        VERSION: ${KAIKKU_BUILD_VERSION:-dev}
     command: migrate
     restart: "no"
     depends_on:
