@@ -44,6 +44,7 @@
   export let playlist = null; // { id, mine } — список и есть этот плейлист (меню «убрать из плейлиста»)
   export let context = null; // откуда играет, для истории: { kind, id } (lib/library.js → playRows)
   export let reorderable = false;
+  export let ownEditable = false; // свои треки списка может править зритель (автор релиза)
   export let highlight = null;
   export let playSimilar = false; // поиск: после трека — похожие, а не следующая строка
   export let showAddedBy = false; // совместный плейлист: «добавил X» под исполнителями
@@ -202,8 +203,8 @@
       trackMenuItems(row, {
         playlist,
         onRemove: () => dispatch('remove', row),
-        // Свои треки (загрузка, k…) правятся в окне загрузки, не здесь.
-        onEdit: row.deezerId && !isLocalId(row.deezerId) ? () => (editingTrack = row.deezerId) : null,
+        // Трек Deezer правит админ; свой (загрузка, k…) — и автор релиза (ownEditable).
+        onEdit: row.deezerId && ($canEdit || (ownEditable && isLocalId(row.deezerId))) ? () => (editingTrack = row.deezerId) : null,
       }),
       trackMenuHeader(row),
     );

@@ -214,6 +214,8 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("PUT /api/uploads/releases/{id}/cover", s.authed(s.handleReleaseCover))
 	mux.Handle("POST /api/uploads/releases/{id}/audio", s.authed(s.handleAddReleaseAudio))
 	mux.Handle("PUT /api/uploads/tracks/{id}/audio", s.authed(s.handleReplaceTrackAudio))
+	mux.Handle("GET /api/uploads/tracks/{id}", s.authed(s.handleGetOwnTrack))
+	mux.Handle("PUT /api/uploads/tracks/{id}", s.authed(s.handleSaveOwnTrack))
 	mux.Handle("DELETE /api/uploads/tracks/{id}", s.authed(s.handleDeleteOwnTrack))
 	mux.Handle("GET /api/uploads/tracks/{id}/lyrics", s.authed(s.handleGetOwnLyrics))
 	mux.Handle("PUT /api/uploads/tracks/{id}/lyrics", s.authed(s.handlePutOwnLyrics))

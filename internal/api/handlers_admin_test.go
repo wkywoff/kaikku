@@ -51,6 +51,7 @@ type pageAlbum struct {
 
 type pageTrack struct {
 	ID           string `json:"id"`
+	Title        string `json:"title"`
 	Artist       string `json:"artist"`
 	ArtistID     string `json:"artist_id"`
 	Explicit     bool   `json:"explicit"`

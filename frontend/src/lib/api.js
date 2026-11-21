@@ -268,6 +268,8 @@ export const api = {
   // Новый трек из файла -> { track, tags, cover_url? }.
   addReleaseAudio: (id, file, opts) => sendFile('POST', `/uploads/releases/${enc(id)}/audio?name=${enc(file.name)}`, file, opts),
   replaceTrackAudio: (trackId, file, opts) => sendFile('PUT', `/uploads/tracks/${enc(trackId)}/audio`, file, opts),
+  getOwnTrack: (trackId) => request(`/uploads/tracks/${enc(trackId)}`), // -> { id, title, explicit, artists|null, album_id, release_artists }
+  saveOwnTrack: (trackId, fields) => request(`/uploads/tracks/${enc(trackId)}`, { method: 'PUT', body: fields }),
   deleteUploadTrack: (trackId) => request(`/uploads/tracks/${enc(trackId)}`, { method: 'DELETE' }),
   trackLyricsText: (trackId) => request(`/uploads/tracks/${enc(trackId)}/lyrics`), // -> { text }
   saveTrackLyrics: (trackId, text) => request(`/uploads/tracks/${enc(trackId)}/lyrics`, { method: 'PUT', body: { text } }),

@@ -13,7 +13,9 @@
   // У трека ещё «перекачать аудио», «загрузить свой файл» и «найти текст заново».
   // «Сбросить» возвращает данные и картинку из Deezer.
   // Своего артиста (загрузка, k…) здесь правит тот, кто его завёл: имя и
-  // фото, без сброса — сбрасывать не к чему.
+  // фото, без сброса — сбрасывать не к чему. Свой трек (k…) — автор релиза
+  // и админ: название, E, исполнители (свои или как у релиза), текст и
+  // файл; порядок и диски — в правке релиза.
   import { modal } from '../modal.js';
   import { onMount, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
@@ -35,12 +37,16 @@
   import { clearPageCaches } from '../lru.js';
   import TracklistEditor from './TracklistEditor.svelte';
   import { trackIdFrom, albumIdFrom, isShortDeezerLink, isLocalId } from '../links.js';
+  import { AUDIO_ACCEPT, MAX_AUDIO_BYTES } from '../uploads.js';
+  import { paths, link } from '../stores/nav.js';
+  import Pencil from '@lucide/svelte/icons/pencil';
 
   export let kind; // 'artist' | 'album' | 'track'
   export let id = null; // артист/альбом в медиатеке
   export let deezerId = null; // артист/альбом, если id ещё нет; трек — всегда
   export let albumId = null; // трек: Deezer ID альбома, со страницы которого открыли
   const byDeezer = kind === 'track';
+  const own = kind === 'track' && isLocalId(deezerId); // свой трек: /api/uploads/tracks
 
   const dispatch = createEventDispatcher();
 
@@ -70,11 +76,14 @@
   let versionLink = '';
   let versionError = '';
   let versionBusy = false;
+  let ownArtists = false; // свой трек: свои исполнители, а не как у релиза
+  let lyrics; // свой трек: текст (undefined — ещё грузится)
+  let lyricsInitial = '';
 
   // Картинка, какую видят все: своя или с Deezer (своих копий Deezer не храним).
   $: imageUrl = newImageUrl || (kind === 'track' ? null : sized(item?.image_url, 300));
   $: customImage = kind === 'artist' ? item?.picture_custom : item?.cover_custom;
-  $: canReset = (byDeezer || !!item?.deezer_id) && !isLocalId(item?.deezer_id) && (item?.edited || customImage);
+  $: canReset = !own && (byDeezer || !!item?.deezer_id) && !isLocalId(item?.deezer_id) && (item?.edited || customImage);
 
   // onMount синхронный: функцию очистки из async-колбэка Svelte не вызывает,
   // и обработчик Esc оставался бы висеть после закрытия окна.
@@ -90,7 +99,13 @@
 
   async function load() {
     try {
-      if (byDeezer) item = await api.getDeezerTrackEdit(deezerId);
+      if (own) {
+        item = await api.getOwnTrack(deezerId);
+        api.trackLyricsText(deezerId).then(
+          (r) => (lyrics = lyricsInitial = r.text || ''),
+          () => (lyrics = lyricsInitial = ''),
+        );
+      } else if (byDeezer) item = await api.getDeezerTrackEdit(deezerId);
       else {
         if (!id) id = (await api.claim(kind, deezerId)).id;
         item = kind === 'artist' ? await api.getArtist(id) : await api.getAlbum(id);
@@ -158,13 +173,15 @@
     discNo = it.disc_no ?? '';
     explicit = !!it.explicit;
     hidden = !!it.hidden;
-    artists = (it.artists || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null }));
+    // Свой трек без своих исполнителей — как у релиза: с них и начинать, если отметят «свои».
+    artists = (it.artists || (own && it.release_artists) || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null }));
+    ownArtists = own && !!it.artists;
     initial = { explicit, hidden, artists: ids(artists) };
   }
 
   const ids = (list) => list.map((a) => a.id).join(',');
   // Исполнители известны, только если Deezer ответил: иначе их не трогаем.
-  $: editCredits = kind !== 'artist' && !!item?.artists?.length;
+  $: editCredits = kind !== 'artist' && (own ? ownArtists : !!item?.artists?.length);
 
   // Нашлось не то (или не нашлось вовсе) — скачать с указанного видео.
   let videoLink = '';
@@ -195,21 +212,20 @@
     }
   }
 
-  const MAX_AUDIO = 200 * 1024 * 1024; // как на сервере (handlers_admin.go)
-
   async function uploadAudio(e) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
     if (!file) return;
     error = '';
-    if (file.size > MAX_AUDIO) {
+    if (file.size > MAX_AUDIO_BYTES) {
       error = $t('edit.audioTooBig');
       return;
     }
     toolBusy = 'upload';
     uploadPct = 0;
     try {
-      await api.uploadTrackAudio(deezerId, file, (p) => (uploadPct = p));
+      if (own) await api.replaceTrackAudio(deezerId, file, { onProgress: (p) => (uploadPct = p) });
+      else await api.uploadTrackAudio(deezerId, file, (p) => (uploadPct = p));
       toast($t('edit.audioReplaced'));
     } catch (err) {
       error = err.status === 413 ? $t('edit.audioTooBig') : err.message;
@@ -293,6 +309,9 @@
         if ((versionOf ? String(versionOf.id) : '') !== initialVersionOf) fields.version_of = versionOf ? String(versionOf.id) : '';
         await api.updateAlbum(id, fields);
         if (newImage) await api.uploadAlbumCover(id, newImage);
+      } else if (own) {
+        await api.saveOwnTrack(deezerId, { title: name, explicit, artists: ownArtists ? artists.map((a) => a.id) : null });
+        if (lyrics !== undefined && lyrics !== lyricsInitial) await api.saveTrackLyrics(deezerId, lyrics);
       } else {
         const fields = {
           title: name,
@@ -376,6 +395,11 @@
                 </select>
               </label>
             </div>
+          {:else if own}
+            <label class="check">
+              <input type="checkbox" bind:checked={explicit} />
+              <span>{$t('edit.explicit')}</span>
+            </label>
           {:else if kind === 'track'}
             <div class="row2">
               <label>
@@ -400,6 +424,15 @@
           {/if}
         </div>
       </div>
+
+      {#if own}
+        <div class="credits">
+          <label class="check">
+            <input type="checkbox" bind:checked={ownArtists} on:change={() => !ownArtists && (artists = (item.release_artists || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null })))} />
+            <span>{$t('upload.ownTrackArtists')}<small>{ownArtists ? $t('upload.ownTrackArtistsHint') : $t('upload.asRelease', { names: (item.release_artists || []).map((a) => a.name).join(', ') || '—' })}</small></span>
+          </label>
+        </div>
+      {/if}
 
       {#if editCredits}
         <!-- Как в загрузке: имя — подсказки (свои артисты, потом Deezer) и
@@ -437,7 +470,7 @@
         <TracklistEditor bind:list={tracklist} albumDeezerId={item.deezer_id} />
       {/if}
 
-      {#if kind === 'track' && albumId}
+      {#if kind === 'track' && albumId && !own}
         <div class="credits">
           <span class="caption">{$t('edit.swapTrack')}</span>
           <div class="add-artist">
@@ -451,7 +484,27 @@
         </div>
       {/if}
 
-      {#if kind === 'track'}
+      {#if own}
+        <label class="credits lyrics">
+          <span class="caption">{$t('upload.lyrics')}</span>
+          {#if lyrics === undefined}
+            <LoaderCircle class="spin" size={16} />
+          {:else}
+            <textarea rows="6" maxlength="60000" bind:value={lyrics}></textarea>
+          {/if}
+          <small class="hint">{$t('upload.lyricsHint')}</small>
+        </label>
+        <div class="tools">
+          <button type="button" class="tool" disabled={!!toolBusy} on:click={() => audioInput.click()}>
+            {#if toolBusy === 'upload'}<LoaderCircle class="spin" size={16} />{:else}<FileMusic size={16} />{/if}
+            {#if uploadPct === null}{$t('upload.replaceAudio')}
+            {:else if uploadPct < 1}{$t('edit.uploading', { pct: Math.floor(uploadPct * 100) })}
+            {:else}{$t('edit.preparing')}{/if}
+          </button>
+          <input bind:this={audioInput} type="file" accept={AUDIO_ACCEPT} hidden on:change={uploadAudio} />
+          <a class="tool" href={paths.upload(item.album_id)} use:link on:click={() => dispatch('close')}><Pencil size={16} /> {$t('upload.editRelease')}</a>
+        </div>
+      {:else if kind === 'track'}
         <div class="credits">
           <span class="caption">{$t('edit.video')}</span>
           <div class="add-artist">
@@ -624,6 +677,24 @@
   .error-text {
     margin: 12px 0 0;
   }
+  .lyrics {
+    font-weight: 400;
+  }
+  textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: #3e3e3e;
+    color: var(--text);
+    font: 14px/1.5 var(--font);
+    resize: vertical;
+  }
+  textarea:focus {
+    outline: none;
+    border-color: #6a6a6a;
+    background: #333;
+  }
   .check {
     flex-direction: row;
     align-items: flex-start;
@@ -701,6 +772,7 @@
   .add,
   .tool {
     display: inline-flex;
+    color: var(--text);
     align-items: center;
     gap: 6px;
     height: 40px;

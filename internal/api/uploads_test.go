@@ -792,3 +792,46 @@ func TestUploads_SpaceReservedAcrossRequests(t *testing.T) {
 		release2()
 	}
 }
+
+// Один свой трек правится из меню трека: название, E, исполнители — без
+// окна загрузки. Правит автор релиза и админ, слушатель — нет.
+func TestUploads_OwnTrack(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	fan := invitedUser(t, router, admin, "fan9")
+	rel := seedOwnRelease(t, db, userIDOf(t, router, admin), false)
+	path := "/api/uploads/tracks/" + rel.tracks[0]
+
+	call(t, router, "GET", path, fan, "", http.StatusForbidden)
+	call(t, router, "PUT", path, fan, `{"title":"Mine now"}`, http.StatusForbidden)
+	call(t, router, "PUT", path, admin, `{"title":"  "}`, http.StatusBadRequest)
+	call(t, router, "GET", "/api/uploads/tracks/"+rel.album, admin, "", http.StatusNotFound)
+
+	var st struct {
+		ID             string
+		Title          string
+		Explicit       bool
+		Artists        []struct{ ID, Name string }
+		AlbumID        string                `json:"album_id"`
+		ReleaseArtists []struct{ ID string } `json:"release_artists"`
+	}
+	json.Unmarshal(call(t, router, "PUT", path, admin, `{"title":" Renamed ","explicit":true,"artists":["2"]}`, http.StatusOK), &st)
+	if st.ID != rel.tracks[0] || st.Title != "Renamed" || !st.Explicit || len(st.Artists) != 1 || st.Artists[0].ID != "2" ||
+		st.AlbumID != rel.album || len(st.ReleaseArtists) != 2 {
+		t.Fatalf("saved = %+v", st)
+	}
+	var page localAlbumPage
+	getJSON(t, router, "/api/discover/albums/"+rel.album, fan, false, &page)
+	if tr := page.Tracks[0]; tr.Title != "Renamed" || !tr.Explicit || tr.ArtistID != "2" {
+		t.Errorf("listener sees %+v", tr)
+	}
+
+	json.Unmarshal(call(t, router, "PUT", path, admin, `{"title":"Renamed","artists":null}`, http.StatusOK), &st)
+	if st.Explicit || st.Artists != nil {
+		t.Errorf("back to the release's artists = %+v", st)
+	}
+	var n int
+	db.QueryRow(`SELECT count(*) FROM track_overrides WHERE deezer_id = $1`, rel.tracks[0]).Scan(&n)
+	if n != 0 {
+		t.Errorf("override left: %d", n)
+	}
+}

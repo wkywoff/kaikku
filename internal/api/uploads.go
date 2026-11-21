@@ -416,20 +416,12 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		if other[t.ID] {
 			continue
 		}
-		if _, err := tx.Exec(`UPDATE tracks SET title = $2, track_no = $3, disc_no = $4 WHERE deezer_id = $1`,
-			t.ID, req.Tracks[i].Title, trackNos[i], req.Tracks[i].Disc); err != nil {
+		if _, err := tx.Exec(`UPDATE tracks SET track_no = $2, disc_no = $3 WHERE deezer_id = $1`,
+			t.ID, trackNos[i], req.Tracks[i].Disc); err != nil {
 			serverError(w, r, "save failed", err)
 			return
 		}
-		if trackArtists[i] == nil && !t.Explicit {
-			_, err = tx.Exec(`DELETE FROM track_overrides WHERE deezer_id = $1`, t.ID)
-		} else {
-			_, err = tx.Exec(
-				`INSERT INTO track_overrides (deezer_id, explicit, artist_ids) VALUES ($1, $2, $3)
-				 ON CONFLICT (deezer_id) DO UPDATE SET explicit = $2, artist_ids = $3, updated_at = now()`,
-				t.ID, t.Explicit, nullArray(trackArtists[i]))
-		}
-		if err != nil {
+		if err := saveOwnTrack(tx, t.ID, req.Tracks[i].Title, t.Explicit, trackArtists[i]); err != nil {
 			serverError(w, r, "save failed", err)
 			return
 		}
@@ -476,6 +468,23 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// saveOwnTrack пишет поля своего трека: название, метку E и исполнителей
+// (nil — как у релиза; тогда и без E запись в track_overrides не нужна).
+func saveOwnTrack(tx *sql.Tx, id, title string, explicit bool, artists []string) error {
+	if _, err := tx.Exec(`UPDATE tracks SET title = $2 WHERE deezer_id = $1`, id, title); err != nil {
+		return err
+	}
+	if artists == nil && !explicit {
+		_, err := tx.Exec(`DELETE FROM track_overrides WHERE deezer_id = $1`, id)
+		return err
+	}
+	_, err := tx.Exec(
+		`INSERT INTO track_overrides (deezer_id, explicit, artist_ids) VALUES ($1, $2, $3)
+		 ON CONFLICT (deezer_id) DO UPDATE SET explicit = $2, artist_ids = $3, updated_at = now()`,
+		id, explicit, nullArray(artists))
+	return err
 }
 
 // otherTracks checks the tracks added to the release from other releases —
@@ -780,6 +789,95 @@ func mustIDs(db *sql.DB, query string, args ...any) []string {
 		log.Printf("ids: %v", err)
 	}
 	return ids
+}
+
+// --- один свой трек (правка из меню трека) ---
+
+// ownTrackState — свой трек для окна правки трека: его поля, как в окне
+// загрузки, и релиз, на котором он (исполнители релиза — для «как у релиза»).
+type ownTrackState struct {
+	uploadTrack
+	AlbumID        string             `json:"album_id"`
+	AlbumTitle     string             `json:"album_title"`
+	ReleaseArtists []deezer.ArtistRef `json:"release_artists"`
+}
+
+func (s *Server) ownTrackState(r *http.Request, rel releaseRow, trackID string) (*ownTrackState, error) {
+	st, err := s.releaseState(r, rel)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range st.Tracks {
+		if t.ID == trackID && !t.Other {
+			return &ownTrackState{uploadTrack: t, AlbumID: st.ID, AlbumTitle: st.Title, ReleaseArtists: st.Artists}, nil
+		}
+	}
+	return nil, errNotFound
+}
+
+func (s *Server) handleGetOwnTrack(w http.ResponseWriter, r *http.Request) {
+	rel, trackID, ok := s.ownTrackFor(w, r)
+	if !ok {
+		return
+	}
+	st, err := s.ownTrackState(r, rel, trackID)
+	if err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleSaveOwnTrack сохраняет один свой трек: {"title", "artists" (null —
+// как у релиза), "explicit"}. Порядок и диски — в окне загрузки.
+func (s *Server) handleSaveOwnTrack(w http.ResponseWriter, r *http.Request) {
+	rel, trackID, ok := s.ownTrackFor(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title    string   `json:"title"`
+		Artists  []string `json:"artists"`
+		Explicit bool     `json:"explicit"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad request body")
+		return
+	}
+	req.Title = strings.TrimSpace(req.Title)
+	if req.Title == "" || tooLong(req.Title) {
+		writeError(w, http.StatusBadRequest, "title is required (up to 300 characters)")
+		return
+	}
+	var artists []string
+	if req.Artists != nil {
+		var err error
+		if artists, err = s.creditArtists(req.Artists); err != nil {
+			writeError(w, http.StatusBadRequest, "artists: "+err.Error())
+			return
+		}
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		serverError(w, r, "save failed", err)
+		return
+	}
+	defer tx.Rollback()
+	if err := saveOwnTrack(tx, trackID, req.Title, req.Explicit, artists); err != nil {
+		serverError(w, r, "save failed", err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		serverError(w, r, "save failed", err)
+		return
+	}
+	s.syncLocalSnapshots(rel.id)
+	st, err := s.ownTrackState(r, rel, trackID)
+	if err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // --- тексты своих треков ---

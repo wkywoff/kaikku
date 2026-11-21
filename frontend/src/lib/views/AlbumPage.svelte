@@ -249,7 +249,7 @@
   </div>
 
   <div class="page-pad">
-    <TrackList {rows} {context} highlight={$navStore.track || null} on:changed={reload} />
+    <TrackList {rows} {context} highlight={$navStore.track || null} ownEditable={!!(album.own && album.editable)} on:changed={reload} />
     {#if longDate(album.releaseDate, $lang) || album.label}
       <footer class="release muted">
         {#if longDate(album.releaseDate, $lang)}<div>{longDate(album.releaseDate, $lang)}</div>{/if}

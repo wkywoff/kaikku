@@ -2,7 +2,6 @@ import { get } from 'svelte/store';
 import { t } from './i18n.js';
 import { paths, navigate } from './stores/nav.js';
 import { likedIds, playlists, toggleLike, addToPlaylist, createPlaylist } from './stores/collection.js';
-import { canEdit } from './stores/me.js';
 import { toast } from './stores/toast.js';
 import { queueRow, playNextRow, mainArtistId, playArtistRadio } from './library.js';
 import { shareItem } from './share.js';
@@ -30,7 +29,7 @@ export function trackMenuHeader(row) {
 // Пункты контекстного меню трека (правый клик / «…» в TrackList) — только
 // то, что работает: плейлисты, лайк, очередь, радио, переходы, правка (админ).
 //   playlist — { id, mine } если список — плейлист; onRemove — убрать из него;
-//   onEdit — открыть правку (только в режиме админа).
+//   onEdit — открыть правку (кто вправе — решает вызывающий: админ, автор релиза).
 export function trackMenuItems(row, { playlist = null, onRemove = null, onEdit = null } = {}) {
   const tr = get(t);
   const items = [];
@@ -96,6 +95,6 @@ export function trackMenuItems(row, { playlist = null, onRemove = null, onEdit =
   if (row.album?.href) go.push({ label: tr('menu.goToAlbum'), icon: Disc3, href: row.album.href });
   if (go.length) items.push({ separator: true }, ...go);
 
-  if (onEdit && get(canEdit)) items.push({ separator: true }, { label: tr('edit.trackTitle'), icon: Pencil, onClick: onEdit });
+  if (onEdit) items.push({ separator: true }, { label: tr('edit.trackTitle'), icon: Pencil, onClick: onEdit });
   return items;
 }
