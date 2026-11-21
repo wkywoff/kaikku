@@ -307,6 +307,25 @@ func (s *Server) handleUploadAlbumCover(w http.ResponseWriter, r *http.Request) 
 	s.handleGetAlbum(w, r)
 }
 
+// handleDeleteAlbumCover убирает свою обложку релиза Deezer — снова видна
+// обложка Deezer; остальные правки остаются (всё разом — handleResetAlbum).
+func (s *Server) handleDeleteAlbumCover(w http.ResponseWriter, r *http.Request) {
+	var old sql.NullString
+	err := s.DB.QueryRow(
+		`UPDATE albums a SET cover_key = NULL, cover_custom = false
+		   FROM (SELECT cover_key, cover_custom FROM albums WHERE id = $1 FOR UPDATE) prev
+		  WHERE a.id = $1 AND prev.cover_custom RETURNING prev.cover_key`, r.PathValue("id"),
+	).Scan(&old)
+	if err != nil && err != sql.ErrNoRows { // нет строки — нечего убирать (или нет релиза: ответит handleGetAlbum)
+		serverError(w, r, "update failed", err)
+		return
+	}
+	if old.Valid {
+		s.removeStorageFiles(old.String)
+	}
+	s.handleGetAlbum(w, r)
+}
+
 // --- мелочи ---
 
 func validName(s string) bool {

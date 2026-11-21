@@ -599,6 +599,49 @@ func (s *Server) handleReleaseCover(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"cover_url": "/media/" + key})
 }
 
+// handleDeleteReleaseCover убирает обложку своего релиза: у черновика её
+// просто не будет (при публикации поставится заглушка), у опубликованного
+// сразу встаёт заглушка (placeholder.go) — релиз без картинки в списках
+// и приложениях смотрелся бы сломанным.
+func (s *Server) handleDeleteReleaseCover(w http.ResponseWriter, r *http.Request) {
+	rel, ok := s.releaseFor(w, r)
+	if !ok {
+		return
+	}
+	var next any // новый cover_key: NULL или заглушка
+	var placeholder string
+	if !rel.draft && s.StorageDir != "" {
+		var err error
+		if placeholder, err = s.writePlaceholderCover(rel.id); err != nil {
+			serverError(w, r, "update failed", err)
+			return
+		}
+		next = placeholder
+	}
+	var old sql.NullString
+	err := s.DB.QueryRow(
+		`UPDATE albums a SET cover_key = $1::text, cover_custom = $1::text IS NOT NULL
+		   FROM (SELECT cover_key FROM albums WHERE id = $2 FOR UPDATE) prev
+		  WHERE a.id = $2 RETURNING prev.cover_key`, next, rel.libraryID,
+	).Scan(&old)
+	if err != nil {
+		if placeholder != "" {
+			s.removeStorageFiles(placeholder)
+		}
+		serverError(w, r, "update failed", err)
+		return
+	}
+	if old.Valid && old.String != placeholder {
+		s.removeStorageFiles(old.String)
+	}
+	s.syncLocalSnapshots(rel.id)
+	url := ""
+	if placeholder != "" {
+		url = "/media/" + placeholder
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"cover_url": url})
+}
+
 // setReleaseCover ставит обложку релиза; replace=false — только если её ещё
 // нет (обложка из тегов файла не заменяет выбранную). Прежний файл и снимки
 // в медиатеке слушателей обновляются.

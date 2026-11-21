@@ -1,13 +1,15 @@
 <script>
   // Левая колонка страницы правки релиза (EditShell): обложка — нажать или
   // перетащить картинку, — и сводка, как релиз будет подписан на своей
-  // странице. Своему релизу без обложки показывается превью заглушки,
+  // странице. Под обложкой — «убрать» (removeLabel; событие remove), если
+  // её есть что убирать. Своему релизу без обложки показывается превью заглушки,
   // которую сервер поставит при публикации (lib/placeholder.js).
   import { createEventDispatcher } from 'svelte';
   import { t } from '../../i18n.js';
   import { placeholderBackground } from '../../placeholder.js';
   import ImagePlus from '@lucide/svelte/icons/image-plus';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
 
   export let coverUrl = '';
   export let busy = false;
@@ -18,6 +20,7 @@
   export let title = '';
   export let artists = ''; // имена через запятую
   export let meta = '';
+  export let removeLabel = ''; // подпись кнопки «убрать обложку»; пусто — кнопки нет
 
   const dispatch = createEventDispatcher();
   let input;
@@ -49,6 +52,9 @@
     {#if busy}<span class="cover-busy"><LoaderCircle class="spin" size={28} /></span>{/if}
   </button>
 </div>
+{#if removeLabel && coverUrl && !busy}
+  <button type="button" class="remove" on:click={() => dispatch('remove')}><Trash2 size={14} /> {removeLabel}</button>
+{/if}
 <input bind:this={input} type="file" accept="image/*" hidden on:change={(e) => (pick(e.currentTarget.files[0]), (e.currentTarget.value = ''))} />
 <div class="summary">
   {#if hint}<small>{hint}</small>{/if}
@@ -134,6 +140,20 @@
   }
   .cover-busy {
     background: rgba(0, 0, 0, 0.6);
+  }
+  .remove {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  @media (hover: hover) {
+    .remove:hover {
+      color: var(--text);
+    }
   }
   .summary {
     display: flex;

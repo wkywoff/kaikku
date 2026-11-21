@@ -255,6 +255,7 @@ export const api = {
   // Заново найти текст -> как lyrics().
   refreshLyrics: (deezerId) => request(`/lyrics/${enc(deezerId)}/refresh`, { method: 'POST' }),
   uploadArtistPicture: (id, blob) => request(`/artists/${enc(id)}/picture`, { method: 'PUT', body: blob }),
+  deleteAlbumCover: (id) => request(`/albums/${enc(id)}/cover`, { method: 'DELETE' }), // своя обложка релиза Deezer → снова его
   uploadAlbumCover: (id, blob) => request(`/albums/${enc(id)}/cover`, { method: 'PUT', body: blob }),
 
   // Свои релизы (загрузка): черновик → треки и поля → публикация.
@@ -264,6 +265,7 @@ export const api = {
   // body: { title, artists: [id], record_type, release_date, tracks: [{ id, title, artists|null, explicit }], published? }
   saveRelease: (id, body) => request(`/uploads/releases/${enc(id)}`, { method: 'PUT', body }),
   deleteRelease: (id) => request(`/uploads/releases/${enc(id)}`, { method: 'DELETE' }),
+  deleteReleaseCover: (id) => request(`/uploads/releases/${enc(id)}/cover`, { method: 'DELETE' }), // -> { cover_url } (у опубликованного — заглушка)
   uploadReleaseCover: (id, blob) => request(`/uploads/releases/${enc(id)}/cover`, { method: 'PUT', body: blob }),
   // Новый трек из файла -> { track, tags, cover_url? }.
   addReleaseAudio: (id, file, opts) => sendFile('POST', `/uploads/releases/${enc(id)}/audio?name=${enc(file.name)}`, file, opts),

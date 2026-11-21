@@ -125,6 +125,7 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("PUT /api/albums/{id}", s.adminOnly(s.deezerRowOnly("albums", s.handleUpdateAlbum)))
 	mux.Handle("POST /api/albums/{id}/reset", s.adminOnly(s.deezerRowOnly("albums", s.handleResetAlbum)))
 	mux.Handle("PUT /api/albums/{id}/cover", s.adminOnly(s.deezerRowOnly("albums", s.handleUploadAlbumCover)))
+	mux.Handle("DELETE /api/albums/{id}/cover", s.adminOnly(s.deezerRowOnly("albums", s.handleDeleteAlbumCover)))
 	mux.Handle("DELETE /api/albums/{id}", s.adminOnly(s.deezerRowOnly("albums", s.handleDeleteAlbum)))
 
 	mux.Handle("DELETE /api/tracks/{id}", s.adminOnly(s.deezerRowOnly("tracks", s.handleDeleteTrack)))
@@ -212,6 +213,7 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("PUT /api/uploads/releases/{id}", s.authed(s.handleSaveRelease))
 	mux.Handle("DELETE /api/uploads/releases/{id}", s.authed(s.handleDeleteRelease))
 	mux.Handle("PUT /api/uploads/releases/{id}/cover", s.authed(s.handleReleaseCover))
+	mux.Handle("DELETE /api/uploads/releases/{id}/cover", s.authed(s.handleDeleteReleaseCover))
 	mux.Handle("POST /api/uploads/releases/{id}/audio", s.authed(s.handleAddReleaseAudio))
 	mux.Handle("PUT /api/uploads/tracks/{id}/audio", s.authed(s.handleReplaceTrackAudio))
 	mux.Handle("GET /api/uploads/tracks/{id}", s.authed(s.handleGetOwnTrack))

@@ -552,6 +552,41 @@ func TestUploads_CoverAndDelete(t *testing.T) {
 	call(t, router, "GET", "/api/discover/albums/"+rel.album, fan, "", http.StatusNotFound)
 }
 
+// Свою обложку можно убрать: у черновика её не будет (заглушка — при
+// публикации), у опубликованного сразу встаёт заглушка. Чужой — нельзя.
+func TestUploads_DeleteCover(t *testing.T) {
+	db, router, admin, srv := newTestServer(t)
+	srv.StorageDir = t.TempDir()
+	fan := invitedUser(t, router, admin, "fan10")
+	rel := seedOwnRelease(t, db, userIDOf(t, router, admin), false)
+	covers := func() []string {
+		files, _ := filepath.Glob(filepath.Join(srv.StorageDir, "covers", "custom", "*.jpg"))
+		return files
+	}
+	if rec := adminRequest(router, "PUT", "/api/uploads/releases/"+rel.album+"/cover", admin, testJPEG(t), "image/jpeg"); rec.Code != http.StatusOK {
+		t.Fatalf("cover: %d %s", rec.Code, rec.Body.String())
+	}
+	uploaded := covers()
+
+	call(t, router, "DELETE", "/api/uploads/releases/"+rel.album+"/cover", fan, "", http.StatusForbidden)
+	var res struct {
+		CoverURL string `json:"cover_url"`
+	}
+	json.Unmarshal(call(t, router, "DELETE", "/api/uploads/releases/"+rel.album+"/cover", admin, "", http.StatusOK), &res)
+	files := covers()
+	if !strings.HasPrefix(res.CoverURL, "/media/covers/custom/") || len(files) != 1 || slices.Equal(files, uploaded) {
+		t.Errorf("published: cover %q, files %v (uploaded %v)", res.CoverURL, files, uploaded)
+	}
+
+	db.Exec(`UPDATE albums SET draft = true WHERE deezer_id = $1`, rel.album)
+	json.Unmarshal(call(t, router, "DELETE", "/api/uploads/releases/"+rel.album+"/cover", admin, "", http.StatusOK), &res)
+	var key sql.NullString
+	db.QueryRow(`SELECT cover_key FROM albums WHERE deezer_id = $1`, rel.album).Scan(&key)
+	if res.CoverURL != "" || key.Valid || len(covers()) != 0 {
+		t.Errorf("draft: cover %q, key %v, files %v", res.CoverURL, key, covers())
+	}
+}
+
 func TestTitleFromFilename(t *testing.T) {
 	for in, want := range map[string]string{
 		"01 - Big Miss.flac":         "Big Miss",

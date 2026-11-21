@@ -122,6 +122,20 @@
     }
   }
 
+  // Убрать обложку: новую, ещё не сохранённую, — просто забыть; свою
+  // сохранённую — удалить на сервере, и снова видна обложка Deezer.
+  async function removeCover() {
+    if (newImage) return dropImage();
+    if (!confirm($t('edit.removeCoverConfirm'))) return;
+    try {
+      item = await api.deleteAlbumCover(libId);
+      clearPageCaches();
+      toast($t('upload.coverRemoved'));
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
   async function save() {
     if (!title.trim()) return toast($t('edit.nameRequired'), 'error');
     if (!artists.length) return toast($t('upload.missingPrefix', { list: $t('upload.missing.artists') }), 'error');
@@ -243,7 +257,9 @@
       title={title.trim()}
       artists={artists.map((a) => a.name).join(', ')}
       meta={rows ? `${tracksCount(rows.length, $lang)}${totalSec ? `, ${longDuration(totalSec, $lang)}` : ''}` : ''}
+      removeLabel={newImage ? $t('edit.dropNewCover') : item?.cover_custom ? $t('edit.removeCover') : ''}
       on:file={(e) => pickImage(e.detail)}
+      on:remove={removeCover}
     />
   </svelte:fragment>
 

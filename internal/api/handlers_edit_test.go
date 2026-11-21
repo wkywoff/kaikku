@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"image"
@@ -120,5 +121,18 @@ func TestUploadAlbumCover(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, key)); err != nil {
 		t.Errorf("uploaded cover not on disk: %v", err)
+	}
+
+	// Убрать свою обложку — снова обложка Deezer, файл удалён.
+	if rec := adminRequest(router, "DELETE", "/api/albums/"+albumID+"/cover", token, nil, ""); rec.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+	var left sql.NullString
+	db.QueryRow(`SELECT cover_key, cover_custom FROM albums WHERE id = $1`, albumID).Scan(&left, &custom)
+	if left.Valid || custom {
+		t.Errorf("after delete: cover_key %v, custom %v", left, custom)
+	}
+	if _, err := os.Stat(filepath.Join(dir, key)); !os.IsNotExist(err) {
+		t.Errorf("custom cover left on disk: %v", err)
 	}
 }

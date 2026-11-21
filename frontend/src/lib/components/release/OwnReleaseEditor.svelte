@@ -297,6 +297,23 @@
     }
   }
 
+  // Убрать обложку: у опубликованного сервер сразу ставит заглушку.
+  async function removeCover() {
+    if (!confirm($t(draft ? 'upload.removeCoverConfirm' : 'upload.removeCoverConfirmLive'))) return;
+    coverBusy = true;
+    try {
+      const res = await api.deleteReleaseCover(id);
+      coverUrl = res.cover_url || '';
+      coverFromFile = false;
+      clearPageCaches();
+      toast($t('upload.coverRemoved'));
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      coverBusy = false;
+    }
+  }
+
   // --- сохранение ---
   function body(published) {
     const b = JSON.parse(current);
@@ -411,7 +428,9 @@
       title={hasSummary ? title.trim() || $t('upload.untitled') : ''}
       artists={hasSummary ? artists.map((a) => a.name).join(', ') : ''}
       meta={`${tracksCount(trackRows.filter((r) => r.id).length, $lang)}${totalSec ? `, ${longDuration(totalSec, $lang)}` : ''}`}
+      removeLabel={$t('upload.removeCover')}
       on:file={(e) => setCover(e.detail)}
+      on:remove={removeCover}
     />
   </svelte:fragment>
 
