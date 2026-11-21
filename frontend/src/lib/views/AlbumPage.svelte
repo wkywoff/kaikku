@@ -6,8 +6,9 @@
 
 <script>
   // Страница альбома из каталога Deezer (/album/<id>), с ручными правками
-  // админа поверх, или своего релиза (k…, загрузка): его правят автор и
-  // админ в окне загрузки (/upload/<id>), а черновик видят только они.
+  // админа поверх, или своего релиза (k…, загрузка). Правят и тот и другой
+  // на странице правки (/album/<id>/edit): свой — автор и админ, Deezer —
+  // админ; черновик своего видят только автор и админ.
   import { sized } from '../imageproxy.js';
   import { api } from '../api.js';
   import { player, isPlaying as playerPlaying, shuffleOn } from '../stores/player.js';
@@ -50,7 +51,6 @@
   let loading = true;
   let error = '';
   let showCover = false;
-  let editing = false;
 
   // Перезагрузить без кеша — после правки.
   function reload() {
@@ -214,7 +214,7 @@
   {#if album.draft}
     <div class="draft-note page-pad">
       <span>{$t('upload.draftNote')}</span>
-      {#if album.editable}<a href={paths.upload(album.deezerId)} use:link>{$t('upload.continue')}</a>{/if}
+      {#if album.editable}<a href={paths.releaseEdit(album.deezerId)} use:link>{$t('upload.continue')}</a>{/if}
     </div>
   {/if}
 
@@ -230,16 +230,11 @@
         {#if saved}<CircleCheck size={32} />{:else}<CirclePlus size={32} />{/if}
       </button>
     {/if}
-    {#if album.own}
-      {#if album.editable}
-        <a class="icon-btn" href={paths.upload(album.deezerId)} use:link title={$t('upload.editRelease')} aria-label={$t('upload.editRelease')}>
-          <Pencil size={22} />
-        </a>
-      {/if}
-    {:else if $canEdit && (album.libraryId || album.deezerId)}
-      <button class="icon-btn" title={$t('edit.albumTitle')} aria-label={$t('edit.albumTitle')} on:click={() => (editing = true)}>
+    <!-- Правка — одна страница: свой релиз правят автор и админ, Deezer — админ. -->
+    {#if album.deezerId && (album.own ? album.editable : $canEdit)}
+      <a class="icon-btn" href={paths.releaseEdit(album.deezerId)} use:link title={$t('upload.editRelease')} aria-label={$t('upload.editRelease')}>
         <Pencil size={22} />
-      </button>
+      </a>
     {/if}
     {#if rows.length}
       <button class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title: album.title })} on:click={moreMenu}>
@@ -266,12 +261,6 @@
       {/each}
     {/if}
   </div>
-
-  {#if editing}
-    {#await import('../components/EditDialog.svelte') then m}
-      <svelte:component this={m.default} kind="album" id={album.libraryId} deezerId={album.deezerId} on:close={() => (editing = false)} on:saved={() => ((editing = false), reload())} />
-    {/await}
-  {/if}
 
   {#if showCover && album.coverUrl}
     <CoverLightbox src={album.coverUrl} alt={album.title} on:close={() => (showCover = false)} />

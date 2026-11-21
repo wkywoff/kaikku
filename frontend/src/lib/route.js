@@ -14,7 +14,8 @@
 //   /artist/<deezer id>        → страница артиста (?disc=album|ep|single — сразу с фильтром дискографии)
 //   /artist/<id>/discography/<all|album|ep|single> → вся дискография (как у Spotify)
 //   /album/<deezer id>         → страница альбома (?track=<deezer id> — с выделенным треком: ссылка «Поделиться»)
-//   /upload, /upload/<id>      → свои релизы: список и окно загрузки (id — k…)
+//   /album/<id>/edit           → правка релиза: свой (k…) — автор и админ, Deezer — админ
+//   /upload                    → свои релизы (/upload/<id> — старый адрес правки своего)
 //   /admin/missing             → «Не нашлось» (админ): треки, которые не скачались
 //
 // ID артистов, альбомов и треков — Deezer (число) или свои, загруженные (k…).
@@ -24,7 +25,7 @@
 //
 // Старые адреса /discover/… продолжают открываться.
 //
-// route: { view: 'home'|'library'|'search'|'settings'|'liked'|'playlist'|'mix'|'genre'|'artist'|'discography'|'album'|'wrapped'|'wrappedAlbums'|'uploads'|'upload'|'missing'|'user', id?, q?, filter?, track?, year? }
+// route: { view: 'home'|'library'|'search'|'settings'|'liked'|'playlist'|'mix'|'genre'|'artist'|'discography'|'album'|'wrapped'|'wrappedAlbums'|'uploads'|'releaseEdit'|'missing'|'user', id?, q?, filter?, track?, year? }
 
 export function parseRoute(pathname, search = '') {
   const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -36,7 +37,7 @@ export function parseRoute(pathname, search = '') {
   if (a === 'settings') return { view: 'settings' };
   if (a === 'lastfm') return { view: 'settings', lastfm: true }; // возврат с Last.fm (?token=…), см. SettingsPage
   if (a === 'admin' && b === 'missing') return { view: 'missing' };
-  if (a === 'upload') return b ? { view: 'upload', id: b } : { view: 'uploads' };
+  if (a === 'upload') return b ? { view: 'releaseEdit', id: b } : { view: 'uploads' };
   if (a === 'wrapped') {
     if (!/^\d{4}$/.test(b || '')) return { view: 'wrapped' };
     return c === 'albums' ? { view: 'wrappedAlbums', year: b } : { view: 'wrapped', year: b };
@@ -53,6 +54,7 @@ export function parseRoute(pathname, search = '') {
     const disc = new URLSearchParams(search).get('disc');
     return ['album', 'ep', 'single'].includes(disc) ? { view: 'artist', id: b, disc } : { view: 'artist', id: b };
   }
+  if (a === 'album' && b && c === 'edit') return { view: 'releaseEdit', id: b };
   if (a === 'album' && b) {
     const track = new URLSearchParams(search).get('track');
     return /^(\d+|k[1-9]\d*)$/.test(track || '') ? { view: 'album', id: b, track } : { view: 'album', id: b };
@@ -85,7 +87,7 @@ export const paths = {
   albumTrack: (albumHref, trackId) => `${albumHref}?track=${enc(trackId)}`,
   uploads: () => '/upload',
   missing: () => '/admin/missing',
-  upload: (id) => `/upload/${enc(id)}`,
+  releaseEdit: (deezerId) => `/album/${enc(deezerId)}/edit`,
   wrapped: (year = '') => (year ? `/wrapped/${enc(year)}` : '/wrapped'),
   wrappedAlbums: (year) => `/wrapped/${enc(year)}/albums`,
   user: (username) => `/user/${enc(username)}`,

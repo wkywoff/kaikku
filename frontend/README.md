@@ -19,8 +19,9 @@ any unknown path, so direct links open.
 /artist/<id>                        artist: top, discography, similar, follow, radio
 /artist/<id>/discography/<filter>   full discography (all | album | ep | single)
 /album/<id>                         album (?track=<id> highlights a track)
+/album/<id>/edit                    edit a release: own (author, admin) or Deezer (admin)
 /user/<name>                        profile: follow, public playlists
-/upload, /upload/<id>               own releases: list and upload dialog
+/upload                             own releases (/upload/<id> opens /album/<id>/edit)
 /admin/missing                      admin: tracks that failed to download
 /wrapped[/<year>]                   year in review
 /wrapped/<year>/albums              every album played that year
@@ -53,9 +54,12 @@ How it fits together:
 - **Library** (`src/lib/stores/collection.js`): likes, saved albums,
   followed artists, playlists; changes apply at once and roll back on error.
 - **Track menu** (`src/lib/trackMenu.js`, `ContextMenu.svelte`): right click
-  or "…": playlist, like, queue, radio, sleep timer, links, edit (admin).
+  or "…": playlist, like, queue, radio, sleep timer, links, edit (admin;
+  own songs also their release's author).
 - **Admin mode**: a switch in the account menu (`stores/me.js`) that shows
-  edit buttons for titles, dates, types and covers (`EditDialog.svelte`).
+  edit buttons. Artists and songs are edited in `EditDialog.svelte`; a
+  release, own or from Deezer, on one page (`views/ReleaseEditPage.svelte`,
+  shared parts in `components/release/`).
 - **Colours**: pages and the player take the cover's colour
   (`src/lib/color.js`, `stores/theme.js`); Deezer images go through
   `/api/img` at the needed size (`src/lib/imageproxy.js`).

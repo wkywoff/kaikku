@@ -25,7 +25,7 @@
     return () => window.removeEventListener('keydown', onGlobalKey);
   });
 
-  $: libraryActive = ['library', 'liked', 'uploads', 'upload'].includes($navStore.view);
+  $: libraryActive = ['library', 'liked', 'uploads'].includes($navStore.view);
 </script>
 
 <header class="topbar">

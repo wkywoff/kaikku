@@ -502,7 +502,7 @@
             {:else}{$t('edit.preparing')}{/if}
           </button>
           <input bind:this={audioInput} type="file" accept={AUDIO_ACCEPT} hidden on:change={uploadAudio} />
-          <a class="tool" href={paths.upload(item.album_id)} use:link on:click={() => dispatch('close')}><Pencil size={16} /> {$t('upload.editRelease')}</a>
+          <a class="tool" href={paths.releaseEdit(item.album_id)} use:link on:click={() => dispatch('close')}><Pencil size={16} /> {$t('upload.editRelease')}</a>
         </div>
       {:else if kind === 'track'}
         <div class="credits">

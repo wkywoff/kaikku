@@ -32,7 +32,7 @@
     creating = true;
     try {
       const { id } = await api.createRelease();
-      navigate(paths.upload(id));
+      navigate(paths.releaseEdit(id));
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -68,7 +68,7 @@
   {:else if releases}
     <div class="grid">
       {#each releases as r (r.id)}
-        <MediaCard href={paths.upload(r.id)} image={r.cover_url || null} title={r.title || $t('upload.untitled')} subtitle={subtitle(r)} />
+        <MediaCard href={paths.releaseEdit(r.id)} image={r.cover_url || null} title={r.title || $t('upload.untitled')} subtitle={subtitle(r)} />
       {/each}
     </div>
   {:else}

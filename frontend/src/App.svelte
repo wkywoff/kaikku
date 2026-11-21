@@ -130,12 +130,12 @@
     wrapped: () => import('./lib/views/WrappedPage.svelte'),
     wrappedAlbums: () => import('./lib/views/WrappedAlbumsPage.svelte'),
     uploads: () => import('./lib/views/UploadsPage.svelte'),
-    upload: () => import('./lib/views/UploadPage.svelte'),
+    releaseEdit: () => import('./lib/views/ReleaseEditPage.svelte'),
     missing: () => import('./lib/views/MissingPage.svelte'),
     user: () => import('./lib/views/UserPage.svelte'),
   };
-  const RARE = ['settings', 'wrapped', 'wrappedAlbums', 'uploads', 'upload', 'missing']; // загрузка — только у тех, кто загружает; «Не нашлось» — админ
-  const BY_ID = ['playlist', 'mix', 'genre', 'artist', 'discography', 'album', 'upload', 'user']; // своя страница на каждый id
+  const RARE = ['settings', 'wrapped', 'wrappedAlbums', 'uploads', 'releaseEdit', 'missing']; // загрузка и правка — только у тех, кто загружает или правит; «Не нашлось» — админ
+  const BY_ID = ['playlist', 'mix', 'genre', 'artist', 'discography', 'album', 'releaseEdit', 'user']; // своя страница на каждый id
   let loaded = {}; // имя → компонент
   const loading = new Set();
   function need(name) {

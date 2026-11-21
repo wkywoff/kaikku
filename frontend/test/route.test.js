@@ -25,7 +25,8 @@ test('every path builder round-trips through parseRoute', () => {
     [paths.albumTrack(paths.album('k3'), 'k12'), { view: 'album', id: 'k3', track: 'k12' }],
     [paths.artist('k7'), { view: 'artist', id: 'k7' }],
     [paths.uploads(), { view: 'uploads' }],
-    [paths.upload('k3'), { view: 'upload', id: 'k3' }],
+    [paths.releaseEdit('k3'), { view: 'releaseEdit', id: 'k3' }],
+    [paths.releaseEdit('302127'), { view: 'releaseEdit', id: '302127' }],
     [paths.user('ann b'), { view: 'user', id: 'ann b' }],
   ];
   for (const [path, want] of cases) {
@@ -37,6 +38,7 @@ test('every path builder round-trips through parseRoute', () => {
 test('old /discover links still open the right page', () => {
   assert.deepEqual(parseRoute('/discover/artist/27'), { view: 'artist', id: '27' });
   assert.deepEqual(parseRoute('/discover/album/9'), { view: 'album', id: '9' });
+  assert.deepEqual(parseRoute('/upload/k3'), { view: 'releaseEdit', id: 'k3' }); // прежний адрес правки своего релиза
   assert.deepEqual(parseRoute('/discover', '?q=x'), { view: 'search', q: 'x' });
 });
 
