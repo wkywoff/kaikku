@@ -130,18 +130,37 @@ func TestUploads_SaveAndPublish(t *testing.T) {
 	body := `{"title":"Big Miss","artists":["` + artist.ID + `","1"],"record_type":"ep","release_date":"2026-10-15",
 		"tracks":[{"id":"` + tracks[1] + `","title":"Second first","explicit":true,"artists":["` + artist.ID + `","2"]},
 		          {"id":"` + tracks[0] + `","title":"Then this"}],"published":true}`
+	// Не хватает — 400 со списком; релиз остаётся черновиком.
 	var missing struct{ Missing []string }
-	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body, http.StatusBadRequest), &missing)
-	if !slices.Equal(missing.Missing, []string{"cover"}) {
+	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, strings.Replace(body, `"Big Miss"`, `""`, 1), http.StatusBadRequest), &missing)
+	if !slices.Equal(missing.Missing, []string{"title"}) {
 		t.Errorf("missing = %v", missing.Missing)
 	}
 	call(t, router, "GET", "/api/discover/albums/"+id, listener, "", http.StatusNotFound) // всё ещё черновик
 
+	// Без обложки публикуется с заглушкой; своя её заменяет.
+	var st releaseResp
+	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body, http.StatusOK), &st)
+	placeholder := strings.TrimPrefix(st.CoverURL, "/media/")
+	if st.Draft || !strings.HasPrefix(placeholder, "covers/custom/") {
+		t.Fatalf("published without a cover: %+v", st)
+	}
+	if f, err := os.Open(filepath.Join(srv.StorageDir, placeholder)); err != nil {
+		t.Fatalf("placeholder: %v", err)
+	} else {
+		cfg, format, err := image.DecodeConfig(f)
+		f.Close()
+		if err != nil || format != "jpeg" || cfg.Width != placeholderSide || cfg.Height != placeholderSide {
+			t.Errorf("placeholder: %v %s %dx%d", err, format, cfg.Width, cfg.Height)
+		}
+	}
 	rec := adminRequest(router, "PUT", "/api/uploads/releases/"+id+"/cover", admin, testJPEG(t), "image/jpeg")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cover: %d %s", rec.Code, rec.Body.String())
 	}
-	var st releaseResp
+	if _, err := os.Stat(filepath.Join(srv.StorageDir, placeholder)); !os.IsNotExist(err) {
+		t.Errorf("placeholder left behind: %v", err)
+	}
 	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body, http.StatusOK), &st)
 	if st.Draft || st.Title != "Big Miss" || st.RecordType != "ep" || st.ReleaseDate != "2026-10-15" || !strings.HasPrefix(st.CoverURL, "/media/covers/custom/") {
 		t.Errorf("state = %+v", st)

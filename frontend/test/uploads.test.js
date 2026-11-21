@@ -18,11 +18,11 @@ test('recordTypeFor: by count and length, like Spotify', () => {
 
 test('missingForPublish names every gap, and files still uploading', () => {
   const full = {
-    title: 'Big Miss', artists: [{ id: 'k1' }], recordType: 'single', releaseDate: '2026-10-15', coverUrl: '/media/c.jpg',
+    title: 'Big Miss', artists: [{ id: 'k1' }], recordType: 'single', releaseDate: '2026-10-15',
     rows: [{ id: 'k2', title: 'Song' }],
   };
   assert.deepEqual(missingForPublish(full), []);
-  assert.deepEqual(missingForPublish({ ...full, title: ' ', artists: [], coverUrl: '' }), ['title', 'artists', 'cover']);
+  assert.deepEqual(missingForPublish({ ...full, title: ' ', artists: [] }), ['title', 'artists']); // обложка не обязательна
   assert.deepEqual(missingForPublish({ ...full, rows: [] }), ['tracks']);
   assert.deepEqual(missingForPublish({ ...full, rows: [{ id: 'k2', title: '' }, { id: null, title: 'x.flac' }] }), ['track_titles', 'uploading']);
   // трек, добавленный с другого релиза, здесь не называют

@@ -21,7 +21,7 @@ import (
 // Загрузка своих релизов — того, чего нет в Deezer. Релиз заводится
 // черновиком (его видят автор и админ), в него загружаются треки
 // (uploads_audio.go), заполняются название, исполнители, тип, дата и
-// обложка, и он публикуется — тогда его видят все, как релиз Deezer
+// обложка (её можно и не ставить — будет заглушка, placeholder.go), и он публикуется — тогда его видят все, как релиз Deezer
 // (local.go). ID у своих артистов, релизов и треков — «k…» (helpers.go).
 // В треклист можно добавить и уже существующие треки — Deezer или с других
 // своих релизов (albums.tracklist, local.go: arrangeOwn), а релиз — привязать
@@ -434,11 +434,28 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var placeholder string // нарисованная заглушка обложки: не сохранили — удалить
+	defer func() {
+		if placeholder != "" {
+			s.removeStorageFiles(placeholder)
+		}
+	}()
 	if req.Published != nil {
 		if *req.Published {
-			if missing := missingForPublish(req, other, artists, cover.Valid); len(missing) > 0 {
+			if missing := missingForPublish(req, other, artists); len(missing) > 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "the release is not complete", "missing": missing})
 				return
+			}
+			// Публикуют без обложки — ставим заглушку (placeholder.go).
+			if !cover.Valid && s.StorageDir != "" {
+				if placeholder, err = s.writePlaceholderCover(rel.id); err != nil {
+					serverError(w, r, "save failed", err)
+					return
+				}
+				if _, err := tx.Exec(`UPDATE albums SET cover_key = $2, cover_custom = true WHERE id = $1`, rel.libraryID, placeholder); err != nil {
+					serverError(w, r, "save failed", err)
+					return
+				}
 			}
 		}
 		if _, err := tx.Exec(`UPDATE albums SET draft = $2 WHERE id = $1`, rel.libraryID, !*req.Published); err != nil {
@@ -451,6 +468,7 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "save failed", err)
 		return
 	}
+	placeholder = ""
 	s.syncLocalSnapshots(rel.id)
 	st, err := s.releaseState(r, rel)
 	if err != nil {
@@ -491,8 +509,8 @@ func (s *Server) otherTracks(v viewer, releaseID string, tracks []releaseTrackEd
 
 // missingForPublish — чего не хватает для публикации (те же коды проверяет
 // фронт, lib/uploads.js). Названия треков с других релизов не проверяются:
-// они не отсюда.
-func missingForPublish(req releaseEdit, other map[string]bool, artists []string, hasCover bool) []string {
+// они не отсюда. Обложка не обязательна: без неё ставится заглушка.
+func missingForPublish(req releaseEdit, other map[string]bool, artists []string) []string {
 	missing := []string{}
 	if req.Title == "" {
 		missing = append(missing, "title")
@@ -505,9 +523,6 @@ func missingForPublish(req releaseEdit, other map[string]bool, artists []string,
 	}
 	if req.ReleaseDate == "" {
 		missing = append(missing, "release_date")
-	}
-	if !hasCover {
-		missing = append(missing, "cover")
 	}
 	if len(req.Tracks) == 0 {
 		missing = append(missing, "tracks")

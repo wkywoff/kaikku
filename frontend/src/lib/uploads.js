@@ -28,8 +28,9 @@ export function recordTypeFor(tracks) {
 
 /**
  * Чего не хватает для публикации — те же коды, что у сервера
- * (missingForPublish в uploads.go), и ещё «файлы не догрузились».
- * r: { title, artists, recordType, releaseDate, coverUrl, rows }.
+ * (missingForPublish в uploads.go), и ещё «файлы не догрузились». Обложка
+ * не обязательна: без неё сервер ставит заглушку (lib/placeholder.js).
+ * r: { title, artists, recordType, releaseDate, rows }.
  */
 export function missingForPublish(r) {
   const missing = [];
@@ -37,7 +38,6 @@ export function missingForPublish(r) {
   if (!r.artists?.length) missing.push('artists');
   if (!r.recordType) missing.push('record_type');
   if (!r.releaseDate) missing.push('release_date');
-  if (!r.coverUrl) missing.push('cover');
   const ready = r.rows.filter((row) => row.id);
   if (!ready.length) missing.push('tracks');
   if (ready.some((row) => !row.other && !row.title?.trim())) missing.push('track_titles'); // у добавленных с других релизов — свои

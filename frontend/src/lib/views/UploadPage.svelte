@@ -21,6 +21,7 @@
   import { clearPageCaches } from '../lru.js';
   import { toSquareJpeg } from '../image.js';
   import { sized } from '../imageproxy.js';
+  import { placeholderBackground } from '../placeholder.js';
   import { trackIdFrom, albumIdFrom, isShortDeezerLink } from '../links.js';
   import { lang } from '../stores/settings.js';
   import { recordTypeLabel, tracksCount, longDuration, year } from '../format.js';
@@ -143,7 +144,7 @@
   $: lyricsDirty = rows.some((r) => r.lyrics !== undefined && r.lyrics !== r.lyricsInitial);
   $: dirty = !!server && (current !== JSON.stringify(server) || lyricsDirty);
   $: uploading = trackRows.some((r) => !r.id && r.state !== 'error');
-  $: problems = missingForPublish({ title, artists, recordType, releaseDate, coverUrl, rows: trackRows });
+  $: problems = missingForPublish({ title, artists, recordType, releaseDate, rows: trackRows });
   $: shownMissing = showMissing ? problems : [];
   $: if (showMissing && !problems.length) showMissing = false;
   $: setRouteTitle(`upload:${id}`, title.trim() || $t('upload.untitled'));
@@ -438,12 +439,11 @@
       <!-- Слева — обложка и сводка, как релиз будет подписан; на широком
            экране она остаётся на месте, пока правишь треки. -->
       <aside class="side">
-        <span class="label">{$t('upload.cover')} <b>*</b></span>
+        <span class="label">{$t('upload.cover')} <span class="optional">{$t('upload.optional')}</span></span>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="cover"
           class:over={coverOver}
-          class:invalid={bad('cover')}
           class:filled={!!coverUrl}
           on:dragover|preventDefault={() => (coverOver = true)}
           on:dragleave={() => (coverOver = false)}
@@ -454,6 +454,8 @@
               <img src={coverUrl} alt="" />
               <span class="cover-overlay"><ImagePlus size={28} />{$t('upload.changeCover')}</span>
             {:else}
+              <!-- Превью заглушки: без своей картинки при публикации сервер ставит такую. -->
+              <span class="cover-ph" style:background={placeholderBackground(id)}></span>
               <span class="cover-empty"><ImagePlus size={36} /><span>{$t('upload.coverDrop')}</span></span>
             {/if}
             {#if coverBusy}<span class="cover-busy"><LoaderCircle class="spin" size={28} /></span>{/if}
@@ -461,7 +463,7 @@
         </div>
         <input bind:this={coverInput} type="file" accept="image/*" hidden on:change={(e) => (setCover(e.currentTarget.files[0]), (e.currentTarget.value = ''))} />
         <div class="summary">
-          <small>{$t(coverFromFile ? 'upload.coverFromFile' : 'upload.coverHint')}</small>
+          <small>{$t(coverFromFile ? 'upload.coverFromFile' : coverUrl ? 'upload.coverHint' : 'upload.coverPlaceholder')}</small>
           {#if title.trim() || artists.length || trackRows.length}
           <div class="summary-card">
             <span class="kind">{kindLine}</span>
@@ -745,9 +747,6 @@
   .cover.over {
     border-color: var(--text);
   }
-  .cover.invalid {
-    border-color: var(--danger);
-  }
   .cover-btn {
     position: relative;
     display: block;
@@ -759,6 +758,17 @@
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+  .cover-ph {
+    position: absolute;
+    inset: 0;
+    opacity: 0.35;
+    transition: opacity 0.15s;
+  }
+  @media (hover: hover) {
+    .cover-btn:hover .cover-ph {
+      opacity: 0.2;
+    }
   }
   .cover-empty,
   .cover-overlay,
@@ -773,7 +783,8 @@
     padding: 16px;
     text-align: center;
     font-size: 13px;
-    color: var(--text-dim);
+    color: var(--text);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
   }
   .cover-overlay {
     background: rgba(0, 0, 0, 0.6);
