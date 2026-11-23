@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { messages } from '../src/lib/i18n.js';
-import { plural, tracksCount, longDuration, year, compactNumber, fansLabel, recordCategory, recordTypeLabel, wrappedSeasonYear } from '../src/lib/format.js';
+import { albumArtists, plural, tracksCount, longDuration, year, compactNumber, fansLabel, recordCategory, recordTypeLabel, wrappedSeasonYear } from '../src/lib/format.js';
 
 test('russian plurals', () => {
   const forms = ['трек', 'трека', 'треков'];
@@ -13,6 +13,14 @@ test('russian plurals', () => {
 test('album duration', () => {
   assert.equal(longDuration(4464), '1 ч 14 мин');
   assert.equal(longDuration(2232), '37 мин 12 сек');
+});
+
+test('album artists: every contributor of a joint release, else the main artist', () => {
+  const joint = { artist_name: 'Left', contributors: [{ id: '30', name: 'Left' }, { id: '31', name: 'Right' }] };
+  assert.equal(albumArtists(joint), 'Left, Right');
+  assert.equal(albumArtists({ artist_name: 'Solo' }), 'Solo');
+  assert.equal(albumArtists({ artist_name: 'Solo', contributors: [] }), 'Solo');
+  assert.equal(albumArtists({}), '');
 });
 
 test('year ignores Deezer placeholder dates', () => {

@@ -80,7 +80,7 @@ function playlistItem(load, skipId = null) {
   };
 }
 
-/** album: { id, title, artist_id? } */
+/** album: { id, title, artist_id?, contributors? } */
 export function albumMenuItems(album) {
   const tr = get(t);
   const saved = get(savedAlbumIds).has(album.id);
@@ -90,7 +90,11 @@ export function albumMenuItems(album) {
     { label: tr(saved ? 'album.unsave' : 'album.save'), icon: saved ? CircleCheck : CirclePlus, onClick: () => toggleSaveAlbum(album.id) },
     shareItem(paths.album(album.id), album.title),
   ];
-  if (album.artist_id) items.push({ separator: true }, { label: tr('menu.goToArtist'), icon: UserRound, href: paths.artist(album.artist_id) });
+  // Несколько исполнителей (совместный релиз) — выбор, как в меню трека.
+  const artists = (album.contributors || []).filter((a) => a.id);
+  const go = { label: tr('menu.goToArtist'), icon: UserRound };
+  if (artists.length > 1) items.push({ separator: true }, { ...go, submenu: artists.map((a) => ({ label: a.name, href: paths.artist(a.id), image: a.picture_url || null })) });
+  else if (album.artist_id) items.push({ separator: true }, { ...go, href: paths.artist(album.artist_id) });
   return items;
 }
 

@@ -18,7 +18,7 @@
   import { playingContext, isContext, playAlbum, playArtistTop, playPlaylist, playLiked, playMix } from '../library.js';
   import { mixTitle, mixSubtitle, mixHue } from '../mixes.js';
   import { likedIds, savedAlbumIds, followedIds, playlists, collectionLoaded } from '../stores/collection.js';
-  import { recordTypeLabel, wrappedSeasonYear } from '../format.js';
+  import { albumArtists, recordTypeLabel, wrappedSeasonYear } from '../format.js';
   import { lang } from '../stores/settings.js';
   import { t } from '../i18n.js';
   import { albumMenuItems, artistMenuItems, mixMenuItems, playlistMenuItems } from '../cardMenu.js';
@@ -179,7 +179,7 @@
         image={item.cover_url}
         hidden={item.hidden}
         title={item.title}
-        subtitle={[recordTypeLabel(item.record_type, $lang), item.artist_name].filter(Boolean).join(' • ')}
+        subtitle={[recordTypeLabel(item.record_type, $lang), albumArtists(item)].filter(Boolean).join(' • ')}
         onPlay={() => run(() => playAlbum(item.id))}
         playing={isPlaying('album', item.id)}
       />

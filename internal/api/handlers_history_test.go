@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -141,6 +143,57 @@ func TestNewReleases_LastMonth(t *testing.T) {
 	json.Unmarshal(call(t, router, "GET", "/api/me/releases", token, "", http.StatusOK), &rel)
 	if got := albumIDs(rel.Albums); !slices.Contains(got, "41") || slices.Contains(got, "42") {
 		t.Errorf("releases = %v, want 41 and not 42", got)
+	}
+}
+
+// Совместный релиз двух подписок — на полке один раз, подписан обоими и
+// всегда одинаково (раньше — тем, чей список пришёл первым): составом из
+// альбома Deezer, без гостя. Альбом Deezer не отдал — подписками по порядку.
+func TestNewReleases_JointReleaseCreditsEveryone(t *testing.T) {
+	db, router, token := newTestRouter(t)
+	call(t, router, "PUT", "/api/me/artists/30", token, "", http.StatusNoContent)
+	call(t, router, "PUT", "/api/me/artists/31", token, "", http.StatusNoContent)
+	// Подписки идут от новых к старым: 31, затем 30 — а Deezer пишет 30, 31.
+	db.Exec(`UPDATE followed_artists SET added_at = added_at - interval '1 day' WHERE deezer_id = '30'`)
+
+	type album struct {
+		ID           string
+		ArtistID     string `json:"artist_id"`
+		ArtistName   string `json:"artist_name"`
+		Contributors []struct{ ID, Name string }
+	}
+	credits := func(a album) string {
+		var names []string
+		for _, c := range a.Contributors {
+			names = append(names, c.ID+" "+c.Name)
+		}
+		return a.ArtistID + ": " + strings.Join(names, ", ")
+	}
+	for range 5 {
+		var rel struct{ Albums []album }
+		json.Unmarshal(call(t, router, "GET", "/api/me/releases", token, "", http.StatusOK), &rel)
+		byID := map[string]album{}
+		for _, a := range rel.Albums {
+			byID[a.ID] = a
+		}
+		if len(byID) != len(rel.Albums) {
+			t.Fatalf("a release is listed twice: %v", rel.Albums)
+		}
+		if got := credits(byID["40"]); got != "30: 30 Left Artist, 31 Right Artist" {
+			t.Fatalf("joint release = %q", got)
+		}
+		if got := credits(byID["43"]); got != "31: 31 Right Artist, 30 Left Artist" {
+			t.Fatalf("joint release Deezer won't give = %q", got)
+		}
+		if a := byID["41"]; a.ArtistName != "Left Artist" || len(a.Contributors) != 0 {
+			t.Fatalf("one artist's release = %+v", a)
+		}
+	}
+
+	// Приложения (Subsonic) берут новинки отсюда же.
+	newest := jsonList(t, newSubClient(t, router, token).get("getAlbumList2", url.Values{"type": {"newest"}}), "albumList2", "album")
+	if i := slices.IndexFunc(newest, func(a map[string]any) bool { return a["id"] == "al40" }); i < 0 || newest[i]["displayArtist"] != "Left Artist, Right Artist" {
+		t.Errorf("newest albums in apps = %v", newest)
 	}
 }
 

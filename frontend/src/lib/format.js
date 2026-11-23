@@ -6,6 +6,11 @@ export function recordTypeLabel(type, lang = 'ru') {
   return translate(lang, `type.${['album', 'ep', 'single', 'compile'].includes(type) ? type : 'album'}`);
 }
 
+/** Исполнители релиза строкой: все (contributors), если API их прислал, иначе основной. */
+export function albumArtists(album) {
+  return album.contributors?.length ? album.contributors.map((a) => a.name).join(', ') : album.artist_name || '';
+}
+
 /** Категория для фильтров: сборники считаются альбомами. */
 export function recordCategory(type) {
   if (type === 'ep') return 'ep';

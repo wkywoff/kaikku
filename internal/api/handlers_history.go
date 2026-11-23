@@ -455,19 +455,19 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	since := time.Now().Add(-releasesWindow).Format("2006-01-02")
 
-	var mu sync.Mutex
+	// Списки разбираются в порядке подписок, а не по мере ответов: иначе
+	// совместный релиз доставался то одному артисту, то другому.
+	lists := make([][]deezer.Album, len(artists))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4) // Deezer пускает ~50 запросов за 5 с
-	seen := map[string]bool{}
-	albums := []deezer.Album{}
-	for _, artist := range artists {
+	for i, artist := range artists {
 		wg.Add(1)
-		go func(artist deezer.Artist) {
+		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			var list []deezer.Album
 			err := guard("new releases", func() error {
+				var list []deezer.Album
 				if !isLocalID(artist.ID) { // у своего артиста все релизы — из базы (creditedDiscography)
 					var err error
 					list, err = storedCached(s, "albums:"+artist.ID, releasesTTL, func() ([]deezer.Album, error) {
@@ -479,28 +479,36 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 				}
 				// Правки накладываются на месте — не в кеш; релизы, переназначенные
 				// артисту, — тоже его новинки.
-				list = s.creditedDiscography(artist.ID, cloneAlbums(list))
+				lists[i] = s.creditedDiscography(artist.ID, cloneAlbums(list))
 				return nil
 			})
 			if err != nil {
 				log.Printf("new releases: albums of %s: %v", artist.ID, err)
-				return
 			}
-			mu.Lock()
-			defer mu.Unlock()
-			for _, a := range list {
-				if a.ReleaseDate < since || seen[a.ID] {
-					continue
-				}
-				seen[a.ID] = true
+		}()
+	}
+	wg.Wait()
+
+	albums := []deezer.Album{}
+	followedOn := map[string][]deezer.ArtistRef{} // релиз → подписки, в чьих списках он есть
+	for i, list := range lists {
+		artist := artists[i]
+		for _, a := range list {
+			if a.ReleaseDate < since {
+				continue
+			}
+			refs := followedOn[a.ID]
+			if len(refs) == 0 {
 				if a.ArtistName == "" {
 					a.ArtistName = artist.Name
 				}
 				albums = append(albums, a)
+			} else if refs[len(refs)-1].ID == artist.ID {
+				continue // тот же релиз дважды в одном списке
 			}
-		}(artist)
+			followedOn[a.ID] = append(refs, deezer.ArtistRef{ID: artist.ID, Name: artist.Name, PictureURL: artist.PictureURL})
+		}
 	}
-	wg.Wait()
 
 	sort.SliceStable(albums, func(i, j int) bool {
 		if albums[i].ReleaseDate != albums[j].ReleaseDate {
@@ -511,8 +519,69 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 	if len(albums) > releasesLimit {
 		albums = albums[:releasesLimit]
 	}
+	s.creditReleases(albums, followedOn)
 	s.overlayFor(nil, albumPtrs(albums), nil)
 	writeJSON(w, http.StatusOK, map[string]any{"albums": visibleAlbums(r, albums)})
+}
+
+// creditReleases подписывает релизы полки их исполнителями (contributors).
+// В списке релизов артиста Deezer исполнителей не присылает, и релиз
+// подписан тем, на кого человек подписан. Совместный релиз нескольких
+// подписок получает состав из самого альбома, как на его странице: альбом
+// почти всегда в кеше, а таких релизов на полке единицы. Подписки, которых в
+// составе нет, дописываются в конец; Deezer не ответил — подписки по порядку.
+// У альбома, запрошенного целиком (запомненный релиз), из состава уходят фиты.
+func (s *Server) creditReleases(albums []deezer.Album, followedOn map[string][]deezer.ArtistRef) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for i := range albums {
+		a := &albums[i]
+		credits := mainCredits(*a)
+		followed := followedOn[a.ID]
+		if len(followed) < 2 {
+			if len(credits) > 0 {
+				a.Contributors = credits
+			}
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if len(credits) == 0 && !isLocalID(a.ID) {
+				sem <- struct{}{}
+				err := guard("new releases: credits", func() error {
+					full, err := s.Deezer.GetAlbum(a.ID)
+					if err == nil {
+						credits = mainCredits(*full)
+					}
+					return err
+				})
+				<-sem
+				if err != nil {
+					log.Printf("new releases: credits of %s: %v", a.ID, err)
+				}
+			}
+			for _, f := range followed {
+				if !slices.ContainsFunc(credits, func(c deezer.ArtistRef) bool { return c.ID == f.ID }) {
+					credits = append(credits, f)
+				}
+			}
+			a.Contributors, a.ArtistID, a.ArtistName = credits, credits[0].ID, credits[0].Name
+		}()
+	}
+	wg.Wait()
+}
+
+// mainCredits — главные исполнители альбома, без фитов, в порядке Deezer.
+// Известны, только если альбом запрашивался целиком (GetAlbum).
+func mainCredits(a deezer.Album) []deezer.ArtistRef {
+	var out []deezer.ArtistRef
+	for _, c := range a.Contributors {
+		if slices.Contains(a.MainArtistIDs, c.ID) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Новинки всегда на первой странице дискографии (Deezer отдаёт свежие первыми).

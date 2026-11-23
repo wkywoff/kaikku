@@ -155,14 +155,30 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 		fresh := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
 		w.Write([]byte(`{"data":[{"id":9,"title":"Test Album","release_date":"` + fresh + `","record_type":"album"},{"id":10,"title":"Old Single","release_date":"2015-01-01","record_type":"single"}],"total":2}`))
 	})
-	// Артист 30 — новые релизы за месяц (handlers_history_test.go): сингл
-	// 25-дневной давности ещё новый, 45-дневной — уже нет.
+	// Артисты 30 и 31 — новые релизы (handlers_history_test.go): у 30 сингл
+	// 25-дневной давности ещё новый, 45-дневной — уже нет; 40 и 43 — их
+	// совместные синглы (в обоих списках), у 40 есть гость, 43 Deezer не отдаёт.
 	mux.HandleFunc("/artist/30", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"id":30,"name":"Left Artist"}`))
 	})
+	mux.HandleFunc("/artist/31", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":31,"name":"Right Artist"}`))
+	})
+	joint := `{"id":40,"title":"Duet","release_date":"` + daysAgo(5) + `","record_type":"single"},
+		{"id":43,"title":"Split","release_date":"` + daysAgo(10) + `","record_type":"single"}`
 	mux.HandleFunc("/artist/30/albums", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"data":[{"id":41,"title":"Last Month","release_date":"` + daysAgo(25) + `","record_type":"single"},
-			{"id":42,"title":"Two Months Ago","release_date":"` + daysAgo(45) + `","record_type":"single"}],"total":2}`))
+		w.Write([]byte(`{"data":[` + joint + `,{"id":41,"title":"Last Month","release_date":"` + daysAgo(25) + `","record_type":"single"},
+			{"id":42,"title":"Two Months Ago","release_date":"` + daysAgo(45) + `","record_type":"single"}],"total":4}`))
+	})
+	mux.HandleFunc("/artist/31/albums", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[` + joint + `],"total":2}`))
+	})
+	mux.HandleFunc("/album/40", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":40,"title":"Duet","release_date":"` + daysAgo(5) + `","record_type":"single","artist":{"id":30,"name":"Left Artist"},
+			"contributors":[{"id":30,"name":"Left Artist","role":"Main"},{"id":31,"name":"Right Artist","role":"Main"},{"id":3,"name":"Feat Artist","role":"Featured"}]}`))
+	})
+	mux.HandleFunc("/album/43", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"error":{"type":"DataException","message":"no data","code":800}}`))
 	})
 	// Поиск артистов и альбомов: артист 1 — на любой запрос, альбомов нет.
 	mux.HandleFunc("/search/artist", func(w http.ResponseWriter, r *http.Request) {
