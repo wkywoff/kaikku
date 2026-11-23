@@ -13,6 +13,10 @@ working on the code. Code comments are mostly in Russian.
 | Python 3 | 3.9+ | the API's "warm" yt-dlp helper |
 | Deno | 2.x, in `PATH` | yt-dlp solves YouTube's challenges with it |
 
+Go 1.24 is enough to start: inside the repository it fetches and uses the
+toolchain `go.mod` names (`toolchain go1.27.4`, what CI uses). With
+`GOTOOLCHAIN=local` it doesn't, and staticcheck then needs Go 1.26+.
+
 ## Running it locally
 
 ```bash
