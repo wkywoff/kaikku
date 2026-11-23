@@ -437,11 +437,11 @@ func (s *Server) handleFollowedArtists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"artists": artists})
 }
 
-// Новые релизы — вышедшие за последние releasesWindow у артистов, на
-// которых человек подписан. Дискографии кешируются, так что главная не
+// Новые релизы — вышедшие за последний месяц (releasesWindow) у артистов,
+// на которых человек подписан. Дискографии кешируются, так что главная не
 // ходит в Deezer за каждым артистом при каждом открытии.
 const (
-	releasesWindow = 90 * 24 * time.Hour
+	releasesWindow = 30 * 24 * time.Hour
 	releasesLimit  = 20
 	releasesTTL    = 6 * time.Hour
 )

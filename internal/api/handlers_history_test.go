@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -127,6 +128,19 @@ func TestFollowsSuggestionsAndReleases(t *testing.T) {
 	json.Unmarshal(call(t, router, "GET", "/api/me/releases", token, "", http.StatusOK), &rel)
 	if len(rel.Albums) != 0 {
 		t.Errorf("releases after unfollow: %+v", rel.Albums)
+	}
+}
+
+// Новые — релизы за последний месяц: вышедший 25 дней назад ещё на полке,
+// 45 дней назад — уже нет.
+func TestNewReleases_LastMonth(t *testing.T) {
+	_, router, token := newTestRouter(t)
+	call(t, router, "PUT", "/api/me/artists/30", token, "", http.StatusNoContent)
+
+	var rel struct{ Albums []pageAlbum }
+	json.Unmarshal(call(t, router, "GET", "/api/me/releases", token, "", http.StatusOK), &rel)
+	if got := albumIDs(rel.Albums); !slices.Contains(got, "41") || slices.Contains(got, "42") {
+		t.Errorf("releases = %v, want 41 and not 42", got)
 	}
 }
 

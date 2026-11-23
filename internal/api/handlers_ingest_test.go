@@ -70,6 +70,9 @@ func postJSON(router http.Handler, path, body, token string) *httptest.ResponseR
 // artistCalls counts requests for /artist/1 (the artist page cache test).
 var artistCalls atomic.Int32
 
+// daysAgo — дата n дней назад, как её пишет Deezer.
+func daysAgo(n int) string { return time.Now().AddDate(0, 0, -n).Format("2006-01-02") }
+
 // mockDeezerServer serves a single track (12345, album 9), a two-artist
 // compilation (album 77) and a Deezer-style not-found error (track 404) —
 // response shapes as Deezer actually returns them (tracklist entries carry
@@ -151,6 +154,15 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/artist/1/albums", func(w http.ResponseWriter, r *http.Request) {
 		fresh := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
 		w.Write([]byte(`{"data":[{"id":9,"title":"Test Album","release_date":"` + fresh + `","record_type":"album"},{"id":10,"title":"Old Single","release_date":"2015-01-01","record_type":"single"}],"total":2}`))
+	})
+	// Артист 30 — новые релизы за месяц (handlers_history_test.go): сингл
+	// 25-дневной давности ещё новый, 45-дневной — уже нет.
+	mux.HandleFunc("/artist/30", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":30,"name":"Left Artist"}`))
+	})
+	mux.HandleFunc("/artist/30/albums", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":41,"title":"Last Month","release_date":"` + daysAgo(25) + `","record_type":"single"},
+			{"id":42,"title":"Two Months Ago","release_date":"` + daysAgo(45) + `","record_type":"single"}],"total":2}`))
 	})
 	// Поиск артистов и альбомов: артист 1 — на любой запрос, альбомов нет.
 	mux.HandleFunc("/search/artist", func(w http.ResponseWriter, r *http.Request) {
