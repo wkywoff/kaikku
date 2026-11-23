@@ -52,7 +52,10 @@ playlists queue their tracks. A track played before it's downloaded is
 fetched by the API while it streams to you, and the finished file goes to
 the worker, so nothing is downloaded twice. Failed jobs are retried about
 once a day, three times at most; the rest show up on the admin's "Not
-found" page.
+found" page. When YouTube refuses the server itself ("Sign in to confirm
+you're not a bot"), the failures don't count: one such job is tried again
+every hour, and as soon as one downloads, the rest are queued again.
+"Not found" then says how to fix it (`YTDLP_PROXY`).
 
 **Disk.** Audio nobody played for `AUDIO_KEEP_DAYS` is deleted and
 downloaded again from the same video on the next play. Uploads and files an

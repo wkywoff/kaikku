@@ -12,6 +12,8 @@ import (
 //
 //   - упавшие задачи повторяются раз в сутки, пока попыток меньше
 //     MaxAttempts (YouTube или yt-dlp могли починиться, ролик — появиться);
+//     те, кому YouTube отказал целиком (blocked), — по одной пробной в час
+//     (RetryBlocked);
 //   - мёртвые задачи удаляются: готовые, чей трек удалили, и безнадёжно
 //     упавшие, на которые никто не ссылается;
 //   - аудио, которое никто не включал keep, удаляется с диска (evictAudio);
@@ -19,11 +21,17 @@ import (
 func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 	if res, err := db.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, updated_at = now()
-		  WHERE status = 'failed' AND attempts < $1 AND updated_at < now() - interval '20 hours'`, MaxAttempts,
+		  WHERE status = 'failed' AND attempts < $1 AND updated_at < now() - interval '20 hours'
+		    AND COALESCE(error, '') NOT LIKE 'blocked:%'`, MaxAttempts,
 	); err != nil {
 		log.Printf("housekeep: retry: %v", err)
 	} else if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("housekeep: retrying %d failed job(s)", n)
+	}
+	if n, err := RetryBlocked(db, false); err != nil {
+		log.Printf("housekeep: retry blocked: %v", err)
+	} else if n > 0 {
+		log.Printf("housekeep: youtube refused the server, trying one of those jobs again")
 	}
 
 	// Готовые без трека, но с известным видео — это удалённое неслушаемое
@@ -46,6 +54,27 @@ func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 	if _, err := db.Exec(`DELETE FROM deezer_cache WHERE expires_at < now()`); err != nil {
 		log.Printf("housekeep: deezer cache: %v", err)
 	}
+}
+
+// RetryBlocked returns jobs YouTube refused to download (FailureKind
+// "blocked": it doesn't let the server in, the tracks aren't at fault) to
+// the queue: all of them, or one probe, the one refused longest ago. The
+// worker tries a probe at start and every hour (Housekeep), and the first
+// download that works brings the rest back (downloadFirst), so a long block
+// costs a couple of requests an hour, not a couple per job.
+func RetryBlocked(db *sql.DB, all bool) (int64, error) {
+	var limit any = 1
+	if all {
+		limit = nil // LIMIT NULL — без ограничения
+	}
+	res, err := db.Exec(
+		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, updated_at = now()
+		  WHERE id IN (SELECT id FROM ingest_jobs WHERE status = 'failed' AND error LIKE 'blocked:%'
+		                ORDER BY updated_at LIMIT $1)`, limit)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // MaxAttempts — сколько раз задача может упасть, прежде чем Housekeep

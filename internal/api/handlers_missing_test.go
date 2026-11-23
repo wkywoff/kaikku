@@ -8,6 +8,29 @@ import (
 	"testing"
 )
 
+// YouTube не пускает сервер — страница узнаёт об этом из списка.
+func TestMissing_BlockedByYouTube(t *testing.T) {
+	db, router, admin, _ := newTestServer(t)
+	var list struct {
+		Tracks         []missingTrack
+		Blocked, Proxy bool
+	}
+	json.Unmarshal(call(t, router, "GET", "/api/admin/missing", admin, "", http.StatusOK), &list)
+	if list.Blocked || list.Proxy || len(list.Tracks) != 0 {
+		t.Fatalf("empty list: %+v", list)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO ingest_jobs (source_ref, title, artist_name, album_artist_name, album_title, duration_ms, status, error, attempts)
+		 VALUES ('deezer:12347', 'Song', 'Artist', 'Artist', 'Album', 200000, 'failed',
+		         'blocked: download: yt-dlp download: exit status 1 (output: ERROR: [youtube] x: Sign in to confirm you’re not a bot)', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	json.Unmarshal(call(t, router, "GET", "/api/admin/missing", admin, "", http.StatusOK), &list)
+	if !list.Blocked || len(list.Tracks) != 1 || list.Tracks[0].Kind != "blocked" {
+		t.Fatalf("blocked: %+v", list)
+	}
+}
+
 func TestMissing_ListVideoAndUpload(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")

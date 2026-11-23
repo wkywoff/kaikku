@@ -27,14 +27,16 @@ type missingTrack struct {
 	CoverURL      string    `json:"cover_url,omitempty"`
 	DurationMs    int       `json:"duration_ms"`
 	Error         string    `json:"error"`
-	Kind          string    `json:"kind"` // not_found | download | audio | other (ingest.FailureKind)
+	Kind          string    `json:"kind"` // blocked | not_found | download | audio | other (ingest.FailureKind)
 	Attempts      int       `json:"attempts"`
 	RequestedBy   string    `json:"requested_by,omitempty"`
 	ManualVideoID string    `json:"manual_video_id,omitempty"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// GET /api/admin/missing — упавшие задачи, свежие сверху.
+// GET /api/admin/missing — упавшие задачи, свежие сверху. blocked — среди
+// них есть те, кому YouTube отказал целиком (не пускает сервер): страница
+// объясняет, как это починить; proxy — YouTube уже идёт через YTDLP_PROXY.
 func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.Query(`
 		SELECT j.id, substr(j.source_ref, 8), j.title, j.artist_name, j.album_title, COALESCE(j.album_deezer_id, ''),
@@ -50,6 +52,7 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	out := []missingTrack{}
+	blocked := false
 	for rows.Next() {
 		var m missingTrack
 		if err := rows.Scan(&m.JobID, &m.DeezerID, &m.Title, &m.Artist, &m.Album, &m.AlbumID, &m.CoverURL, &m.DurationMs,
@@ -58,13 +61,14 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		m.Kind = ingest.FailureKind(m.Error)
+		blocked = blocked || m.Kind == "blocked"
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
 		serverError(w, r, "query failed", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tracks": out})
+	writeJSON(w, http.StatusOK, map[string]any{"tracks": out, "blocked": blocked, "proxy": ytdlp.Proxied()})
 }
 
 // POST /api/admin/missing/{job}/retry — искать заново сейчас, с полным

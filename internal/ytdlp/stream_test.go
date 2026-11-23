@@ -29,10 +29,12 @@ import (
 //	partial* — `-o -` prints some audio, then fails;
 //	expired* — the direct URL answers 403 (yt-dlp's own download works);
 //	hls*     — format 140 is HLS, not a plain file;
-//	noquick* — fails with the quick client (quickClientArgs), works without.
+//	noquick* — fails with the quick client (quickClientArgs), works without;
+//	blocked* — "Sign in to confirm you’re not a bot", exit 1, for everything.
 //
-// Searches (--flat-playlist) print searchResults. `-o <template>` writes
-// the audio to the template with ext m4a.
+// Searches (--flat-playlist) print searchResults; searchResults "BLOCKED"
+// fails them like blocked*. `-o <template>` writes the audio to the
+// template with ext m4a.
 func fakeYtDlp(t *testing.T, searchResults string) *[]string {
 	t.Helper()
 	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +71,10 @@ func TestHelperProcess(t *testing.T) {
 	}
 	args := os.Args[sep+2:]
 	if slices.Contains(args, "--flat-playlist") {
+		if os.Getenv("FAKE_SEARCH") == "BLOCKED" {
+			fmt.Fprintln(os.Stderr, "ERROR: [youtube:search] Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.")
+			os.Exit(1)
+		}
 		fmt.Print(os.Getenv("FAKE_SEARCH"))
 		os.Exit(0)
 	}
@@ -81,6 +87,9 @@ func TestHelperProcess(t *testing.T) {
 	switch {
 	case strings.HasPrefix(id, "gone"):
 		fail()
+	case strings.HasPrefix(id, "blocked"):
+		fmt.Fprintf(os.Stderr, "ERROR: [youtube] %s: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.\n", id)
+		os.Exit(1)
 	case strings.HasPrefix(id, "flaky"):
 		state := os.Getenv("FAKE_FLAKY_STATE")
 		if _, err := os.Stat(state); err != nil {
@@ -309,6 +318,8 @@ func fakeWarmHelper() {
 			os.Exit(3)
 		case strings.HasPrefix(req.Video, "gone"):
 			reply["error"] = "ERROR: [youtube] " + req.Video + ": Video unavailable"
+		case strings.HasPrefix(req.Video, "blocked"):
+			reply["error"] = "ERROR: [youtube] " + req.Video + ": Sign in to confirm you’re not a bot"
 		default:
 			reply["url"] = os.Getenv("FAKE_MEDIA_URL") + "/" + req.Video
 			reply["protocol"] = "https"

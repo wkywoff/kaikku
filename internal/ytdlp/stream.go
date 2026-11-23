@@ -78,7 +78,8 @@ func (s *streamReader) Close() error {
 func (s *streamReader) finish() error {
 	s.wait.Do(func() {
 		if err := s.cmd.Wait(); err != nil {
-			s.err = fmt.Errorf("yt-dlp stream: %w: %s", err, strings.TrimSpace(s.stderr.String()))
+			stderr := strings.TrimSpace(s.stderr.String())
+			s.err = markBlocked(fmt.Errorf("yt-dlp stream: %w: %s", err, stderr), stderr)
 		}
 	})
 	return s.err
@@ -95,7 +96,7 @@ func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTri
 				return want.VideoID, body, nil
 			}
 			log.Printf("stream %s: %v", want.VideoID, err)
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(err, ErrBlocked) {
 				return "", nil, err
 			}
 		}
@@ -117,7 +118,7 @@ func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTri
 				return id, body, nil
 			}
 			log.Printf("stream %s: %v", id, err)
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(err, ErrBlocked) { // другие видео YouTube не отдаст так же
 				return "", nil, err
 			}
 		}

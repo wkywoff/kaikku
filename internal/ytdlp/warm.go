@@ -282,7 +282,7 @@ func (c *warmClient) call(ctx context.Context, req map[string]any) (warmReply, e
 	select {
 	case r := <-ch:
 		if r.Error != "" {
-			return r, errors.New(r.Error)
+			return r, markBlocked(errors.New(r.Error), r.Error)
 		}
 		return r, nil
 	case <-p.dead:

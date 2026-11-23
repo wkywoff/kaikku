@@ -2,7 +2,9 @@ package ingest
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +18,8 @@ import (
 
 // fakeYouTube подменяет поиск и скачивание: поиск отдаёт found (или
 // ErrNoMatch, если пусто), скачивание — 3 с синуса для id без префикса
-// gone. Возвращает, что спрашивали.
+// gone (видео недоступно) или blocked (YouTube не пускает сервер).
+// Возвращает, что спрашивали.
 func fakeYouTube(t *testing.T, found ...string) (searches *int, downloads *[]string) {
 	t.Helper()
 	ffmpeg, err := exec.LookPath("ffmpeg")
@@ -40,6 +43,9 @@ func fakeYouTube(t *testing.T, found ...string) (searches *int, downloads *[]str
 		got = append(got, videoID)
 		if strings.HasPrefix(videoID, "gone") {
 			return "", errors.New("Video unavailable")
+		}
+		if strings.HasPrefix(videoID, "blocked") {
+			return "", fmt.Errorf("Sign in to confirm you’re not a bot: %w", ytdlp.ErrBlocked)
 		}
 		path := filepath.Join(dir, name+".m4a")
 		if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
@@ -106,6 +112,72 @@ func TestProcessJob_VideoChoice(t *testing.T) {
 	st, e, _, n := run("deezer:505", "", "")
 	if st != "failed" || n != 1 || FailureKind(e) != "not_found" {
 		t.Fatalf("not found: %s %q attempts %d", st, e, n)
+	}
+}
+
+// processRef ставит задачу ref (known — видео, с которого уже качали) и
+// прогоняет её, как воркер.
+func processRef(t *testing.T, db *sql.DB, ref, known string) {
+	t.Helper()
+	if _, err := db.Exec(
+		`INSERT INTO ingest_jobs (source_ref, title, artist_name, artist_deezer_id, album_artist_name, album_artist_deezer_id,
+		                          album_title, album_deezer_id, duration_ms, status, known_video_id)
+		 VALUES ($1, 'Song', 'Artist', '1', 'Artist', '1', 'Album', '9', 3000, 'pending', NULLIF($2, ''))`, ref, known,
+	); err != nil {
+		t.Fatal(err)
+	}
+	job, err := LoadJob(db, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ProcessJob(db, job, t.TempDir(), t.TempDir())
+}
+
+func jobState(t *testing.T, db *sql.DB, ref string) (status, errText string, attempts int) {
+	t.Helper()
+	var e sql.NullString
+	if err := db.QueryRow(`SELECT status, error, attempts FROM ingest_jobs WHERE source_ref = $1`, ref).Scan(&status, &e, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	return status, e.String, attempts
+}
+
+// YouTube не пускает сервер: попытки не тратятся, другие видео не
+// пробуются; раз в час — одна пробная задача; первое удачное скачивание
+// возвращает в очередь остальные.
+func TestProcessJob_BlockedByYouTube(t *testing.T) {
+	db := openTestDB(t)
+	searches, downloads := fakeYouTube(t, "blocked1", "found1")
+	processRef(t, db, "deezer:601", "")
+	processRef(t, db, "deezer:602", "blockedKnown")
+	if st, e, n := jobState(t, db, "deezer:601"); st != "failed" || n != 0 || FailureKind(e) != "blocked" || !strings.Contains(e, "not a bot") {
+		t.Fatalf("blocked: %s %q attempts %d", st, e, n)
+	}
+	if st, e, _ := jobState(t, db, "deezer:602"); FailureKind(e) != "blocked" || st != "failed" {
+		t.Fatalf("blocked known video: %s %q", st, e)
+	}
+	if !slices.Equal(*downloads, []string{"blocked1", "blockedKnown"}) || *searches != 1 {
+		t.Fatalf("downloads %v, searches %d: after a refusal nothing else is tried", *downloads, *searches)
+	}
+
+	// Housekeep: одна пробная — та, которой отказали раньше.
+	db.Exec(`UPDATE ingest_jobs SET updated_at = now() - interval '21 hours' WHERE source_ref = 'deezer:601'`)
+	Housekeep(db, t.TempDir(), 3*24*time.Hour)
+	if st, _, _ := jobState(t, db, "deezer:601"); st != "pending" {
+		t.Fatalf("probe: deezer:601 is %s", st)
+	}
+	if st, _, _ := jobState(t, db, "deezer:602"); st != "failed" {
+		t.Fatalf("only one probe an hour: deezer:602 is %s", st)
+	}
+
+	// Скачалось — отказанные снова в очереди.
+	fakeYouTube(t, "found1")
+	processRef(t, db, "deezer:603", "")
+	if st, e, _ := jobState(t, db, "deezer:603"); st != "done" {
+		t.Fatalf("deezer:603: %s %q", st, e)
+	}
+	if st, e, n := jobState(t, db, "deezer:602"); st != "pending" || e != "" || n != 0 {
+		t.Fatalf("after a download that worked deezer:602 is %s %q attempts %d", st, e, n)
 	}
 }
 

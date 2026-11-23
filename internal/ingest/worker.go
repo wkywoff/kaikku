@@ -173,9 +173,15 @@ func ProcessJob(db *sql.DB, job *Job, stagingDir, storageDir string) {
 	}
 	if err != nil {
 		log.Printf("job %d failed: %v", job.ID, err)
+		text, attempt := err.Error(), 1
+		if errors.Is(err, ytdlp.ErrBlocked) {
+			// YouTube не пускает сервер, трек ни при чём: попытка не
+			// засчитывается, повтор — RetryBlocked.
+			text, attempt = "blocked: "+text, 0
+		}
 		_, _ = db.Exec(
-			`UPDATE ingest_jobs SET status='failed', error=$1, attempts = attempts + 1, updated_at=now() WHERE id=$2`,
-			err.Error(), job.ID,
+			`UPDATE ingest_jobs SET status='failed', error=$1, attempts = attempts + $3, updated_at=now() WHERE id=$2`,
+			text, job.ID, attempt,
 		)
 		return
 	}
@@ -191,10 +197,13 @@ func MarkDone(db *sql.DB, jobID int64, trackID string) {
 	)
 }
 
-// FailureKind — вид ошибки задачи по префиксу, который пишет processJob:
-// not_found (на YouTube не нашлось), download, audio или other.
+// FailureKind — вид ошибки задачи по префиксу, который пишут processJob и
+// ProcessJob: blocked (YouTube не пускает сервер), not_found (на YouTube
+// не нашлось), download, audio или other.
 func FailureKind(errText string) string {
 	switch {
+	case strings.HasPrefix(errText, "blocked:"):
+		return "blocked"
 	case strings.HasPrefix(errText, "match:"):
 		return "not_found"
 	case strings.HasPrefix(errText, "download:"):
@@ -252,7 +261,8 @@ func processJob(db *sql.DB, job *Job, stagingDir, storageDir string) (string, er
 	case job.ManualVideoID.Valid: // админ указал видео — его и только его
 		rawPath, err = downloadFirst(db, job, []string{job.ManualVideoID.String}, stagingDir)
 	case job.KnownVideoID.Valid: // с него уже качали; удалили — ищем заново
-		if rawPath, err = downloadFirst(db, job, []string{job.KnownVideoID.String}, stagingDir); err != nil {
+		rawPath, err = downloadFirst(db, job, []string{job.KnownVideoID.String}, stagingDir)
+		if err != nil && !errors.Is(err, ytdlp.ErrBlocked) {
 			log.Printf("job %d: known video %s: %v, searching again", job.ID, job.KnownVideoID.String, err)
 			rawPath, err = searchAndDownload(db, job, stagingDir)
 		}
@@ -294,9 +304,16 @@ func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (
 		rawPath, err = download(ctx, videoID, stagingDir, randomID())
 		cancel()
 		if err == nil {
+			// YouTube снова отдаёт видео: тем, кому он отказывал, — в очередь.
+			if n, err := RetryBlocked(db, true); err == nil && n > 0 {
+				log.Printf("job %d: youtube lets the server in again, %d refused job(s) queued again", job.ID, n)
+			}
 			return rawPath, nil
 		}
 		log.Printf("job %d: download %s: %v", job.ID, videoID, err)
+		if errors.Is(err, ytdlp.ErrBlocked) {
+			break // остальные видео YouTube не отдаст так же
+		}
 	}
 	if err == nil {
 		err = errors.New("no video to download")

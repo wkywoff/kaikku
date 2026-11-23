@@ -76,11 +76,12 @@ type ytDlpEntry struct {
 // wrapWithStderr extracts yt-dlp's actual error message. cmd.Output() only
 // returns stdout — on failure the error is just "exit status 1" unless we
 // pull the process's stderr out of the ExitError (populated automatically
-// when cmd.Stderr is nil). Without this, bot detection, an outdated yt-dlp
-// and network issues all look the same.
+// when cmd.Stderr is nil). Without this, bot detection (ErrBlocked), an
+// outdated yt-dlp and network issues all look the same.
 func wrapWithStderr(err error) error {
 	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		stderr := strings.TrimSpace(string(exitErr.Stderr))
+		return markBlocked(fmt.Errorf("%w: %s", err, stderr), stderr)
 	}
 	return err
 }
@@ -235,7 +236,7 @@ func FindMatches(ctx context.Context, want Want, resultCount, toleranceMs int) (
 		if firstErr == nil {
 			firstErr = err
 		}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || errors.Is(err, ErrBlocked) { // следующие запросы YouTube не пустит так же
 			break
 		}
 	}
@@ -523,8 +524,13 @@ func Download(ctx context.Context, videoID, stagingDir, basename string) (path s
 		if runErr == nil {
 			break
 		}
-		if i == len(attempts)-1 || ctx.Err() != nil {
-			return "", fmt.Errorf("yt-dlp download: %w (output: %s)", runErr, truncate(string(out), 1500))
+		// YouTube не пускает сервер, и штатные клиенты (вторая попытка) это
+		// подтвердили: третья не поможет. После быстрого клиента — ещё не
+		// конец: с куками yt-dlp его пропускает.
+		blocked := i > 0 && isBlocked(string(out))
+		if i == len(attempts)-1 || ctx.Err() != nil || blocked {
+			err := fmt.Errorf("yt-dlp download: %w (output: %s)", runErr, truncate(string(out), 1500))
+			return "", markBlocked(err, string(out))
 		}
 		if i == 0 {
 			log.Printf("yt-dlp %s: %s failed, trying the default clients: %s", videoID, quickClientArgs, truncate(strings.TrimSpace(string(out)), 300))

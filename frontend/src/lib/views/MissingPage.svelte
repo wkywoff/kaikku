@@ -5,6 +5,7 @@
   // файл или повторить поиск. Воркер и сам повторяет такие раз в сутки, до
   // трёх попыток (internal/ingest/housekeep.go); исчерпавшие сюда не
   // попадают — им ссылку или файл дают в правке трека (EditDialog).
+  // Если YouTube не пускает сам сервер (blocked), сверху — что с этим делать.
   import { api } from '../api.js';
   import { t } from '../i18n.js';
   import { lang } from '../stores/settings.js';
@@ -18,12 +19,15 @@
   import FileMusic from '@lucide/svelte/icons/file-music';
   import Link from '@lucide/svelte/icons/link';
   import Disc3 from '@lucide/svelte/icons/disc-3';
+  import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 
   pageTint().none();
 
   const MAX_AUDIO = 200 * 1024 * 1024; // как на сервере (handlers_admin.go)
 
   let tracks = null;
+  let blocked = false; // YouTube не пускает сервер
+  let proxied = false; // YouTube уже идёт через YTDLP_PROXY
   let error = '';
   let links = {}; // job_id → введённая ссылка
   let busy = {}; // job_id → 'video' | 'upload' | 'retry'
@@ -32,7 +36,7 @@
 
   async function load() {
     try {
-      tracks = (await api.missing()).tracks;
+      ({ tracks, blocked, proxy: proxied } = await api.missing());
       // Ссылка, которую уже давали, — в поле: видно, что с ней не вышло.
       for (const m of tracks) if (m.manual_video_id) links[m.job_id] = `https://youtu.be/${m.manual_video_id}`;
     } catch (e) {
@@ -65,13 +69,34 @@
     run(m, 'upload', () => api.uploadTrackAudio(m.deezer_id, file, (p) => (progress = { ...progress, [m.job_id]: p })), 'added');
   }
 
-  const KINDS = { not_found: 'missing.notFound', download: 'missing.download', audio: 'missing.audio', other: 'missing.other' };
+  const KINDS = {
+    blocked: 'missing.blocked',
+    not_found: 'missing.notFound',
+    download: 'missing.download',
+    audio: 'missing.audio',
+    other: 'missing.other',
+  };
   const when = (iso) => new Date(iso).toLocaleString($lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 </script>
 
 <div class="page-pad missing">
   <h1>{$t('missing.title')}</h1>
   <p class="muted intro">{$t('missing.intro')}</p>
+
+  {#if blocked}
+    <section class="blocked" role="status">
+      <h2><ShieldAlert size={20} /> {$t('missing.blockedTitle')}</h2>
+      <p>{$t('missing.blockedText')}</p>
+      {#if proxied}
+        <p>{$t('missing.blockedProxy')}</p>
+      {:else}
+        <ol>
+          <li>{$t('missing.blockedStep1')}<code>YTDLP_PROXY=socks5://host.docker.internal:40000</code></li>
+          <li>{$t('missing.blockedStep2')}<code>docker compose up -d</code></li>
+        </ol>
+      {/if}
+    </section>
+  {/if}
 
   {#if error}
     <p class="error-text">{error}</p>
@@ -164,6 +189,50 @@
     margin: 8px 0 24px;
     max-width: 680px;
     font-size: 14px;
+  }
+  .blocked {
+    max-width: 680px;
+    margin: 0 0 24px;
+    padding: 16px 20px;
+    border-radius: var(--radius);
+    border-left: 3px solid var(--danger);
+    background: var(--bg-elevated);
+    font-size: 14px;
+  }
+  .blocked h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 18px;
+  }
+  .blocked h2 :global(svg) {
+    flex-shrink: 0;
+    color: var(--danger);
+  }
+  .blocked p {
+    margin: 0 0 8px;
+    color: var(--text-dim);
+  }
+  .blocked ol {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: var(--text-dim);
+  }
+  .blocked code {
+    display: block;
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+    user-select: all;
   }
   .list {
     list-style: none;
