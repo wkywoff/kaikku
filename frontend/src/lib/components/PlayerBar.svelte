@@ -149,16 +149,19 @@
 {/if}
 
 <style>
-  /* 30% / 40% / 30%, как у Spotify: слева трек — не уже 240 px, справа
-     кнопки — не меньше, чем им нужно; сжимается середина. В узком окне
-     правая часть проще (ниже). */
+  /* 30% / 40% / 30%, как у Spotify. Боковые колонки всегда равны, а отступы
+     по краям одинаковые — иначе кнопки и Play съезжают с середины плеера
+     (у левой колонки был минимум 240 px: в узком окне она переставала
+     сжиматься, а правая сжималась дальше). Кнопкам справа места хватает
+     при любой ширине: в узком окне правая часть проще (ниже), название
+     слева обрезается многоточием. */
   .player {
     height: var(--player-h);
     display: grid;
-    grid-template-columns: minmax(240px, 3fr) minmax(0, 4fr) minmax(min-content, 3fr);
+    grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) minmax(0, 3fr);
     align-items: center;
     gap: 16px;
-    padding: 0 16px 0 8px;
+    padding: 0 8px;
     background: #000;
     position: relative;
   }
@@ -337,11 +340,15 @@
   }
   /* Ещё уже — без ползунка громкости (кнопка звука и колёсико остаются). */
   @media (max-width: 940px) and (min-width: 769px) {
+    .player {
+      gap: 8px;
+    }
     .volume {
       display: none;
     }
     .now {
       gap: 10px;
+      padding-right: 12px;
     }
     .cover {
       width: 48px;
