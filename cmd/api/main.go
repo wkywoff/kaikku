@@ -55,6 +55,11 @@ func main() {
 	}
 	defer conn.Close()
 
+	// YouTube через прокси — до помощника yt-dlp (loadStreamHub): он берёт
+	// прокси при запуске.
+	if err := ytdlp.SetProxy(os.Getenv("YTDLP_PROXY")); err != nil {
+		log.Fatalf("YTDLP_PROXY: %v", err)
+	}
 	streams, err := loadStreamHub()
 	if err != nil {
 		log.Fatalf("stream hub: %v", err)

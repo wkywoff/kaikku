@@ -66,12 +66,14 @@ services:
       MEDIA_TTL_SECONDS: ${MEDIA_TTL_SECONDS:-600}
       UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-5120}
       DEEZER_PROXY: ${DEEZER_PROXY:-}
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
       LASTFM_API_KEY: ${LASTFM_API_KEY:-}
       LASTFM_API_SECRET: ${LASTFM_API_SECRET:-}
       LRCRED_CONTACT: ${LRCRED_CONTACT:-}
       YTDLP_VERSION: ${YTDLP_VERSION:-}
       YTDLP_UPDATE_HOURS: ${YTDLP_UPDATE_HOURS:-24}
-    # DEEZER_PROXY=socks5://host.docker.internal:… reaches a proxy on the host.
+    # DEEZER_PROXY / YTDLP_PROXY=socks5://host.docker.internal:… reach a
+    # proxy on the host.
     extra_hosts:
       - host.docker.internal:host-gateway
     volumes:
@@ -96,6 +98,9 @@ services:
       <<: *app-env
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
       AUDIO_KEEP_DAYS: ${AUDIO_KEEP_DAYS:-3}
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - data:/data
       # The API updates yt-dlp; the worker only reads it.

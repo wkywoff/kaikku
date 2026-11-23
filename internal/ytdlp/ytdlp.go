@@ -265,7 +265,7 @@ func search(ctx context.Context, query string) ([]candidate, error) {
 	// --ignore-errors: один недоступный кандидат (гео/возраст/удалён) иначе
 	// обрывает весь поиск. yt-dlp при этом всё равно выходит с кодом 1, так
 	// что ошибка фатальна, только если не распарсился ни один кандидат.
-	cmd := execCommand(ctx, "yt-dlp", "-j", "--no-warnings", "--ignore-errors", "--flat-playlist", query)
+	cmd := command(ctx, "-j", "--no-warnings", "--ignore-errors", "--flat-playlist", query)
 	out, err := cmd.Output()
 	candidates := parseEntries(string(out))
 	if err != nil && len(candidates) == 0 {
@@ -518,7 +518,7 @@ func Download(ctx context.Context, videoID, stagingDir, basename string) (path s
 	}
 	for i, extra := range attempts {
 		args := append([]string{"--no-warnings"}, extra...)
-		cmd := execCommand(ctx, "yt-dlp", append(args, "-o", outputTemplate, watchURL)...)
+		cmd := command(ctx, append(args, "-o", outputTemplate, watchURL)...)
 		out, runErr := cmd.CombinedOutput()
 		if runErr == nil {
 			break

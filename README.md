@@ -171,6 +171,11 @@ Subsonic app. What works there: [docs/subsonic.md](docs/subsonic.md).
   `match` means no suitable video on YouTube (give a link or a file);
   `download` usually means yt-dlp is outdated:
   `docker compose exec api update-yt-dlp --restart`.
+- **Every download fails with "Sign in to confirm you're not a bot"**:
+  YouTube refuses your server's IP, as it does with many data-center
+  addresses. Set `YTDLP_PROXY` in `.env` to a proxy with another IP, such
+  as Cloudflare WARP (the one for `DEEZER_PROXY` will do), and run
+  `docker compose up -d`.
 - **Logged out of apps after changing `JWT_SECRET`**: app passwords are
   encrypted with it; create a new one in Settings → Apps.
 

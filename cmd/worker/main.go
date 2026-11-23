@@ -15,6 +15,7 @@ import (
 	"kaikku/internal/deezer"
 	"kaikku/internal/ingest"
 	"kaikku/internal/safe"
+	"kaikku/internal/ytdlp"
 )
 
 func main() {
@@ -36,6 +37,9 @@ func main() {
 	}
 	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
 		log.Fatalf("staging dir: %v", err)
+	}
+	if err := ytdlp.SetProxy(os.Getenv("YTDLP_PROXY")); err != nil {
+		log.Fatalf("YTDLP_PROXY: %v", err)
 	}
 
 	conn, err := db.Open(dsn)

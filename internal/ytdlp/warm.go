@@ -217,7 +217,7 @@ func startWarm() (*warmProc, error) {
 	if cmd.Env == nil {
 		cmd.Env = toolEnv(os.Environ())
 	}
-	cmd.Env = append(cmd.Env, warmMallocArenas)
+	cmd.Env = append(cmd.Env, warmEnv()...)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

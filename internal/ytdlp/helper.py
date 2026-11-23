@@ -27,6 +27,7 @@
 #     ссылки качаются так же. Не вышло — штатные клиенты.
 import copy
 import json
+import os
 import sys
 import threading
 import time
@@ -39,6 +40,7 @@ import yt_dlp  # noqa: E402
 
 YTCFG_TTL = 30 * 60
 QUICK_CLIENTS = ['visionos']
+PROXY = os.environ.get('KAIKKU_YTDLP_PROXY')  # YTDLP_PROXY (proxy.go)
 
 
 class Quiet:
@@ -111,6 +113,8 @@ local = threading.local()
 def options(kind, visitor=None):
     opts = {'logger': Quiet(), 'quiet': True, 'no_warnings': True,
             'skip_download': True, 'cachedir': False}
+    if PROXY:
+        opts['proxy'] = PROXY
     if kind == 'search':  # как `yt-dlp -j --flat-playlist --ignore-errors`
         opts.update(extract_flat='in_playlist', ignoreerrors=True)
     else:  # как `yt-dlp -j -f 140`

@@ -25,7 +25,7 @@ import (
 // Read returns yt-dlp's exit error (with its stderr) at the end of a failed
 // download instead of io.EOF. Close kills the process if it's still running.
 func Stream(ctx context.Context, videoID string) (io.ReadCloser, error) {
-	cmd := execCommand(ctx, "yt-dlp",
+	cmd := command(ctx,
 		"--no-warnings", "--no-progress",
 		"-f", "140",
 		"-o", "-",
