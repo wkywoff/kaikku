@@ -32,13 +32,42 @@ func (e *blockedError) Error() string        { return e.err.Error() }
 func (e *blockedError) Unwrap() error        { return e.err }
 func (e *blockedError) Is(target error) bool { return target == ErrBlocked }
 
-// markBlocked marks err as ErrBlocked when yt-dlp's output says YouTube
-// refused the server.
-func markBlocked(err error, output string) error {
-	if err == nil || !isBlocked(output) {
-		return err
+// ErrSignIn: YouTube wants a signed-in account for this video (18+, for
+// channel members, private), and there are no cookies, or it doesn't take
+// theirs: an account that hasn't confirmed its age gets "…please provide
+// more info so we can be sure you're an adult". Other videos are fine:
+// errors.Is(err, ErrSignIn).
+var ErrSignIn = errors.New("youtube wants a sign-in for this video")
+
+type signInError struct{ err error }
+
+func (e *signInError) Error() string        { return e.err.Error() }
+func (e *signInError) Unwrap() error        { return e.err }
+func (e *signInError) Is(target error) bool { return target == ErrSignIn }
+
+// AgeUnconfirmed reports whether YouTube refused an 18+ video to the
+// cookies' account because it hasn't confirmed its age with Google ("…please
+// provide more info so we can be sure you're an adult").
+func AgeUnconfirmed(err error) bool {
+	if err == nil {
+		return false
 	}
-	return &blockedError{err}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "provide more info") || strings.Contains(s, "an adult")
+}
+
+// classify marks err by yt-dlp's output: ErrBlocked when YouTube refused
+// the server, ErrSignIn when it wants a sign-in for the video.
+func classify(err error, output string) error {
+	switch {
+	case err == nil:
+		return nil
+	case isBlocked(output):
+		return &blockedError{err}
+	case needsSignIn(output):
+		return &signInError{err}
+	}
+	return err
 }
 
 // Так yt-dlp пишет, что YouTube хочет вход в аккаунт ради этого видео: 18+

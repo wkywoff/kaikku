@@ -16,7 +16,7 @@ func TestBlocked_MarksOnlyServerWideRefusals(t *testing.T) {
 		"ERROR: [youtube] x: Video unavailable":                                                 false,
 		"ERROR: [youtube] x: Sign in to confirm your age":                                       false,
 	} {
-		err := markBlocked(base, out)
+		err := classify(base, out)
 		if errors.Is(err, ErrBlocked) != want {
 			t.Errorf("%q: blocked = %v, want %v", out, !want, want)
 		}
@@ -24,10 +24,10 @@ func TestBlocked_MarksOnlyServerWideRefusals(t *testing.T) {
 			t.Errorf("%q: the original error is lost: %v", out, err)
 		}
 	}
-	if markBlocked(nil, "not a bot") != nil {
+	if classify(nil, "not a bot") != nil {
 		t.Error("no error became an error")
 	}
-	if !errors.Is(fmt.Errorf("download: %w", markBlocked(base, "not a bot")), ErrBlocked) {
+	if !errors.Is(fmt.Errorf("download: %w", classify(base, "not a bot")), ErrBlocked) {
 		t.Error("wrapping hides ErrBlocked")
 	}
 }

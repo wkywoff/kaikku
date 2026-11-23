@@ -18,7 +18,8 @@ import (
 
 // fakeYouTube подменяет поиск и скачивание: поиск отдаёт found (или
 // ErrNoMatch, если пусто), скачивание — 3 с синуса для id без префикса
-// gone (видео недоступно) или blocked (YouTube не пускает сервер).
+// gone (видео недоступно), blocked (YouTube не пускает сервер) или age
+// (видео только вошедшим, 18+).
 // Возвращает, что спрашивали.
 func fakeYouTube(t *testing.T, found ...string) (searches *int, downloads *[]string) {
 	t.Helper()
@@ -46,6 +47,9 @@ func fakeYouTube(t *testing.T, found ...string) (searches *int, downloads *[]str
 		}
 		if strings.HasPrefix(videoID, "blocked") {
 			return "", fmt.Errorf("Sign in to confirm you’re not a bot: %w", ytdlp.ErrBlocked)
+		}
+		if strings.HasPrefix(videoID, "age") {
+			return "", fmt.Errorf("Sign in to confirm your age: %w", ytdlp.ErrSignIn)
 		}
 		path := filepath.Join(dir, name+".m4a")
 		if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
@@ -178,6 +182,31 @@ func TestProcessJob_BlockedByYouTube(t *testing.T) {
 	}
 	if st, e, n := jobState(t, db, "deezer:602"); st != "pending" || e != "" || n != 0 {
 		t.Fatalf("after a download that worked deezer:602 is %s %q attempts %d", st, e, n)
+	}
+}
+
+// Лучшее видео — 18+, следующее недоступно: задача — «нужен вход», с тем
+// видео, которое отдали бы вошедшему; куки загрузили — снова в очереди.
+func TestProcessJob_NeedsSignIn(t *testing.T) {
+	db := openTestDB(t)
+	_, downloads := fakeYouTube(t, "ageBest", "goneNext")
+	processRef(t, db, "deezer:701", "")
+	st, e, n := jobState(t, db, "deezer:701")
+	if st != "failed" || n != 1 || FailureKind(e) != "signin" || !strings.Contains(e, "confirm your age") {
+		t.Fatalf("18+: %s %q attempts %d", st, e, n)
+	}
+	var video string
+	db.QueryRow(`SELECT video_id FROM ingest_jobs WHERE source_ref = 'deezer:701'`).Scan(&video)
+	if video != "ageBest" || !slices.Equal(*downloads, []string{"ageBest", "goneNext"}) {
+		t.Fatalf("video %q, downloads %v", video, *downloads)
+	}
+
+	db.Exec(`UPDATE ingest_jobs SET attempts = 3 WHERE source_ref = 'deezer:701'`)
+	if n, err := RetrySignIn(db); err != nil || n != 1 {
+		t.Fatalf("RetrySignIn: %d, %v", n, err)
+	}
+	if st, e, n := jobState(t, db, "deezer:701"); st != "pending" || e != "" || n != 0 {
+		t.Fatalf("after RetrySignIn: %s %q attempts %d", st, e, n)
 	}
 }
 

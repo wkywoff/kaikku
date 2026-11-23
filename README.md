@@ -180,6 +180,10 @@ Subsonic app. What works there: [docs/subsonic.md](docs/subsonic.md).
   there (also in advance, before YouTube refuses), preferably from an
   account of its own, since YouTube sometimes bans accounts whose cookies
   are used from servers.
+- **A song says "Needs sign-in" on Not found**: YouTube gives its video
+  only to signed-in users (18+ or for channel members). Upload YouTube
+  cookies there; for 18+ the account must have confirmed its age with
+  Google, otherwise YouTube still says no.
 - **Logged out of apps after changing `JWT_SECRET`**: app passwords are
   encrypted with it; create a new one in Settings → Apps.
 

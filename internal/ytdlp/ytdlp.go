@@ -81,7 +81,7 @@ type ytDlpEntry struct {
 func wrapWithStderr(err error) error {
 	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
 		stderr := strings.TrimSpace(string(exitErr.Stderr))
-		return markBlocked(fmt.Errorf("%w: %s", err, stderr), stderr)
+		return classify(fmt.Errorf("%w: %s", err, stderr), stderr)
 	}
 	return err
 }
@@ -544,7 +544,7 @@ func Download(ctx context.Context, videoID, stagingDir, basename string) (path s
 		}
 		if i == len(runs)-1 || ctx.Err() != nil {
 			err := fmt.Errorf("yt-dlp download: %w (output: %s)", runErr, truncate(output, 1500))
-			return "", markBlocked(err, output)
+			return "", classify(err, output)
 		}
 		if i == 0 && !r.signIn {
 			log.Printf("yt-dlp %s: %s failed, trying the default clients: %s", videoID, quickClientArgs, truncate(strings.TrimSpace(output), 300))

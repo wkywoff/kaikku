@@ -248,7 +248,8 @@ export const api = {
   missing: () => request('/admin/missing'),
   retryMissing: (jobId) => request(`/admin/missing/${enc(jobId)}/retry`, { method: 'POST' }),
   // Куки YouTube (cookies.txt) -> { cookies: { updated_at, count, signed_in,
-  // expires }, check: ok | blocked | error | skipped, requeued }; удалить.
+  // expires }, check: ok | blocked | error | skipped, signin: ok | age |
+  // refused | error | '', requeued }; удалить.
   uploadYouTubeCookies: (file) => request('/admin/youtube/cookies', { method: 'PUT', body: file }),
   deleteYouTubeCookies: () => request('/admin/youtube/cookies', { method: 'DELETE' }),
   setTrackVideo: (deezerId, url) => request(`/tracks/deezer/${enc(deezerId)}/video`, { method: 'PUT', body: { url } }),

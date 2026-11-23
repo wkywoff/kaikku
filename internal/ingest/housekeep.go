@@ -77,6 +77,21 @@ func RetryBlocked(db *sql.DB, all bool) (int64, error) {
 	return res.RowsAffected()
 }
 
+// RetrySignIn returns jobs whose video YouTube gives only to a signed-in
+// account (FailureKind "signin": 18+, for channel members) to the queue
+// with their attempts back: the admin uploaded cookies, the reason may be
+// gone. Even the ones that used up their attempts — they may be liked or
+// in playlists.
+func RetrySignIn(db *sql.DB) (int64, error) {
+	res, err := db.Exec(
+		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, attempts = 0, updated_at = now()
+		  WHERE status = 'failed' AND error LIKE 'signin:%'`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // MaxAttempts — сколько раз задача может упасть, прежде чем Housekeep
 // перестанет её повторять. Такие пропадают и из «не нашлось»: ссылку или
 // свой файл для них админ даёт из правки трека на странице альбома.

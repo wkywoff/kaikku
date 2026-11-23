@@ -142,3 +142,42 @@ func TestCheck_AlwaysWithCookies(t *testing.T) {
 		t.Errorf("Check ran %q, want it with the cookies", *calls)
 	}
 }
+
+// Вход ради одного видео — ErrSignIn, а не отказ всему серверу.
+func TestClassify_SignInIsAboutTheVideo(t *testing.T) {
+	for _, out := range []string{
+		"ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication.",
+		"ERROR: [youtube] x: Sorry, this content is age-restricted. To view this video, please provide more info so we can be sure you're an adult.",
+		"ERROR: [youtube] x: Join this channel to get access to members-only content like this video, and other exclusive perks.",
+	} {
+		err := classify(errors.New("yt-dlp: "+out), out)
+		if !errors.Is(err, ErrSignIn) || errors.Is(err, ErrBlocked) {
+			t.Errorf("%q: sign-in %v, blocked %v", out, errors.Is(err, ErrSignIn), errors.Is(err, ErrBlocked))
+		}
+	}
+	bot := "ERROR: [youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication."
+	if err := classify(errors.New(bot), bot); !errors.Is(err, ErrBlocked) || errors.Is(err, ErrSignIn) {
+		t.Errorf("not a bot: %v", err)
+	}
+	if err := classify(errors.New("Video unavailable"), "Video unavailable"); errors.Is(err, ErrSignIn) || errors.Is(err, ErrBlocked) {
+		t.Errorf("unavailable video: %v", err)
+	}
+	adult := errors.New("Sorry, this content is age-restricted. To view this video, please provide more info so we can be sure you're an adult.")
+	if !AgeUnconfirmed(adult) || AgeUnconfirmed(errors.New("Sign in to confirm your age")) || AgeUnconfirmed(nil) {
+		t.Error("AgeUnconfirmed is off")
+	}
+}
+
+// Видео, которое YouTube отдаёт только вошедшим, второй раз не пробуется:
+// сразу следующее.
+func TestOpenStream_SignInVideoIsNotRetried(t *testing.T) {
+	calls := fakeYtDlp(t, searchLine("ageA", "Song", 200)+searchLine("okB", "Song", 200))
+	id, body, err := OpenStream(context.Background(), Want{Artist: "Artist", Title: "Song", DurationMs: 200000}, 15, 4000, 3)
+	if err != nil || id != "okB" {
+		t.Fatalf("OpenStream: %q, %v", id, err)
+	}
+	body.Close()
+	if len(*calls) != 3 {
+		t.Errorf("yt-dlp calls %q: want the search and one extraction of each video", *calls)
+	}
+}

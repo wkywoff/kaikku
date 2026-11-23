@@ -174,10 +174,14 @@ func ProcessJob(db *sql.DB, job *Job, stagingDir, storageDir string) {
 	if err != nil {
 		log.Printf("job %d failed: %v", job.ID, err)
 		text, attempt := err.Error(), 1
-		if errors.Is(err, ytdlp.ErrBlocked) {
+		switch {
+		case errors.Is(err, ytdlp.ErrBlocked):
 			// YouTube не пускает сервер, трек ни при чём: попытка не
 			// засчитывается, повтор — RetryBlocked.
 			text, attempt = "blocked: "+text, 0
+		case errors.Is(err, ytdlp.ErrSignIn):
+			// Видео — только вошедшим (18+…): загрузят куки — RetrySignIn.
+			text = "signin: " + text
 		}
 		_, _ = db.Exec(
 			`UPDATE ingest_jobs SET status='failed', error=$1, attempts = attempts + $3, updated_at=now() WHERE id=$2`,
@@ -198,12 +202,15 @@ func MarkDone(db *sql.DB, jobID int64, trackID string) {
 }
 
 // FailureKind — вид ошибки задачи по префиксу, который пишут processJob и
-// ProcessJob: blocked (YouTube не пускает сервер), not_found (на YouTube
-// не нашлось), download, audio или other.
+// ProcessJob: blocked (YouTube не пускает сервер), signin (видео только
+// для вошедших: 18+, для спонсоров), not_found (на YouTube не нашлось),
+// download, audio или other.
 func FailureKind(errText string) string {
 	switch {
 	case strings.HasPrefix(errText, "blocked:"):
 		return "blocked"
+	case strings.HasPrefix(errText, "signin:"):
+		return "signin"
 	case strings.HasPrefix(errText, "match:"):
 		return "not_found"
 	case strings.HasPrefix(errText, "download:"):
@@ -291,9 +298,11 @@ func searchAndDownload(db *sql.DB, job *Job, stagingDir string) (string, error) 
 
 // downloadFirst скачивает первое из videoIDs, которое скачивается: плоский
 // поиск не проверяет доступность ролика (гео/возраст/удалён) — если лучший
-// не скачался, пробуем следующих.
+// не скачался, пробуем следующих. Не скачалось ничего, а какое-то видео
+// YouTube отдал бы вошедшему (18+…), — это и ошибка задачи: её чинят куки.
 func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (string, error) {
-	var err error
+	var err, signInErr error
+	var signInVideo string
 	for i, videoID := range videoIDs {
 		if i == maxDownloadTries {
 			break
@@ -314,9 +323,18 @@ func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (
 		if errors.Is(err, ytdlp.ErrBlocked) {
 			break // остальные видео YouTube не отдаст так же
 		}
+		if errors.Is(err, ytdlp.ErrSignIn) && signInErr == nil {
+			signInErr, signInVideo = err, videoID
+		}
 	}
 	if err == nil {
 		err = errors.New("no video to download")
+	}
+	if signInErr != nil && !errors.Is(err, ytdlp.ErrBlocked) {
+		// video_id — то, которое отдали бы вошедшему: на нём API проверяет
+		// новые куки (handlers_youtube.go).
+		err = signInErr
+		_, _ = db.Exec(`UPDATE ingest_jobs SET video_id = $1 WHERE id = $2`, signInVideo, job.ID)
 	}
 	return "", fmt.Errorf("download: %w", err)
 }

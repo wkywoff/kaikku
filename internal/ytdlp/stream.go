@@ -98,7 +98,7 @@ func (s *streamReader) finish() error {
 		s.done()
 		if err != nil {
 			stderr := strings.TrimSpace(s.stderr.String())
-			s.err = markBlocked(fmt.Errorf("yt-dlp stream: %w: %s", err, stderr), stderr)
+			s.err = classify(fmt.Errorf("yt-dlp stream: %w: %s", err, stderr), stderr)
 		}
 	})
 	return s.err
@@ -107,7 +107,7 @@ func (s *streamReader) finish() error {
 // OpenStream is FindMatches + opening the audio: the best-ranked video
 // that actually starts (up to maxTries candidates; each gets a second
 // attempt, since YouTube periodically answers 403 on the first try — see
-// Download).
+// Download — unless it wants a sign-in for it: that won't change).
 func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTries int) (videoID string, body io.ReadCloser, err error) {
 	if want.VideoID != "" {
 		for attempt := 0; attempt < 2; attempt++ {
@@ -117,6 +117,9 @@ func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTri
 			log.Printf("stream %s: %v", want.VideoID, err)
 			if ctx.Err() != nil || errors.Is(err, ErrBlocked) {
 				return "", nil, err
+			}
+			if errors.Is(err, ErrSignIn) {
+				break
 			}
 		}
 		if !want.SearchIfVideoFails {
@@ -139,6 +142,9 @@ func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTri
 			log.Printf("stream %s: %v", id, err)
 			if ctx.Err() != nil || errors.Is(err, ErrBlocked) { // другие видео YouTube не отдаст так же
 				return "", nil, err
+			}
+			if errors.Is(err, ErrSignIn) { // это видео — только вошедшим, пробуем следующее
+				break
 			}
 		}
 	}

@@ -15,6 +15,7 @@
   import { toast } from '../stores/toast.js';
   import { sized } from '../imageproxy.js';
   import { formatTime } from '../stores/player.js';
+  import { cookieUploadMessage, signInHint } from '../youtubeCookies.js';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import FileMusic from '@lucide/svelte/icons/file-music';
@@ -76,9 +77,10 @@
 
   const COOKIE_ERRORS = { json: 'missing.cookiesJson', format: 'missing.cookiesFormat', no_youtube: 'missing.cookiesNoYouTube' };
 
-  // Сервер сохраняет куки и сразу спрашивает YouTube (check): ok — отдаёт
-  // видео; requeued — сколько отказанных песен снова в очереди (они уходят со
-  // страницы). Загружать можно и заранее, пока YouTube пускает.
+  // Сервер сохраняет куки и сразу спрашивает YouTube: пускает ли сервер
+  // (check) и отдаёт ли с ними песню, которой нужен вход (signin); requeued
+  // — сколько песен снова в очереди (они уходят со страницы). Загружать
+  // можно и заранее, пока YouTube пускает.
   async function uploadCookies(e) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
@@ -87,8 +89,8 @@
     try {
       const res = await api.uploadYouTubeCookies(file);
       cookies = res.cookies;
-      const said = res.check === 'ok' && res.requeued > 0 ? 'requeued' : res.check;
-      toast($t(`missing.cookiesCheck.${said}`), res.check === 'ok' || res.check === 'skipped' ? 'info' : 'error', 6000);
+      const said = cookieUploadMessage(res);
+      toast($t(said.key, said.params), said.kind, 6000);
       if (res.requeued > 0) load();
     } catch (err) {
       const key = COOKIE_ERRORS[err.data?.reason] || (err.status === 413 && 'missing.cookiesTooBig');
@@ -113,6 +115,7 @@
 
   const KINDS = {
     blocked: 'missing.blocked',
+    signin: 'missing.signin',
     not_found: 'missing.notFound',
     download: 'missing.download',
     audio: 'missing.audio',
@@ -215,6 +218,7 @@
               {#if m.requested_by}<span>{$t('missing.requestedBy', { name: m.requested_by })}</span>{/if}
               <span>{when(m.updated_at)}</span>
             </div>
+            {#if m.kind === 'signin'}<p class="hint">{$t(signInHint(m.error, !!cookies))}</p>{/if}
             <details class="why"><summary>{$t('missing.why')}</summary><code>{m.error}</code></details>
           </div>
 
@@ -440,6 +444,12 @@
     padding: 1px 8px;
     border-radius: 999px;
     background: var(--bg-hover);
+    color: var(--text-dim);
+  }
+  .hint {
+    margin: 6px 0 0;
+    max-width: 560px;
+    font-size: 13px;
     color: var(--text-dim);
   }
   .why {
