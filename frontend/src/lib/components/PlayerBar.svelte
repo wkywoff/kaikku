@@ -322,8 +322,15 @@
     align-items: center;
     gap: 4px;
   }
+  .extra .icon-btn {
+    flex-shrink: 0;
+  }
+  /* Ползунок громкости занимает, сколько остаётся в правой колонке: 100 px,
+     в узком окне меньше, но не короче 56 px — не прячется совсем. Кнопки
+     не сжимаются, уступает только он. */
   .volume {
-    width: 100px;
+    flex: 0 1 100px;
+    min-width: 56px;
     display: flex;
   }
   .mobile-progress {
@@ -334,17 +341,15 @@
     .now {
       padding-right: 24px;
     }
-    .volume {
-      width: 72px;
-    }
   }
-  /* Ещё уже — без ползунка громкости (кнопка звука и колёсико остаются). */
+  /* Ещё уже — промежутки меньше, кнопки справа уже (32 px): ползунку
+     громкости остаётся место (около 70 px в самом узком окне). */
   @media (max-width: 940px) and (min-width: 769px) {
     .player {
       gap: 8px;
     }
-    .volume {
-      display: none;
+    .extra .icon-btn {
+      width: 32px;
     }
     .now {
       gap: 10px;
