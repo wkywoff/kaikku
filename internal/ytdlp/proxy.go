@@ -44,17 +44,20 @@ func SetProxy(raw string) error {
 	return nil
 }
 
-// command runs yt-dlp with what every call needs: the proxy and a copy of
-// the cookies (cookies.go). Call done once the process has exited: it
-// removes the copy.
-func command(ctx context.Context, args ...string) (cmd *exec.Cmd, done func()) {
+// command runs yt-dlp with the proxy and, when signIn is set, a copy of the
+// cookies (cookies.go: they're for when YouTube wants a sign-in, see
+// ytdlpOutput). Call done once the process has exited: it removes the copy.
+func command(ctx context.Context, signIn bool, args ...string) (cmd *exec.Cmd, done func()) {
 	var common []string
 	if proxy != "" {
 		common = append(common, "--proxy", proxy)
 	}
-	cookies, done := cookieCopy()
-	if cookies != "" {
-		common = append(common, "--cookies", cookies)
+	done = func() {}
+	if signIn {
+		var cookies string
+		if cookies, done = cookieCopy(); cookies != "" {
+			common = append(common, "--cookies", cookies)
+		}
 	}
 	return execCommand(ctx, "yt-dlp", append(common, args...)...), done
 }

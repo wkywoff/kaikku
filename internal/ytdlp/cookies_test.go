@@ -88,11 +88,15 @@ func TestCookies_EveryRunGetsItsOwnCopy(t *testing.T) {
 		t.Fatalf("Cookies: %+v, %v", got, ok)
 	}
 
+	// Видео 18+: без кук отказ, затем с копией кук (фейк падает, если её нет).
 	calls := fakeYtDlp(t, "")
-	if _, err := Download(context.Background(), "okA", t.TempDir(), "x"); err != nil {
-		t.Fatalf("Download with cookies: %v", err) // фейк падает, если копии нет
+	if _, err := Download(context.Background(), "ageA", t.TempDir(), "x"); err != nil {
+		t.Fatalf("Download with cookies: %v", err)
 	}
-	args := strings.Fields((*calls)[0])
+	if len(*calls) != 2 || strings.Contains((*calls)[0], "--cookies") {
+		t.Fatalf("yt-dlp calls %q: want one without the cookies, then one with them", *calls)
+	}
+	args := strings.Fields((*calls)[1])
 	i := slices.Index(args, "--cookies")
 	if i < 0 || args[i+1] == path {
 		t.Fatalf("yt-dlp args %q: want a copy of the cookies", args)
@@ -110,9 +114,11 @@ func TestCookies_EveryRunGetsItsOwnCopy(t *testing.T) {
 	if _, ok := Cookies(); ok {
 		t.Fatal("cookies after removing them")
 	}
-	Download(context.Background(), "okA", t.TempDir(), "x")
-	if strings.Contains((*calls)[1], "--cookies") {
-		t.Errorf("removed cookies still passed: %q", (*calls)[1])
+	Download(context.Background(), "ageA", t.TempDir(), "x")
+	for _, c := range (*calls)[2:] {
+		if strings.Contains(c, "--cookies") {
+			t.Errorf("removed cookies still passed: %q", c)
+		}
 	}
 }
 

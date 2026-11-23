@@ -24,8 +24,22 @@ import (
 //
 // Read returns yt-dlp's exit error (with its stderr) at the end of a failed
 // download instead of io.EOF. Close kills the process if it's still running.
+//
+// Without the cookies first, and again with them when YouTube wants a
+// sign-in (cookies.go).
 func Stream(ctx context.Context, videoID string) (io.ReadCloser, error) {
-	cmd, done := command(ctx,
+	signIn := cookiesFirst()
+	for {
+		s, err := startStream(ctx, videoID, signIn)
+		if err == nil || signIn || ctx.Err() != nil || !signInNeeded(err.Error()) {
+			return s, err
+		}
+		signIn = true
+	}
+}
+
+func startStream(ctx context.Context, videoID string, signIn bool) (io.ReadCloser, error) {
+	cmd, done := command(ctx, signIn,
 		"--no-warnings", "--no-progress",
 		"-f", "140",
 		"-o", "-",

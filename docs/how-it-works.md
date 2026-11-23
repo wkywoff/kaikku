@@ -62,6 +62,14 @@ its own, because yt-dlp writes the cookies back when it exits. After an
 upload the server asks YouTube for a video it refused and, if it gets it,
 queues the refused songs again at once.
 
+The cookies are used only when YouTube asks to sign in: it refuses the
+server, or the video is 18+, for channel members or private. Signed in,
+yt-dlp can't use its fast clients, and finding the audio takes about 10 s
+instead of 2. So every request goes without them first and again with
+them on such an answer; while YouTube refuses the server without them,
+they go first for half an hour. 18+ videos also need the account to have
+confirmed its age with Google, otherwise YouTube still says no.
+
 **Disk.** Audio nobody played for `AUDIO_KEEP_DAYS` is deleted and
 downloaded again from the same video on the next play. Uploads and files an
 admin replaced stay. Deezer images aren't stored at all. Tracks with the

@@ -7,23 +7,86 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 // Куки YouTube (cookies.txt в формате Netscape), которые админ загружает на
 // странице «Не нашлось»: с ними YouTube пускает и сервер, которому иначе
-// отвечает «Sign in to confirm you're not a bot». Лежат одним файлом рядом
-// со staging — на томе, общем у API и воркера (/data/youtube-cookies.txt),
-// и только для youtube.com: куки других сайтов серверу не нужны.
+// отвечает «Sign in to confirm you're not a bot», и к видео 18+ (если
+// аккаунт подтвердил возраст), для спонсоров канала. Лежат одним файлом
+// рядом со staging — на томе, общем у API и воркера
+// (/data/youtube-cookies.txt), и только для youtube.com: куки других сайтов
+// серверу не нужны.
+//
+// Только когда YouTube просит войти (needsSignIn), не всегда: с аккаунтом
+// yt-dlp не может взять быстрые клиенты и решает JS-проверку плеера —
+// замер 23.11.2026 на сервере: ~10 с на ролик вместо ~2.
 //
 // yt-dlp с --cookies при выходе записывает свою банку обратно в файл, а
 // запусков бывает несколько сразу (воркер, API, помощник): общий файл они
 // перетирали бы друг другу. Поэтому каждый запуск получает свою копию
 // (cookieCopy), а сам файл меняет только админ.
 var cookiesFile string
+
+// haveCookies reports whether the admin uploaded cookies.
+func haveCookies() bool {
+	if cookiesFile == "" {
+		return false
+	}
+	_, err := os.Stat(cookiesFile)
+	return err == nil
+}
+
+// Когда YouTube не пускает сервер без кук, они какое-то время идут первыми:
+// иначе каждый запрос сначала зря ждал бы отказа.
+const cookiesFirstFor = 30 * time.Minute
+
+var cookiesFirstUntil atomic.Int64 // UnixNano
+
+func cookiesFirst() bool {
+	return time.Now().UnixNano() < cookiesFirstUntil.Load() && haveCookies()
+}
+
+// signInNeeded decides about a run without the cookies that failed with
+// output: true — run again with them (YouTube wants a sign-in and they're
+// there). A refusal of the whole server also puts them first for a while.
+func signInNeeded(output string) bool {
+	if !needsSignIn(output) || !haveCookies() {
+		return false
+	}
+	if isBlocked(output) {
+		cookiesFirstUntil.Store(time.Now().Add(cookiesFirstFor).UnixNano())
+	}
+	return true
+}
+
+// stderrOf is yt-dlp's stderr in cmd.Output's error.
+func stderrOf(err error) string {
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return string(exitErr.Stderr)
+	}
+	return ""
+}
+
+// ytdlpOutput runs yt-dlp for its stdout: without the cookies, and again
+// with them when YouTube wants a sign-in.
+func ytdlpOutput(ctx context.Context, args ...string) ([]byte, error) {
+	signIn := cookiesFirst()
+	for {
+		cmd, done := command(ctx, signIn, args...)
+		out, err := cmd.Output()
+		done()
+		if err == nil || signIn || ctx.Err() != nil || !signInNeeded(stderrOf(err)) {
+			return out, err
+		}
+		signIn = true
+	}
+}
 
 // SetCookiesFile sets where uploaded cookies are kept; "" turns them off.
 // Call it at startup, like SetProxy.
@@ -211,11 +274,11 @@ func cookieCopy() (path string, done func()) {
 	return f.Name(), func() { os.Remove(f.Name()) }
 }
 
-// Check asks YouTube for videoID the way the worker does (yt-dlp itself,
-// not the helper): nil means YouTube lets the server in, ErrBlocked that
-// it still doesn't.
+// Check asks YouTube for videoID with the cookies, the way the worker does
+// (yt-dlp itself, not the helper): nil means YouTube lets the server in
+// with them, ErrBlocked that it still doesn't.
 func Check(ctx context.Context, videoID string) error {
-	cmd, done := command(ctx, "-j", "--no-warnings", "-f", "140/bestaudio", "https://www.youtube.com/watch?v="+videoID)
+	cmd, done := command(ctx, true, "-j", "--no-warnings", "-f", "140/bestaudio", "https://www.youtube.com/watch?v="+videoID)
 	defer done()
 	if _, err := cmd.Output(); err != nil {
 		return fmt.Errorf("yt-dlp: %w", wrapWithStderr(err))

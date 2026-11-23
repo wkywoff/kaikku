@@ -25,6 +25,10 @@
 #     в Deno — ~3 с на ролик на 1 vCPU, извлечение 4–6 с. visionos один
 #     отдаёт формат 140 без проверки: 1.0–1.5 с, быстрым путём 0.1–0.5 с;
 #     ссылки качаются так же. Не вышло — штатные клиенты.
+#
+# Куки админа (COOKIES) — только когда YouTube просит войти (не пускает
+# сервер, видео 18+, для спонсоров): с аккаунтом быстрые пути не работают,
+# извлечение 9–12 с вместо ~2 (замер 23.11.2026). Как в cookies.go.
 import copy
 import json
 import os
@@ -42,13 +46,34 @@ YTCFG_TTL = 30 * 60
 QUICK_CLIENTS = ['visionos']
 PROXY = os.environ.get('KAIKKU_YTDLP_PROXY')  # YTDLP_PROXY (proxy.go)
 COOKIES = os.environ.get('KAIKKU_YTDLP_COOKIES')  # своя копия кук админа (cookies.go)
+COOKIES_FIRST_FOR = 30 * 60  # YouTube не пускает без кук — сколько начинать с них
+
+# needsSignIn и isBlocked из blocked.go.
+SIGN_IN = ('--cookies', 'confirm your age', 'age-restricted', 'inappropriate for some users',
+           'members-only', 'join this channel', 'granted access')
+REFUSED = ('not a bot', 'rate-limited by youtube')
+cookies_first_until = 0.0
+
+
+def refused(e):
+    s = str(e).lower()
+    return any(m in s for m in REFUSED)
+
+
+def wants_sign_in(e):
+    s = str(e).lower()
+    return refused(e) or any(m in s for m in SIGN_IN)
 
 
 class Quiet:
+    # Молчит, но последнюю ошибку на этом потоке помнит (search).
     def debug(self, msg):
         pass
 
-    info = warning = error = debug
+    info = warning = debug
+
+    def error(self, msg):
+        local.last_error = msg
 
 
 # --- конфиг клиента в памяти ---
@@ -111,12 +136,12 @@ def visitor_data():
 local = threading.local()
 
 
-def options(kind, visitor=None):
+def options(kind, visitor=None, signed_in=False):
     opts = {'logger': Quiet(), 'quiet': True, 'no_warnings': True,
             'skip_download': True, 'cachedir': False}
     if PROXY:
         opts['proxy'] = PROXY
-    if COOKIES:
+    if signed_in:
         opts['cookiefile'] = COOKIES
     if kind == 'search':  # как `yt-dlp -j --flat-playlist --ignore-errors`
         opts.update(extract_flat='in_playlist', ignoreerrors=True)
@@ -133,14 +158,15 @@ def options(kind, visitor=None):
     return opts
 
 
-def ydl(kind, visitor=None):
+def ydl(kind, visitor=None, signed_in=False):
     # Свой YoutubeDL на поток: объект не потокобезопасен, а повторное
     # использование сохраняет загруженный JS плеера между запросами.
-    # kind: search, quick (QUICK_CLIENTS) или extract (штатные клиенты).
-    key = kind if visitor is None else kind + ':fast'
+    # kind: search, quick (QUICK_CLIENTS) или extract (штатные клиенты);
+    # signed_in — с куками админа.
+    key = kind + (':fast' if visitor is not None else '') + (':signed-in' if signed_in else '')
     d = getattr(local, key, None)
     if d is None or (visitor is not None and local.__dict__.get(key + ':visitor') != visitor):
-        d = yt_dlp.YoutubeDL(options(kind, visitor))
+        d = yt_dlp.YoutubeDL(options(kind, visitor, signed_in))
         setattr(local, key, d)
         if visitor is not None:
             local.__dict__[key + ':visitor'] = visitor
@@ -149,6 +175,8 @@ def ydl(kind, visitor=None):
 
 def extract(video):
     url = 'https://www.youtube.com/watch?v=' + video
+    if COOKIES and time.time() < cookies_first_until:
+        return ydl('extract', signed_in=True).extract_info(url, download=False)
     visitor = visitor_data()
     if visitor:
         try:
@@ -165,7 +193,38 @@ def extract(video):
             return i
     except Exception as e:
         print('quick extract %s: %s' % (video, e), file=sys.stderr)
-    return ydl('extract').extract_info(url, download=False)
+        if COOKIES and wants_sign_in(e):
+            return extract_signed_in(video, url, e)
+    try:
+        return ydl('extract').extract_info(url, download=False)
+    except Exception as e:
+        if COOKIES and wants_sign_in(e):
+            return extract_signed_in(video, url, e)
+        raise
+
+
+def extract_signed_in(video, url, why):
+    # YouTube просит войти. Не пускает сам сервер — куки идут первыми
+    # COOKIES_FIRST_FOR, чтобы не ждать отказа на каждом запросе.
+    global cookies_first_until
+    if refused(why):
+        cookies_first_until = time.time() + COOKIES_FIRST_FOR
+    print('extract %s: signing in with the cookies' % video, file=sys.stderr)
+    return ydl('extract', signed_in=True).extract_info(url, download=False)
+
+
+def search(query, signed_in=False):
+    # ignoreerrors: о том, что YouTube не пускает, поиск не бросает
+    # исключение, а только пишет в логгер (Quiet запоминает) — пусто и
+    # просит войти: с куками, нет их — ошибкой, а не «ничего не нашлось».
+    local.last_error = None
+    r = ydl('search', signed_in=signed_in).extract_info(query, download=False) or {}
+    err = local.last_error
+    if not r.get('entries') and err and wants_sign_in(err):
+        if COOKIES and not signed_in:
+            return search(query, signed_in=True)
+        raise Exception(err)
+    return r
 
 
 lock = threading.Lock()
@@ -180,7 +239,7 @@ def reply(msg):
 def handle(req):
     try:
         if req['op'] == 'search':
-            r = ydl('search').extract_info(req['query'], download=False) or {}
+            r = search(req['query'])
             entries = [{k: e.get(k) for k in ('id', 'title', 'channel', 'uploader', 'duration')}
                        for e in (r.get('entries') or []) if e]
             reply({'id': req['id'], 'entries': entries})

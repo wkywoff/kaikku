@@ -266,9 +266,7 @@ func search(ctx context.Context, query string) ([]candidate, error) {
 	// --ignore-errors: один недоступный кандидат (гео/возраст/удалён) иначе
 	// обрывает весь поиск. yt-dlp при этом всё равно выходит с кодом 1, так
 	// что ошибка фатальна, только если не распарсился ни один кандидат.
-	cmd, done := command(ctx, "-j", "--no-warnings", "--ignore-errors", "--flat-playlist", query)
-	out, err := cmd.Output()
-	done()
+	out, err := ytdlpOutput(ctx, "-j", "--no-warnings", "--ignore-errors", "--flat-playlist", query)
 	candidates := parseEntries(string(out))
 	if err != nil && len(candidates) == 0 {
 		return nil, fmt.Errorf("yt-dlp search: %w", wrapWithStderr(err))
@@ -512,30 +510,44 @@ func Download(ctx context.Context, videoID, stagingDir, basename string) (path s
 
 	// Сначала быстрый клиент (quickClientArgs), только формат 140. Не вышло —
 	// штатные клиенты, дважды: YouTube периодически отдаёт 403 на сам поток,
-	// хотя повторный запуск (с новой экстракцией ссылок) проходит.
-	attempts := [][]string{
-		{"--extractor-args", quickClientArgs, "-f", "140"},
-		{"-f", "140/bestaudio"},
-		{"-f", "140/bestaudio"},
+	// хотя повторный запуск (с новой экстракцией ссылок) проходит. Всё это
+	// без кук (с ними yt-dlp медленнее, cookies.go). YouTube просит войти —
+	// дальше одна попытка штатными клиентами с куками; кук нет или и с ними
+	// просит — больше пробовать нечего.
+	type run struct {
+		args   []string
+		signIn bool
 	}
-	for i, extra := range attempts {
-		args := append([]string{"--no-warnings"}, extra...)
-		cmd, done := command(ctx, append(args, "-o", outputTemplate, watchURL)...)
+	quick := run{[]string{"--extractor-args", quickClientArgs, "-f", "140"}, false}
+	plain := run{[]string{"-f", "140/bestaudio"}, false}
+	signedIn := run{plain.args, true}
+	runs := []run{quick, plain, plain}
+	if cookiesFirst() {
+		runs = []run{signedIn, signedIn}
+	}
+	for i := 0; i < len(runs); i++ {
+		r := runs[i]
+		args := append([]string{"--no-warnings"}, r.args...)
+		cmd, done := command(ctx, r.signIn, append(args, "-o", outputTemplate, watchURL)...)
 		out, runErr := cmd.CombinedOutput()
 		done()
 		if runErr == nil {
 			break
 		}
-		// YouTube не пускает сервер, и штатные клиенты (вторая попытка) это
-		// подтвердили: третья не поможет. После быстрого клиента — ещё не
-		// конец: с куками yt-dlp его пропускает.
-		blocked := i > 0 && isBlocked(string(out))
-		if i == len(attempts)-1 || ctx.Err() != nil || blocked {
-			err := fmt.Errorf("yt-dlp download: %w (output: %s)", runErr, truncate(string(out), 1500))
-			return "", markBlocked(err, string(out))
+		output := string(out)
+		switch {
+		case ctx.Err() != nil || !needsSignIn(output):
+		case !r.signIn && signInNeeded(output):
+			runs = append(runs[:i+1], signedIn)
+		case r.signIn || i > 0:
+			runs = runs[:i+1]
 		}
-		if i == 0 {
-			log.Printf("yt-dlp %s: %s failed, trying the default clients: %s", videoID, quickClientArgs, truncate(strings.TrimSpace(string(out)), 300))
+		if i == len(runs)-1 || ctx.Err() != nil {
+			err := fmt.Errorf("yt-dlp download: %w (output: %s)", runErr, truncate(output, 1500))
+			return "", markBlocked(err, output)
+		}
+		if i == 0 && !r.signIn {
+			log.Printf("yt-dlp %s: %s failed, trying the default clients: %s", videoID, quickClientArgs, truncate(strings.TrimSpace(output), 300))
 		}
 		leftovers, _ := filepath.Glob(pattern)
 		for _, f := range leftovers {

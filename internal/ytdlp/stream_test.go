@@ -30,11 +30,13 @@ import (
 //	expired* — the direct URL answers 403 (yt-dlp's own download works);
 //	hls*     — format 140 is HLS, not a plain file;
 //	noquick* — fails with the quick client (quickClientArgs), works without;
-//	blocked* — "Sign in to confirm you’re not a bot", exit 1, for everything.
+//	blocked* — "Sign in to confirm you’re not a bot", exit 1, for everything;
+//	bot*     — like blocked*, but works with --cookies;
+//	age*     — "Sign in to confirm your age" (18+), works with --cookies.
 //
 // Searches (--flat-playlist) print searchResults; searchResults "BLOCKED"
-// fails them like blocked*. `-o <template>` writes the audio to the
-// template with ext m4a.
+// fails them like blocked*, "NEEDCOOKIES\n…" like bot* (then prints the
+// rest). `-o <template>` writes the audio to the template with ext m4a.
 func fakeYtDlp(t *testing.T, searchResults string) *[]string {
 	t.Helper()
 	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -76,12 +78,14 @@ func TestHelperProcess(t *testing.T) {
 			os.Exit(1)
 		}
 	}
+	signedIn := slices.Contains(args, "--cookies")
 	if slices.Contains(args, "--flat-playlist") {
-		if os.Getenv("FAKE_SEARCH") == "BLOCKED" {
+		results, needCookies := strings.CutPrefix(os.Getenv("FAKE_SEARCH"), "NEEDCOOKIES\n")
+		if results == "BLOCKED" || needCookies && !signedIn {
 			fmt.Fprintln(os.Stderr, "ERROR: [youtube:search] Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.")
 			os.Exit(1)
 		}
-		fmt.Print(os.Getenv("FAKE_SEARCH"))
+		fmt.Print(results)
 		os.Exit(0)
 	}
 	url := args[len(args)-1]
@@ -93,8 +97,11 @@ func TestHelperProcess(t *testing.T) {
 	switch {
 	case strings.HasPrefix(id, "gone"):
 		fail()
-	case strings.HasPrefix(id, "blocked"):
+	case strings.HasPrefix(id, "blocked"), strings.HasPrefix(id, "bot") && !signedIn:
 		fmt.Fprintf(os.Stderr, "ERROR: [youtube] %s: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.\n", id)
+		os.Exit(1)
+	case strings.HasPrefix(id, "age") && !signedIn:
+		fmt.Fprintf(os.Stderr, "ERROR: [youtube] %s: Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication.\n", id)
 		os.Exit(1)
 	case strings.HasPrefix(id, "flaky"):
 		state := os.Getenv("FAKE_FLAKY_STATE")

@@ -41,5 +41,30 @@ func markBlocked(err error, output string) error {
 	return &blockedError{err}
 }
 
+// Так yt-dlp пишет, что YouTube хочет вход в аккаунт ради этого видео: 18+
+// («Sign in to confirm your age», а с куками аккаунта, который не
+// подтвердил возраст, — «…content is age-restricted…»), только для
+// спонсоров канала, приватное. К таким ошибкам yt-dlp добавляет подсказку
+// «Use --cookies-from-browser or --cookies».
+var signInMarkers = []string{
+	"--cookies", "confirm your age", "age-restricted", "inappropriate for some users",
+	"members-only", "join this channel", "granted access",
+}
+
+// needsSignIn reports whether YouTube wants a signed-in account: for the
+// whole server (isBlocked) or for this video.
+func needsSignIn(output string) bool {
+	if isBlocked(output) {
+		return true
+	}
+	s := strings.ToLower(output)
+	for _, m := range signInMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // Proxied reports whether YouTube is reached through YTDLP_PROXY.
 func Proxied() bool { return proxy != "" }

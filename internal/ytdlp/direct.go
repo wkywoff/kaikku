@@ -30,9 +30,7 @@ func Resolve(ctx context.Context, videoID string) (*Media, error) {
 			return m, err
 		}
 	}
-	cmd, done := command(ctx, "-j", "--no-warnings", "-f", "140", "https://www.youtube.com/watch?v="+videoID)
-	out, err := cmd.Output()
-	done()
+	out, err := ytdlpOutput(ctx, "-j", "--no-warnings", "-f", "140", "https://www.youtube.com/watch?v="+videoID)
 	if err != nil {
 		return nil, fmt.Errorf("yt-dlp extract: %w", wrapWithStderr(err))
 	}
