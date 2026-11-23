@@ -58,8 +58,9 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 
 	// YouTube всё равно не пускает: куки сохранены, задача ждёт.
 	type upload struct {
-		Cookies ytdlp.CookiesInfo
-		Check   string
+		Cookies  ytdlp.CookiesInfo
+		Check    string
+		Requeued int
 	}
 	var up upload
 	checkErr = fmt.Errorf("yt-dlp: %w", ytdlp.ErrBlocked)
@@ -74,16 +75,17 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 	// Пускает — отказанная задача снова в очереди.
 	checkErr = nil
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
-	if up.Check != "ok" {
+	if up.Check != "ok" || up.Requeued != 1 {
 		t.Fatalf("lets in: %+v", up)
 	}
 	if st := jobStatus(); st != "pending" {
 		t.Fatalf("refused job after the check: %s", st)
 	}
 
-	// Отказанных нет — проверяется видео, которое уже скачивалось.
+	// Отказанных нет (куки загружают заранее) — проверяется видео, которое
+	// уже скачивалось, и в очередь ничего не возвращается.
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
-	if up.Check != "ok" || checked[len(checked)-1] != "doneVideo01" {
+	if up.Check != "ok" || up.Requeued != 0 || checked[len(checked)-1] != "doneVideo01" {
 		t.Fatalf("check without refused jobs: %+v, checked %v", up, checked)
 	}
 

@@ -177,8 +177,9 @@ Subsonic app. What works there: [docs/subsonic.md](docs/subsonic.md).
   set `YTDLP_PROXY` in `.env` to a proxy with another IP, such as
   Cloudflare WARP (the one for `DEEZER_PROXY` will do), and run
   `docker compose up -d`; or upload YouTube cookies (`cookies.txt`) right
-  there, preferably from an account of its own, since YouTube sometimes
-  bans accounts whose cookies are used from servers.
+  there (also in advance, before YouTube refuses), preferably from an
+  account of its own, since YouTube sometimes bans accounts whose cookies
+  are used from servers.
 - **Logged out of apps after changing `JWT_SECRET`**: app passwords are
   encrypted with it; create a new one in Settings → Apps.
 

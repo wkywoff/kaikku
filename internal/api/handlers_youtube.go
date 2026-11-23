@@ -23,9 +23,10 @@ const maxCookiesUpload = 1 << 20
 var youtubeCheck = ytdlp.Check
 
 // PUT /api/admin/youtube/cookies (тело — cookies.txt) — сохранить и сразу
-// проверить. Ответ: {cookies, check}; check — ok (YouTube пускает, отказанные
-// задачи снова в очереди), blocked (всё ещё нет), error или skipped (не на
-// чем проверить).
+// проверить. Ответ: {cookies, check, requeued}; check — ok (YouTube отдаёт
+// видео; requeued — сколько отказанных задач снова в очереди), blocked (не
+// пускает), error или skipped (не на чем проверить). Загружать можно и
+// заранее, пока YouTube пускает.
 func (s *Server) handleUploadYouTubeCookies(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCookiesUpload))
 	if err != nil {
@@ -49,7 +50,8 @@ func (s *Server) handleUploadYouTubeCookies(w http.ResponseWriter, r *http.Reque
 		serverError(w, r, "saving cookies failed", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"cookies": info, "check": s.checkYouTube(r.Context())})
+	check, requeued := s.checkYouTube(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{"cookies": info, "check": check, "requeued": requeued})
 }
 
 // DELETE /api/admin/youtube/cookies
@@ -66,8 +68,8 @@ const youtubeCheckTimeout = 45 * time.Second
 
 // checkYouTube asks YouTube, the way the worker does, for a video it
 // refused lately, or else for one that downloaded before. When YouTube lets
-// the server in, the refused jobs go back to the queue at once.
-func (s *Server) checkYouTube(ctx context.Context) string {
+// the server in, the refused jobs go back to the queue at once (requeued).
+func (s *Server) checkYouTube(ctx context.Context) (check string, requeued int64) {
 	var videoID string
 	if err := s.DB.QueryRowContext(ctx, `
 		SELECT v FROM (
@@ -77,22 +79,23 @@ func (s *Server) checkYouTube(ctx context.Context) string {
 		  SELECT video_id, 1, updated_at FROM ingest_jobs WHERE status = 'done'
 		) c WHERE v IS NOT NULL
 		ORDER BY refused, updated_at DESC LIMIT 1`).Scan(&videoID); err != nil {
-		return "skipped"
+		return "skipped", 0
 	}
 	ctx, cancel := context.WithTimeout(ctx, youtubeCheckTimeout)
 	defer cancel()
 	switch err := youtubeCheck(ctx, videoID); {
 	case err == nil:
-		if n, err := ingest.RetryBlocked(s.DB, true); err != nil {
+		n, err := ingest.RetryBlocked(s.DB, true)
+		if err != nil {
 			log.Printf("youtube cookies: queueing refused jobs: %v", err)
 		} else if n > 0 {
 			log.Printf("youtube cookies: youtube lets the server in, %d refused job(s) queued again", n)
 		}
-		return "ok"
+		return "ok", n
 	case errors.Is(err, ytdlp.ErrBlocked):
-		return "blocked"
+		return "blocked", 0
 	default:
 		log.Printf("youtube cookies: checking %s: %v", videoID, err)
-		return "error"
+		return "error", 0
 	}
 }

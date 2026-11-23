@@ -76,8 +76,9 @@
 
   const COOKIE_ERRORS = { json: 'missing.cookiesJson', format: 'missing.cookiesFormat', no_youtube: 'missing.cookiesNoYouTube' };
 
-  // Сервер сохраняет куки и сразу спрашивает YouTube (check): ok — пускает,
-  // отказанные песни снова в очереди и уходят со страницы.
+  // Сервер сохраняет куки и сразу спрашивает YouTube (check): ok — отдаёт
+  // видео; requeued — сколько отказанных песен снова в очереди (они уходят со
+  // страницы). Загружать можно и заранее, пока YouTube пускает.
   async function uploadCookies(e) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
@@ -86,8 +87,9 @@
     try {
       const res = await api.uploadYouTubeCookies(file);
       cookies = res.cookies;
-      toast($t(`missing.cookiesCheck.${res.check}`), res.check === 'ok' || res.check === 'skipped' ? 'info' : 'error', 6000);
-      if (res.check === 'ok') load();
+      const said = res.check === 'ok' && res.requeued > 0 ? 'requeued' : res.check;
+      toast($t(`missing.cookiesCheck.${said}`), res.check === 'ok' || res.check === 'skipped' ? 'info' : 'error', 6000);
+      if (res.requeued > 0) load();
     } catch (err) {
       const key = COOKIE_ERRORS[err.data?.reason] || (err.status === 413 && 'missing.cookiesTooBig');
       toast(key ? $t(key) : err.message, 'error');
@@ -133,7 +135,7 @@
   <h1>{$t('missing.title')}</h1>
   <p class="muted intro">{$t('missing.intro')}</p>
 
-  {#if blocked || cookies}
+  {#if tracks}
     <section class="youtube" class:alert={blocked} role={blocked ? 'status' : null}>
       {#if blocked}
         <h2><ShieldAlert size={20} /> {$t('missing.blockedTitle')}</h2>
@@ -147,7 +149,8 @@
           </ol>
         {/if}
         <p class="or">
-          {$t('missing.cookiesHow')}
+          {$t('missing.cookiesOr')}
+          {$t('missing.cookiesSteps')}
           <a href={COOKIES_HELP} target="_blank" rel="noopener">{$t('missing.cookiesMore')}</a>
         </p>
       {/if}
@@ -171,6 +174,16 @@
           {/if}
         </div>
       </div>
+      {#if !blocked && !cookies}
+        <details class="how">
+          <summary>{$t('missing.cookiesWhy')}</summary>
+          <p>
+            {$t('missing.cookiesWhyText')}
+            {$t('missing.cookiesSteps')}
+            <a href={COOKIES_HELP} target="_blank" rel="noopener">{$t('missing.cookiesMore')}</a>
+          </p>
+        </details>
+      {/if}
     </section>
   {/if}
 
@@ -335,6 +348,19 @@
   }
   .cookies .label .warn {
     color: var(--danger);
+  }
+  .how {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .how summary {
+    width: fit-content;
+    cursor: pointer;
+  }
+  .youtube .how p {
+    margin: 6px 0 4px;
+    font-size: 13px;
   }
   .youtube code {
     display: block;
