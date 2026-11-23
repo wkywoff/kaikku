@@ -173,9 +173,12 @@ Subsonic app. What works there: [docs/subsonic.md](docs/subsonic.md).
   `docker compose exec api update-yt-dlp --restart`.
 - **Every download fails with "Sign in to confirm you're not a bot"**:
   YouTube refuses your server's IP, as it does with many data-center
-  addresses. Set `YTDLP_PROXY` in `.env` to a proxy with another IP, such
-  as Cloudflare WARP (the one for `DEEZER_PROXY` will do), and run
-  `docker compose up -d`.
+  addresses. The admin's **Not found** page says so and offers two fixes:
+  set `YTDLP_PROXY` in `.env` to a proxy with another IP, such as
+  Cloudflare WARP (the one for `DEEZER_PROXY` will do), and run
+  `docker compose up -d`; or upload YouTube cookies (`cookies.txt`) right
+  there, preferably from an account of its own, since YouTube sometimes
+  bans accounts whose cookies are used from servers.
 - **Logged out of apps after changing `JWT_SECRET`**: app passwords are
   encrypted with it; create a new one in Settings → Apps.
 

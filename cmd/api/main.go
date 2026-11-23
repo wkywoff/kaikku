@@ -168,6 +168,8 @@ func loadStreamHub() (*api.StreamHub, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Куки YouTube, загруженные админом, — рядом со staging, общие с воркером.
+	ytdlp.SetCookiesFile(ytdlp.CookiesPath(stagingDir))
 	// Поиск и извлечение для потока — через постоянно запущенный yt-dlp
 	// (минус ~1 с до первого звука); воркер запускает yt-dlp как раньше.
 	ytdlp.EnableWarm()

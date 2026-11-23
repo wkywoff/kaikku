@@ -243,10 +243,14 @@ export const api = {
   // Трек релиза — другим треком Deezer (не та версия) -> { album, tracks }.
   replaceAlbumTrack: (albumDeezerId, track, withId) =>
     request(`/albums/deezer/${enc(albumDeezerId)}/tracklist/replace`, { method: 'POST', body: { track, with: withId } }),
-  // «Не нашлось» (админ): упавшие скачивания -> { tracks }; повторить; скачать
-  // трек с видео по ссылке YouTube.
+  // «Не нашлось» (админ): упавшие скачивания -> { tracks, blocked, proxy,
+  // cookies }; повторить; скачать трек с видео по ссылке YouTube.
   missing: () => request('/admin/missing'),
   retryMissing: (jobId) => request(`/admin/missing/${enc(jobId)}/retry`, { method: 'POST' }),
+  // Куки YouTube (cookies.txt) -> { cookies: { updated_at, count, signed_in,
+  // expires }, check: ok | blocked | error | skipped }; удалить.
+  uploadYouTubeCookies: (file) => request('/admin/youtube/cookies', { method: 'PUT', body: file }),
+  deleteYouTubeCookies: () => request('/admin/youtube/cookies', { method: 'DELETE' }),
   setTrackVideo: (deezerId, url) => request(`/tracks/deezer/${enc(deezerId)}/video`, { method: 'PUT', body: { url } }),
   // Заменить аудио трека своим файлом (или дать его треку, который не
   // нашёлся) -> { status: replaced|added, gain_db }.

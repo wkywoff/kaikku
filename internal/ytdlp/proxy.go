@@ -44,19 +44,30 @@ func SetProxy(raw string) error {
 	return nil
 }
 
-// command runs yt-dlp with what every call needs (the proxy).
-func command(ctx context.Context, args ...string) *exec.Cmd {
+// command runs yt-dlp with what every call needs: the proxy and a copy of
+// the cookies (cookies.go). Call done once the process has exited: it
+// removes the copy.
+func command(ctx context.Context, args ...string) (cmd *exec.Cmd, done func()) {
+	var common []string
 	if proxy != "" {
-		args = append([]string{"--proxy", proxy}, args...)
+		common = append(common, "--proxy", proxy)
 	}
-	return execCommand(ctx, "yt-dlp", args...)
+	cookies, done := cookieCopy()
+	if cookies != "" {
+		common = append(common, "--cookies", cookies)
+	}
+	return execCommand(ctx, "yt-dlp", append(common, args...)...), done
 }
 
-// warmEnv — добавки к окружению помощника (helper.py читает их при старте).
-func warmEnv() []string {
+// warmEnv — добавки к окружению помощника (helper.py читает их при
+// старте); cookies — его копия кук.
+func warmEnv(cookies string) []string {
 	env := []string{warmMallocArenas}
 	if proxy != "" {
 		env = append(env, "KAIKKU_YTDLP_PROXY="+proxy)
+	}
+	if cookies != "" {
+		env = append(env, "KAIKKU_YTDLP_COOKIES="+cookies)
 	}
 	return env
 }

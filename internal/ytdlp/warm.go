@@ -84,6 +84,7 @@ type warmProc struct {
 	dead    chan struct{} // закрыт, когда процесс завершился
 	pid     int
 	started time.Time
+	cookies string // cookiesVersion при запуске: поменялись — нужен новый
 
 	mu      sync.Mutex
 	nextID  int64
@@ -188,7 +189,12 @@ func (c *warmClient) process() (*warmProc, error) {
 			c.proc = nil
 			c.failedAt = time.Now()
 		default:
-			return c.proc, nil
+			// Админ загрузил или удалил куки: помощник со старыми
+			// заменяется, как только у него не останется запросов.
+			if c.proc.cookies == cookiesVersion() || !c.proc.retire() {
+				return c.proc, nil
+			}
+			c.proc = nil
 		}
 	}
 	if time.Since(c.failedAt) < warmRestartDelay {
@@ -204,25 +210,30 @@ func (c *warmClient) process() (*warmProc, error) {
 }
 
 func startWarm() (*warmProc, error) {
+	version := cookiesVersion()
+	cookies, dropCookies := cookieCopy() // своя копия на всё время процесса
 	cmd := execCommand(context.Background(), "python3", "-c", helperScript)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		dropCookies()
 		return nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		dropCookies()
 		return nil, err
 	}
 	cmd.Stderr = os.Stderr // трейсбек, если помощник упадёт
 	if cmd.Env == nil {
 		cmd.Env = toolEnv(os.Environ())
 	}
-	cmd.Env = append(cmd.Env, warmEnv()...)
+	cmd.Env = append(cmd.Env, warmEnv(cookies)...)
 	if err := cmd.Start(); err != nil {
+		dropCookies()
 		return nil, err
 	}
 	p := &warmProc{stdin: stdin, dead: make(chan struct{}), pid: cmd.Process.Pid, started: time.Now(),
-		pending: map[int64]chan warmReply{}}
+		cookies: version, pending: map[int64]chan warmReply{}}
 	go func() {
 		sc := bufio.NewScanner(stdout)
 		sc.Buffer(make([]byte, 64<<10), 16<<20)
@@ -241,6 +252,7 @@ func startWarm() (*warmProc, error) {
 			}
 		}
 		err := cmd.Wait()
+		dropCookies()
 		log.Printf("ytdlp helper exited: %v", err)
 		close(p.dead)
 	}()

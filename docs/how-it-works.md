@@ -55,7 +55,12 @@ once a day, three times at most; the rest show up on the admin's "Not
 found" page. When YouTube refuses the server itself ("Sign in to confirm
 you're not a bot"), the failures don't count: one such job is tried again
 every hour, and as soon as one downloads, the rest are queued again.
-"Not found" then says how to fix it (`YTDLP_PROXY`).
+"Not found" then says how to fix it: `YTDLP_PROXY`, or YouTube cookies
+uploaded on that page. Only their youtube.com cookies are kept, in
+`/data/youtube-cookies.txt`; each yt-dlp run gets a copy of its own,
+because yt-dlp writes the cookies back when it exits. After an upload the
+server asks YouTube for a video it refused and, if it gets it, queues the
+refused songs again at once.
 
 **Disk.** Audio nobody played for `AUDIO_KEEP_DAYS` is deleted and
 downloaded again from the same video on the next play. Uploads and files an

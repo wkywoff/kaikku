@@ -70,6 +70,12 @@ func TestHelperProcess(t *testing.T) {
 		fakeWarmHelper()
 	}
 	args := os.Args[sep+2:]
+	if i := slices.Index(args, "--cookies"); i >= 0 { // копия кук должна быть на месте всё время запуска
+		if b, err := os.ReadFile(args[i+1]); err != nil || !strings.Contains(string(b), "youtube.com") {
+			fmt.Fprintln(os.Stderr, "ERROR: the cookies file is missing or empty")
+			os.Exit(1)
+		}
+	}
 	if slices.Contains(args, "--flat-playlist") {
 		if os.Getenv("FAKE_SEARCH") == "BLOCKED" {
 			fmt.Fprintln(os.Stderr, "ERROR: [youtube:search] Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.")
@@ -321,7 +327,13 @@ func fakeWarmHelper() {
 		case strings.HasPrefix(req.Video, "blocked"):
 			reply["error"] = "ERROR: [youtube] " + req.Video + ": Sign in to confirm you’re not a bot"
 		default:
-			reply["url"] = os.Getenv("FAKE_MEDIA_URL") + "/" + req.Video
+			url := os.Getenv("FAKE_MEDIA_URL") + "/" + req.Video
+			if c := os.Getenv("KAIKKU_YTDLP_COOKIES"); c != "" { // помощник с куками — видно по ссылке
+				if b, err := os.ReadFile(c); err == nil && strings.Contains(string(b), "youtube.com") {
+					url += "?cookies=1"
+				}
+			}
+			reply["url"] = url
 			reply["protocol"] = "https"
 			reply["http_headers"] = map[string]string{"User-Agent": "fake-ua"}
 		}

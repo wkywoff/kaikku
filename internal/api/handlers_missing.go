@@ -36,7 +36,8 @@ type missingTrack struct {
 
 // GET /api/admin/missing — упавшие задачи, свежие сверху. blocked — среди
 // них есть те, кому YouTube отказал целиком (не пускает сервер): страница
-// объясняет, как это починить; proxy — YouTube уже идёт через YTDLP_PROXY.
+// объясняет, как это починить; proxy — YouTube уже идёт через YTDLP_PROXY;
+// cookies — загруженные куки YouTube (handlers_youtube.go) или null.
 func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.Query(`
 		SELECT j.id, substr(j.source_ref, 8), j.title, j.artist_name, j.album_title, COALESCE(j.album_deezer_id, ''),
@@ -68,7 +69,11 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "query failed", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tracks": out, "blocked": blocked, "proxy": ytdlp.Proxied()})
+	var cookies *ytdlp.CookiesInfo
+	if info, ok := ytdlp.Cookies(); ok {
+		cookies = &info
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tracks": out, "blocked": blocked, "proxy": ytdlp.Proxied(), "cookies": cookies})
 }
 
 // POST /api/admin/missing/{job}/retry — искать заново сейчас, с полным

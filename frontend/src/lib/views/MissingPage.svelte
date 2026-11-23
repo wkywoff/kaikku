@@ -5,7 +5,8 @@
   // файл или повторить поиск. Воркер и сам повторяет такие раз в сутки, до
   // трёх попыток (internal/ingest/housekeep.go); исчерпавшие сюда не
   // попадают — им ссылку или файл дают в правке трека (EditDialog).
-  // Если YouTube не пускает сам сервер (blocked), сверху — что с этим делать.
+  // Если YouTube не пускает сам сервер (blocked), сверху — что с этим делать:
+  // прокси или куки YouTube (их загружают здесь же).
   import { api } from '../api.js';
   import { t } from '../i18n.js';
   import { lang } from '../stores/settings.js';
@@ -20,14 +21,18 @@
   import Link from '@lucide/svelte/icons/link';
   import Disc3 from '@lucide/svelte/icons/disc-3';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+  import Cookie from '@lucide/svelte/icons/cookie';
 
   pageTint().none();
 
   const MAX_AUDIO = 200 * 1024 * 1024; // как на сервере (handlers_admin.go)
+  const COOKIES_HELP = 'https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies';
 
   let tracks = null;
   let blocked = false; // YouTube не пускает сервер
   let proxied = false; // YouTube уже идёт через YTDLP_PROXY
+  let cookies = null; // { updated_at, count, signed_in, expires } — загруженные куки YouTube
+  let cookiesBusy = ''; // 'upload' | 'remove'
   let error = '';
   let links = {}; // job_id → введённая ссылка
   let busy = {}; // job_id → 'video' | 'upload' | 'retry'
@@ -36,7 +41,7 @@
 
   async function load() {
     try {
-      ({ tracks, blocked, proxy: proxied } = await api.missing());
+      ({ tracks, blocked, proxy: proxied, cookies } = await api.missing());
       // Ссылка, которую уже давали, — в поле: видно, что с ней не вышло.
       for (const m of tracks) if (m.manual_video_id) links[m.job_id] = `https://youtu.be/${m.manual_video_id}`;
     } catch (e) {
@@ -69,6 +74,41 @@
     run(m, 'upload', () => api.uploadTrackAudio(m.deezer_id, file, (p) => (progress = { ...progress, [m.job_id]: p })), 'added');
   }
 
+  const COOKIE_ERRORS = { json: 'missing.cookiesJson', format: 'missing.cookiesFormat', no_youtube: 'missing.cookiesNoYouTube' };
+
+  // Сервер сохраняет куки и сразу спрашивает YouTube (check): ok — пускает,
+  // отказанные песни снова в очереди и уходят со страницы.
+  async function uploadCookies(e) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!file) return;
+    cookiesBusy = 'upload';
+    try {
+      const res = await api.uploadYouTubeCookies(file);
+      cookies = res.cookies;
+      toast($t(`missing.cookiesCheck.${res.check}`), res.check === 'ok' || res.check === 'skipped' ? 'info' : 'error', 6000);
+      if (res.check === 'ok') load();
+    } catch (err) {
+      const key = COOKIE_ERRORS[err.data?.reason] || (err.status === 413 && 'missing.cookiesTooBig');
+      toast(key ? $t(key) : err.message, 'error');
+    } finally {
+      cookiesBusy = '';
+    }
+  }
+
+  async function removeCookies() {
+    cookiesBusy = 'remove';
+    try {
+      await api.deleteYouTubeCookies();
+      cookies = null;
+      toast($t('missing.cookiesRemoved'));
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      cookiesBusy = '';
+    }
+  }
+
   const KINDS = {
     blocked: 'missing.blocked',
     not_found: 'missing.notFound',
@@ -77,24 +117,60 @@
     other: 'missing.other',
   };
   const when = (iso) => new Date(iso).toLocaleString($lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const day = (iso) => new Date(iso).toLocaleDateString($lang, { day: 'numeric', month: 'short', year: 'numeric' });
+
+  $: cookiesStatus = cookies
+    ? [
+        $t('missing.cookiesUploaded', { date: when(cookies.updated_at), n: cookies.count }),
+        cookies.signed_in && cookies.expires && $t('missing.cookiesExpire', { date: day(cookies.expires) }),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : $t('missing.cookiesNone');
 </script>
 
 <div class="page-pad missing">
   <h1>{$t('missing.title')}</h1>
   <p class="muted intro">{$t('missing.intro')}</p>
 
-  {#if blocked}
-    <section class="blocked" role="status">
-      <h2><ShieldAlert size={20} /> {$t('missing.blockedTitle')}</h2>
-      <p>{$t('missing.blockedText')}</p>
-      {#if proxied}
-        <p>{$t('missing.blockedProxy')}</p>
-      {:else}
-        <ol>
-          <li>{$t('missing.blockedStep1')}<code>YTDLP_PROXY=socks5://host.docker.internal:40000</code></li>
-          <li>{$t('missing.blockedStep2')}<code>docker compose up -d</code></li>
-        </ol>
+  {#if blocked || cookies}
+    <section class="youtube" class:alert={blocked} role={blocked ? 'status' : null}>
+      {#if blocked}
+        <h2><ShieldAlert size={20} /> {$t('missing.blockedTitle')}</h2>
+        <p>{$t('missing.blockedText')}</p>
+        {#if proxied}
+          <p>{$t('missing.blockedProxy')}</p>
+        {:else}
+          <ol>
+            <li>{$t('missing.blockedStep1')}<code>YTDLP_PROXY=socks5://host.docker.internal:40000</code></li>
+            <li>{$t('missing.blockedStep2')}<code>docker compose up -d</code></li>
+          </ol>
+        {/if}
+        <p class="or">
+          {$t('missing.cookiesHow')}
+          <a href={COOKIES_HELP} target="_blank" rel="noopener">{$t('missing.cookiesMore')}</a>
+        </p>
       {/if}
+      <div class="cookies">
+        <div class="label">
+          <span>{$t('missing.cookies')}</span>
+          <small>{cookiesStatus}</small>
+          {#if cookies && !cookies.signed_in}<small class="warn">{$t('missing.cookiesSignedOut')}</small>{/if}
+        </div>
+        <div class="buttons">
+          <label class="pill outline file" class:disabled={!!cookiesBusy}>
+            {#if cookiesBusy === 'upload'}
+              <LoaderCircle class="spin" size={16} /> {$t('missing.cookiesChecking')}
+            {:else}
+              <Cookie size={16} /> {$t(cookies ? 'missing.cookiesReplace' : 'missing.cookiesUpload')}
+            {/if}
+            <input type="file" accept=".txt,text/plain" hidden disabled={!!cookiesBusy} on:change={uploadCookies} />
+          </label>
+          {#if cookies}
+            <button class="pill outline" disabled={!!cookiesBusy} on:click={removeCookies}>{$t('missing.cookiesRemove')}</button>
+          {/if}
+        </div>
+      </div>
     </section>
   {/if}
 
@@ -190,31 +266,41 @@
     max-width: 680px;
     font-size: 14px;
   }
-  .blocked {
+  .youtube {
     max-width: 680px;
     margin: 0 0 24px;
-    padding: 16px 20px;
+    padding: 12px 20px;
     border-radius: var(--radius);
-    border-left: 3px solid var(--danger);
     background: var(--bg-elevated);
     font-size: 14px;
   }
-  .blocked h2 {
+  .youtube.alert {
+    padding-top: 16px;
+    border-left: 3px solid var(--danger);
+  }
+  .youtube h2 {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
     font-size: 18px;
   }
-  .blocked h2 :global(svg) {
+  .youtube h2 :global(svg) {
     flex-shrink: 0;
     color: var(--danger);
   }
-  .blocked p {
+  .youtube p {
     margin: 0 0 8px;
     color: var(--text-dim);
   }
-  .blocked ol {
+  .youtube .or {
+    margin-top: 14px;
+  }
+  .youtube a {
+    color: var(--text);
+    text-decoration: underline;
+  }
+  .youtube ol {
     margin: 0;
     padding-left: 20px;
     display: flex;
@@ -222,7 +308,35 @@
     gap: 10px;
     color: var(--text-dim);
   }
-  .blocked code {
+  .cookies {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+  }
+  .alert .cookies {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .cookies .label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .cookies .label span {
+    font-weight: 600;
+  }
+  .cookies .label small {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cookies .label .warn {
+    color: var(--danger);
+  }
+  .youtube code {
     display: block;
     margin-top: 6px;
     padding: 6px 10px;

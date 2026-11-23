@@ -25,7 +25,7 @@ import (
 // Read returns yt-dlp's exit error (with its stderr) at the end of a failed
 // download instead of io.EOF. Close kills the process if it's still running.
 func Stream(ctx context.Context, videoID string) (io.ReadCloser, error) {
-	cmd := command(ctx,
+	cmd, done := command(ctx,
 		"--no-warnings", "--no-progress",
 		"-f", "140",
 		"-o", "-",
@@ -33,14 +33,16 @@ func Stream(ctx context.Context, videoID string) (io.ReadCloser, error) {
 	)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		done()
 		return nil, err
 	}
 	stderr := &tailBuffer{max: 2000}
 	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
+		done()
 		return nil, fmt.Errorf("yt-dlp stream: %w", err)
 	}
-	s := &streamReader{cmd: cmd, r: bufio.NewReaderSize(stdout, 64<<10), stderr: stderr}
+	s := &streamReader{cmd: cmd, r: bufio.NewReaderSize(stdout, 64<<10), stderr: stderr, done: done}
 	if _, err := s.r.Peek(1); err != nil {
 		if err := s.finish(); err != nil {
 			return nil, err
@@ -54,6 +56,7 @@ type streamReader struct {
 	cmd    *exec.Cmd
 	r      *bufio.Reader
 	stderr *tailBuffer
+	done   func() // убирает копию кук (command)
 	wait   sync.Once
 	err    error
 }
@@ -77,7 +80,9 @@ func (s *streamReader) Close() error {
 // finish waits for the process once; the error carries yt-dlp's stderr.
 func (s *streamReader) finish() error {
 	s.wait.Do(func() {
-		if err := s.cmd.Wait(); err != nil {
+		err := s.cmd.Wait()
+		s.done()
+		if err != nil {
 			stderr := strings.TrimSpace(s.stderr.String())
 			s.err = markBlocked(fmt.Errorf("yt-dlp stream: %w: %s", err, stderr), stderr)
 		}

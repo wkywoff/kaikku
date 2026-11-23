@@ -117,6 +117,8 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("PUT /api/tracks/deezer/{id}/video", s.adminOnly(s.handleSetTrackVideo))
 	mux.Handle("GET /api/admin/missing", s.adminOnly(s.handleMissing))
 	mux.Handle("POST /api/admin/missing/{job}/retry", s.adminOnly(s.handleRetryMissing))
+	mux.Handle("PUT /api/admin/youtube/cookies", s.adminOnly(s.handleUploadYouTubeCookies))
+	mux.Handle("DELETE /api/admin/youtube/cookies", s.adminOnly(s.handleDeleteYouTubeCookies))
 	mux.Handle("PUT /api/albums/deezer/{id}/hidden", s.adminOnly(s.handleSetAlbumHidden))
 	mux.Handle("POST /api/albums/deezer/{id}/tracklist/replace", s.adminOnly(s.handleReplaceAlbumTrack))
 	mux.Handle("POST /api/albums/deezer/{id}/refresh", s.adminOnly(s.handleRefreshAlbum))
@@ -232,15 +234,16 @@ func NewRouter(s *Server) http.Handler {
 }
 
 // Тела запросов к API — небольшой JSON; без предела nginx пропускал бы до
-// 1 МБ на любой эндпоинт, в том числе без авторизации. Загрузки картинок и
-// аудио ограничивают себя сами (handlers_edit.go, 1 МБ; handlers_admin.go,
-// uploads_audio.go).
+// 1 МБ на любой эндпоинт, в том числе без авторизации. Загрузки картинок,
+// аудио и кук YouTube ограничивают себя сами (handlers_edit.go, 1 МБ;
+// handlers_admin.go, uploads_audio.go; handlers_youtube.go, 1 МБ).
 const maxJSONBody = 64 << 10
 
 func limitBodies(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upload := r.Method == http.MethodPut &&
-			(strings.HasSuffix(r.URL.Path, "/picture") || strings.HasSuffix(r.URL.Path, "/cover")) ||
+			(strings.HasSuffix(r.URL.Path, "/picture") || strings.HasSuffix(r.URL.Path, "/cover") ||
+				r.URL.Path == "/api/admin/youtube/cookies") ||
 			(r.Method == http.MethodPut || r.Method == http.MethodPost) && strings.HasSuffix(r.URL.Path, "/audio")
 		if r.Body != nil && !upload {
 			r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)

@@ -58,8 +58,8 @@ func TestSetProxy_EveryYtDlpCallUsesIt(t *testing.T) {
 			t.Errorf("yt-dlp %q runs without the proxy", c)
 		}
 	}
-	if !slices.Contains(warmEnv(), "KAIKKU_YTDLP_PROXY=socks5://127.0.0.1:1080") {
-		t.Errorf("helper env %q has no proxy", warmEnv())
+	if !slices.Contains(warmEnv(""), "KAIKKU_YTDLP_PROXY=socks5://127.0.0.1:1080") {
+		t.Errorf("helper env %q has no proxy", warmEnv(""))
 	}
 }
 

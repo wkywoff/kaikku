@@ -41,6 +41,8 @@ func main() {
 	if err := ytdlp.SetProxy(os.Getenv("YTDLP_PROXY")); err != nil {
 		log.Fatalf("YTDLP_PROXY: %v", err)
 	}
+	// Куки YouTube, которые админ загрузил через API (тот же путь у API).
+	ytdlp.SetCookiesFile(ytdlp.CookiesPath(stagingDir))
 
 	conn, err := db.Open(dsn)
 	if err != nil {
