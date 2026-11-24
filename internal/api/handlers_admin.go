@@ -27,15 +27,13 @@ import (
 //   - скрыть релиз (overlay.go — где он пропадает);
 //   - перекачать аудио трека, загрузить своё и заново найти текст.
 
-const maxCredits = 10
-
 // creditArtists validates a credit list (artist IDs, the main one first:
 // Deezer or own, k…) and makes sure every Deezer artist has a library row
 // with its name and Deezer photo — the overlay names them from there. Own
 // artists must already exist.
 func (s *Server) creditArtists(ids []string) ([]string, error) {
-	if len(ids) == 0 || len(ids) > maxCredits {
-		return nil, fmt.Errorf("from 1 to %d artists", maxCredits)
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("at least one artist")
 	}
 	var out []string
 	for _, id := range ids {
