@@ -114,6 +114,11 @@ export const messages = {
     'player.backToCover': 'Назад к обложке',
     'player.nowPlaying': 'Сейчас играет',
     'player.open': 'Открыть плеер',
+    'side.show': 'Показать панель «Сейчас играет»',
+    'side.hide': 'Скрыть панель «Сейчас играет»',
+    'side.resize': 'Ширина панели «Сейчас играет»',
+    'side.openQueue': 'Открыть очередь',
+    'side.aboutArtist': 'Об исполнителе',
     'player.failed': 'Не удалось включить «{title}»',
     'player.notFound': '«{title}» не нашёлся на YouTube — пропускаем',
 
@@ -775,6 +780,11 @@ export const messages = {
     'player.backToCover': 'Back to the cover',
     'player.nowPlaying': 'Now playing',
     'player.open': 'Open player',
+    'side.show': 'Show Now Playing view',
+    'side.hide': 'Hide Now Playing view',
+    'side.resize': 'Now Playing view width',
+    'side.openQueue': 'Open queue',
+    'side.aboutArtist': 'About the artist',
     'player.failed': 'Couldn’t play “{title}”',
     'player.notFound': '“{title}” wasn’t found on YouTube — skipping',
 

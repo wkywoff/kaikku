@@ -1,8 +1,3 @@
-<script context="module">
-  import { LRU } from '../lru.js';
-  const bioCache = new LRU(30); // `${id}:${lang}` → ответ сервера
-</script>
-
 <script>
   // «Об исполнителе» на странице артиста: описание с Deezer или Last.fm
   // (сервер выбирает текст на языке интерфейса, bio.go) или свой текст, под
@@ -11,6 +6,7 @@
   // свой текст скрывает описание, «Вернуть автоматическое» — снова найденное.
   // Они же ставят свои жанры (до MAX_TAGS) вместо тегов Last.fm.
   import { api } from '../api.js';
+  import { artistBios as bioCache } from '../artistCache.js';
   import { t } from '../i18n.js';
   import { lang } from '../stores/settings.js';
   import { toast } from '../stores/toast.js';

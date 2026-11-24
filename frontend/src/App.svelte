@@ -30,6 +30,7 @@
   import TopBar from './lib/components/TopBar.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
   import PlayerBar from './lib/components/PlayerBar.svelte';
+  import { sidePlayer, sideFits } from './lib/stores/sidePlayer.js';
 
   // Ссылка на новый пароль (/?reset=…) открывает форму, даже если на этом
   // устройстве кто-то уже вошёл: старые входы после сброса всё равно не действуют.
@@ -126,6 +127,7 @@
     album: () => import('./lib/views/AlbumPage.svelte'),
     nowPlaying: () => import('./lib/components/NowPlaying.svelte'),
     queuePanel: () => import('./lib/components/QueuePanel.svelte'),
+    sidePlayer: () => import('./lib/components/SidePlayer.svelte'),
     settings: () => import('./lib/views/SettingsPage.svelte'),
     wrapped: () => import('./lib/views/WrappedPage.svelte'),
     wrappedAlbums: () => import('./lib/views/WrappedAlbumsPage.svelte'),
@@ -149,6 +151,10 @@
   $: need(view);
   $: if (queueOpen && hasTrack) need('queuePanel');
   $: if (fullView && hasTrack) need('nowPlaying');
+  $: sideWanted = $sidePlayer.open && $sideFits && hasTrack;
+  $: if (sideWanted) need('sidePlayer');
+  $: sideShown = sideWanted && !!loaded.sidePlayer;
+  $: if (sideShown && queueOpen) queueOpen = false;
   onMount(() => {
     const rest = () => Object.keys(lazy).filter((n) => !RARE.includes(n)).forEach(need);
     if ('requestIdleCallback' in window) requestIdleCallback(rest, { timeout: 4000 });
@@ -230,31 +236,42 @@
     <TopBar />
     <StatusBanner />
 
-    <main use:scrollMemory style={paletteVars('page', $pagePalette)} style:--tint-scroll="{tintScroll}px" class:full-tint={fullTint} class:instant-tint={instantTint} on:scroll|passive={onMainScroll}>
-      <div class="content">
-        <!-- Режим админа переключили — страница пересоздаётся и грузится
-             заново (скрытые релизы, lib/stores/me.js → pageEpoch). -->
-        {#key $pageEpoch}
-        {#if view === 'home'}
-          <Home />
-        {:else if loaded[view] && view === 'settings'}
-          <svelte:component this={loaded.settings} {me} />
-        {:else if loaded[view] && BY_ID.includes(view)}
-          {#key $navStore.id}<svelte:component this={loaded[view]} />{/key}
-        {:else if loaded[view]}
-          <svelte:component this={loaded[view]} />
-        {/if}
-        {/key}
-      </div>
-    </main>
+    <div class="workspace" class:with-side={sideShown}>
+      <main use:scrollMemory style={paletteVars('page', $pagePalette)} style:--tint-scroll="{tintScroll}px" class:full-tint={fullTint} class:instant-tint={instantTint} on:scroll|passive={onMainScroll}>
+        <div class="content">
+          <!-- Режим админа переключили — страница пересоздаётся и грузится
+               заново (скрытые релизы, lib/stores/me.js → pageEpoch). -->
+          {#key $pageEpoch}
+          {#if view === 'home'}
+            <Home />
+          {:else if loaded[view] && view === 'settings'}
+            <svelte:component this={loaded.settings} {me} />
+          {:else if loaded[view] && BY_ID.includes(view)}
+            {#key $navStore.id}<svelte:component this={loaded[view]} />{/key}
+          {:else if loaded[view]}
+            <svelte:component this={loaded[view]} />
+          {/if}
+          {/key}
+        </div>
+      </main>
+      {#if sideShown}
+        <svelte:component
+          this={loaded.sidePlayer}
+          on:fullscreen={() => (fullView = 'fullscreen')}
+          on:lyrics={() => (lyricsOpen.set(true), (fullView = 'overlay'))}
+        />
+      {/if}
+    </div>
 
-    <PlayerBar
-      {queueOpen}
-      on:queue={() => (queueOpen = !queueOpen)}
-      on:fullscreen={() => (fullView = 'fullscreen')}
-      on:expand={() => (fullView = 'overlay')}
-      on:lyrics={() => (lyricsOpen.set(true), (fullView = 'overlay'))}
-    />
+    {#if !sideShown}
+      <PlayerBar
+        {queueOpen}
+        on:queue={() => (queueOpen = !queueOpen)}
+        on:fullscreen={() => (fullView = 'fullscreen')}
+        on:expand={() => (fullView = 'overlay')}
+        on:lyrics={() => (lyricsOpen.set(true), (fullView = 'overlay'))}
+      />
+    {/if}
     <BottomNav />
   </div>
 
@@ -281,10 +298,21 @@
     flex-direction: column;
     background: #000;
   }
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .workspace.with-side {
+    padding-bottom: 8px;
+  }
+  .workspace.with-side main {
+    margin-right: 0;
+  }
   main {
     position: relative;
     flex: 1;
-    min-height: 0;
+    min-width: 0;
     overflow-y: auto;
     /* Место под полосу прокрутки — всегда, как у Spotify: иначе на длинной
        странице колонка по центру сдвигалась на полполосы относительно

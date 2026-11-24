@@ -29,6 +29,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import VolumeX from '@lucide/svelte/icons/volume-x';
   import Maximize2 from '@lucide/svelte/icons/maximize-2';
+  import PanelRight from '@lucide/svelte/icons/panel-right';
   import Disc3 from '@lucide/svelte/icons/disc-3';
   import Moon from '@lucide/svelte/icons/moon';
   import LikeButton from './LikeButton.svelte';
@@ -37,6 +38,7 @@
   import { rowFromEntry } from '../library.js';
   import { sleepMenuItems, sleepLabel } from '../sleepMenu.js';
   import { wheelVolume } from '../wheelVolume.js';
+  import { sidePlayer, sideFits } from '../stores/sidePlayer.js';
 
   const smoothTime = player.smoothTime; // полоса прогресса плавная, цифры — по секундам
 
@@ -125,6 +127,11 @@
     </div>
 
     <div class="extra">
+      {#if $sideFits}
+        <button class="icon-btn" on:click={() => sidePlayer.open()} title={$t('side.show')} aria-label={$t('side.show')}>
+          <PanelRight size={18} />
+        </button>
+      {/if}
       <button class="icon-btn" on:click={() => dispatch('lyrics')} title={$t('lyrics.show')} aria-label={$t('lyrics.show')}>
         <MicVocal size={18} />
       </button>

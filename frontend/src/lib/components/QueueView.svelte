@@ -17,6 +17,8 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import X from '@lucide/svelte/icons/x';
 
+  export let compact = false;
+
   $: s = $queueState; // без позиции трека: очередь не пересобирается на каждый тик
   $: current = s.queue[s.index];
   $: after = s.queue.map((item, i) => ({ item, i })).filter(({ i }) => i > s.index);
@@ -104,7 +106,7 @@
   }
 </script>
 
-<div class="queue-view">
+<div class="queue-view" class:compact>
   <div class="pills">
     <button class="pill" class:on={s.shuffle} on:click={() => player.toggleShuffle()} aria-pressed={s.shuffle} title={$t('player.shuffle')} aria-label={$t('player.shuffle')}><Shuffle size={20} /></button>
     <button class="pill" class:on={s.repeat !== 'off'} on:click={() => player.cycleRepeat()} aria-pressed={s.repeat !== 'off'} title={$t(s.repeat === 'one' ? 'player.repeatOne' : s.repeat === 'all' ? 'player.repeatAll' : 'player.repeat')} aria-label={$t('player.repeat')}>
@@ -337,5 +339,46 @@
     padding: 24px 0;
     color: rgba(255, 255, 255, 0.6);
     font-size: 15px;
+  }
+  .compact {
+    height: auto;
+    gap: 16px;
+  }
+  .compact .pill {
+    height: 36px;
+  }
+  .compact .list {
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+    padding-bottom: 0;
+  }
+  .compact h3 {
+    font-size: 16px;
+  }
+  .compact .sec-head p {
+    font-size: 13px;
+  }
+  .compact .pick {
+    gap: 12px;
+  }
+  .compact .pick img,
+  .compact .ph {
+    width: 44px;
+    height: 44px;
+  }
+  .compact .title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .compact .artist {
+    font-size: 13px;
+  }
+  .compact .handle {
+    width: 36px;
+    height: 36px;
+  }
+  .compact .row.swiping {
+    background: var(--bg-elevated);
   }
 </style>
