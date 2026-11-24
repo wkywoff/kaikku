@@ -2,7 +2,7 @@
   // Полка на главной: заголовок и один ряд карточек (сколько помещается по
   // ширине) с кнопкой «Показать все», как у Spotify. Карточку рисует
   // страница: <Shelf {items} let:item>…</Shelf>.
-  import { MAX_PER_ROW } from '../layout.js';
+  import { cardsPerRow } from '../layout.js';
   import { t } from '../i18n.js';
 
   export let title;
@@ -19,16 +19,17 @@
 
   let expanded = false;
   let width = 0;
+  let grid;
 
   // Сколько карточек в ряду сетки (min 176 px; на телефоне — 2).
-  $: perRow = width < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(width / 176)));
+  $: perRow = width && grid ? cardsPerRow(grid) : 2;
   $: visible = expanded ? items : items.slice(0, perRow);
 </script>
 
 {#if loading}
   <section aria-busy="true">
     <div class="head"><h2>{title}</h2></div>
-    <div class="grid" bind:clientWidth={width}>
+    <div class="grid" bind:this={grid} bind:clientWidth={width}>
       {#each Array(perRow) as _}
         <div class="ghost" aria-hidden="true">
           <div class="ghost-art" class:round></div>
@@ -51,7 +52,7 @@
         </button>
       {/if}
     </div>
-    <div class="grid" bind:clientWidth={width}>
+    <div class="grid" bind:this={grid} bind:clientWidth={width}>
       {#each visible as item, i (key(item))}
         <slot {item} eager={priority && i < perRow} first={priority && i === 0} />
       {/each}

@@ -1,5 +1,4 @@
 <script context="module">
-  import { MAX_PER_ROW } from '../layout.js';
   import { LRU } from '../lru.js';
   const cache = new LRU(30); // deezer id артиста -> Promise<albums>
 </script>
@@ -17,12 +16,14 @@
   import { playingContext, isContext, playAlbum } from '../library.js';
   import { toast } from '../stores/toast.js';
   import MediaCard from './MediaCard.svelte';
+  import { cardsPerRow } from '../layout.js';
 
   export let artist; // { id, name } — Deezer
   export let excludeId = null; // текущий альбом
 
   let albums = [];
   let gridWidth = 0;
+  let grid;
 
   $: load(artist.id);
 
@@ -36,7 +37,7 @@
   }
 
   // Сколько карточек в строке (min 176 px; на телефоне — 2), как на странице артиста.
-  $: perRow = gridWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(gridWidth / 176)));
+  $: perRow = gridWidth && grid ? cardsPerRow(grid) : 2;
 
   $: playingCtx = $playerPlaying ? $playingContext : null;
   const play = (id) => playAlbum(id).catch((e) => toast(e.message, 'error'));
@@ -50,7 +51,7 @@
         <a class="show-all" href={paths.discography(artist.id, 'album')} use:link>{$t('disc.showAll')}</a>
       {/if}
     </div>
-    <div class="grid" bind:clientWidth={gridWidth}>
+    <div class="grid" bind:this={grid} bind:clientWidth={gridWidth}>
       {#each albums.slice(0, perRow) as a (a.id)}
         <MediaCard
           href={paths.album(a.id)}
