@@ -30,7 +30,7 @@
   import TopBar from './lib/components/TopBar.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
   import PlayerBar from './lib/components/PlayerBar.svelte';
-  import { sidePlayer, sideFits } from './lib/stores/sidePlayer.js';
+  import { sidePlayer, sideFits, clampWidth } from './lib/stores/sidePlayer.js';
 
   // Ссылка на новый пароль (/?reset=…) открывает форму, даже если на этом
   // устройстве кто-то уже вошёл: старые входы после сброса всё равно не действуют.
@@ -140,23 +140,37 @@
   const BY_ID = ['playlist', 'mix', 'genre', 'artist', 'discography', 'album', 'releaseEdit', 'user']; // своя страница на каждый id
   let loaded = {}; // имя → компонент
   const loading = new Set();
-  function need(name) {
+  function need(name, onFail) {
     if (loaded[name] || loading.has(name) || !lazy[name]) return;
     loading.add(name);
     lazy[name]()
       .then((m) => (loaded = { ...loaded, [name]: m.default }))
-      .catch((e) => console.error(`loading ${name}`, e))
+      .catch((e) => {
+        console.error(`loading ${name}`, e);
+        onFail?.();
+      })
       .finally(() => loading.delete(name));
   }
   $: need(view);
   $: if (queueOpen && hasTrack) need('queuePanel');
   $: if (fullView && hasTrack) need('nowPlaying');
+  const SIDE_LATE_MS = 3000;
+  let sideLate = false;
+  let sideTimer = 0;
   $: sideWanted = $sidePlayer.open && $sideFits && hasTrack;
-  $: if (sideWanted) need('sidePlayer');
-  $: sideShown = sideWanted && !!loaded.sidePlayer;
+  $: sideReady = !!loaded.sidePlayer;
+  $: awaitSide(sideWanted && !sideReady, $sidePlayer);
+  function awaitSide(waiting) {
+    clearTimeout(sideTimer);
+    sideLate = false;
+    if (!waiting) return;
+    need('sidePlayer', () => (sideLate = true));
+    sideTimer = setTimeout(() => (sideLate = true), SIDE_LATE_MS);
+  }
+  $: sideShown = sideWanted && (sideReady || !sideLate);
   $: if (sideShown && queueOpen) queueOpen = false;
   onMount(() => {
-    const rest = () => Object.keys(lazy).filter((n) => !RARE.includes(n)).forEach(need);
+    const rest = () => Object.keys(lazy).filter((n) => !RARE.includes(n)).forEach((n) => need(n));
     if ('requestIdleCallback' in window) requestIdleCallback(rest, { timeout: 4000 });
     else setTimeout(rest, 2000);
   });
@@ -255,11 +269,15 @@
         </div>
       </main>
       {#if sideShown}
-        <svelte:component
-          this={loaded.sidePlayer}
-          on:fullscreen={() => (fullView = 'fullscreen')}
-          on:lyrics={() => (lyricsOpen.set(true), (fullView = 'overlay'))}
-        />
+        {#if sideReady}
+          <svelte:component
+            this={loaded.sidePlayer}
+            on:fullscreen={() => (fullView = 'fullscreen')}
+            on:lyrics={() => (lyricsOpen.set(true), (fullView = 'overlay'))}
+          />
+        {:else}
+          <div class="side-holder" class:tint-full={$settings.playerTint === 'full'} style="width: {clampWidth($sidePlayer.width, window.innerWidth)}px" aria-hidden="true"></div>
+        {/if}
       {/if}
     </div>
 
@@ -308,6 +326,15 @@
   }
   .workspace.with-side main {
     margin-right: 0;
+  }
+  .side-holder {
+    flex-shrink: 0;
+    margin: 0 8px;
+    border-radius: var(--radius);
+    background: var(--bg);
+  }
+  .side-holder.tint-full {
+    background: var(--player-flat);
   }
   main {
     position: relative;
