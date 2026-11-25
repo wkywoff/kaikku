@@ -1,20 +1,16 @@
 <script>
-  import { modal } from '../modal.js';
-  import { onMount, onDestroy, createEventDispatcher } from 'svelte';
-  import { fade, scale } from 'svelte/transition';
+  import { onDestroy } from 'svelte';
   import { t } from '../i18n.js';
   import { lang } from '../stores/settings.js';
   import { me } from '../stores/me.js';
   import { shareCardModel, shareCardBlob } from '../shareCard.js';
-  import X from '@lucide/svelte/icons/x';
+  import Dialog from './Dialog.svelte';
   import Download from '@lucide/svelte/icons/download';
   import Share2 from '@lucide/svelte/icons/share-2';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
   export let data;
 
-  const dispatch = createEventDispatcher();
-  const close = () => dispatch('close');
   let file = null;
   let url = '';
   let error = '';
@@ -52,74 +48,30 @@
       if (e?.name !== 'AbortError') download();
     }
   }
-
-  onMount(() => {
-    const onKey = (e) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="backdrop" use:modal={close} transition:fade={{ duration: 120 }} on:click|self={close} role="dialog" tabindex="-1" aria-modal="true" aria-label={$t('wrapped.shareTitle')}>
-  <div class="dialog" transition:scale={{ start: 0.96, duration: 150 }}>
-    <div class="head">
-      <h2>{$t('wrapped.shareTitle')}</h2>
-      <button type="button" class="icon-btn" on:click={close} aria-label={$t('album.close')}><X size={20} /></button>
-    </div>
-
-    <div class="preview" aria-busy={!url && !error}>
-      {#if url}
-        <img src={url} alt={$t('wrapped.shareTitle')} />
-      {:else if error}
-        <p class="error-text">{error}</p>
-      {:else}
-        <span class="spin"><LoaderCircle size={28} /></span>
-      {/if}
-    </div>
-
-    <div class="actions">
-      {#if canShare}
-        <button type="button" class="pill" on:click={download} disabled={!url}><Download size={16} /> {$t('wrapped.download')}</button>
-        <button type="button" class="pill active" on:click={share}><Share2 size={16} /> {$t('share.share')}</button>
-      {:else}
-        <button type="button" class="pill active" on:click={download} disabled={!url}><Download size={16} /> {$t('wrapped.download')}</button>
-      {/if}
-    </div>
+<Dialog title={$t('wrapped.shareTitle')} width={400} on:close>
+  <div class="preview" aria-busy={!url && !error}>
+    {#if url}
+      <img src={url} alt={$t('wrapped.shareTitle')} />
+    {:else if error}
+      <p class="error-text">{error}</p>
+    {:else}
+      <span class="spin"><LoaderCircle size={28} /></span>
+    {/if}
   </div>
-</div>
+
+  <svelte:fragment slot="footer">
+    {#if canShare}
+      <button type="button" class="pill lg" on:click={download} disabled={!url}><Download size={16} /> {$t('wrapped.download')}</button>
+      <button type="button" class="pill primary lg" on:click={share}><Share2 size={16} /> {$t('share.share')}</button>
+    {:else}
+      <button type="button" class="pill primary lg" on:click={download} disabled={!url}><Download size={16} /> {$t('wrapped.download')}</button>
+    {/if}
+  </svelte:fragment>
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
-    background: rgba(0, 0, 0, 0.7);
-  }
-  .dialog {
-    width: min(400px, 100%);
-    max-height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 20px 24px 24px;
-    border-radius: 8px;
-    background: #282828;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  h2 {
-    font-size: 20px;
-  }
   .preview {
     flex: 1 1 auto;
     min-height: 0;
@@ -143,16 +95,5 @@
   .preview .spin {
     display: flex;
     color: var(--text-dim);
-  }
-  .actions {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .actions .pill {
-    height: 40px;
-    padding: 0 20px;
-    font-weight: 700;
   }
 </style>

@@ -1,11 +1,9 @@
 <script>
-  import { modal } from '../modal.js';
   import { onMount, createEventDispatcher } from 'svelte';
-  import { fade, scale } from 'svelte/transition';
   import { api } from '../api.js';
   import { t } from '../i18n.js';
   import { toSquareJpeg } from '../image.js';
-  import X from '@lucide/svelte/icons/x';
+  import Dialog from './Dialog.svelte';
   import ImageUp from '@lucide/svelte/icons/image-up';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -58,10 +56,7 @@
 
   onMount(() => {
     load();
-    const onKey = (e) => e.key === 'Escape' && !busy && dispatch('close');
-    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('keydown', onKey);
       if (newImageUrl) URL.revokeObjectURL(newImageUrl);
     };
   });
@@ -254,189 +249,152 @@
   const titles = { artist: 'edit.artistTitle', track: 'edit.trackTitle' };
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="backdrop" use:modal={() => !busy && dispatch('close')} transition:fade={{ duration: 120 }} on:click|self={() => !busy && dispatch('close')} role="dialog" tabindex="-1" aria-modal="true" aria-label={$t(titles[kind])}>
-  <form class="dialog" transition:scale={{ start: 0.96, duration: 150 }} on:submit|preventDefault={save}>
-    <div class="head">
-      <h2>{$t(titles[kind])}</h2>
-      <button type="button" class="icon-btn" on:click={() => dispatch('close')} aria-label={$t('album.close')} disabled={busy}><X size={20} /></button>
+<Dialog title={$t(titles[kind])} locked={busy} onSubmit={save} on:close={() => dispatch('close')}>
+  {#if !item && !error}
+    <div class="loading"><LoaderCircle class="spin" size={24} /></div>
+  {:else if item}
+    <div class="body" class:with-image={kind !== 'track'}>
+      {#if kind !== 'track'}
+        <div class="image-col">
+          <button type="button" class="image" class:round={kind === 'artist'} on:click={() => fileInput.click()} title={$t('edit.chooseImage')}>
+            {#if imageUrl}<img src={imageUrl} alt="" />{/if}
+            <span class="image-overlay"><ImageUp size={28} /><span>{$t('edit.chooseImage')}</span></span>
+          </button>
+          <input bind:this={fileInput} type="file" accept="image/*" hidden on:change={pickImage} />
+        </div>
+      {/if}
+
+      <div class="fields">
+        <label>
+          <span>{kind === 'artist' ? $t('edit.name') : $t('edit.title')}</span>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input class="input" type="text" bind:value={name} maxlength="300" autofocus />
+        </label>
+
+        {#if own}
+          <label class="check">
+            <input type="checkbox" bind:checked={explicit} />
+            <span>{$t('edit.explicit')}</span>
+          </label>
+        {:else if kind === 'track'}
+          <div class="row2">
+            <label>
+              <span>{$t('edit.trackNo')}</span>
+              <input class="input" type="number" min="1" max="999" bind:value={trackNo} />
+            </label>
+            <label>
+              <span>{$t('edit.discNo')}</span>
+              <input class="input" type="number" min="1" max="99" bind:value={discNo} />
+            </label>
+          </div>
+          <label class="check">
+            <input type="checkbox" bind:checked={explicit} />
+            <span>{$t('edit.explicit')}</span>
+          </label>
+        {/if}
+      </div>
     </div>
 
-    {#if !item && !error}
-      <div class="loading"><LoaderCircle class="spin" size={24} /></div>
-    {:else if item}
-      <div class="body" class:with-image={kind !== 'track'}>
-        {#if kind !== 'track'}
-          <div class="image-col">
-            <button type="button" class="image" class:round={kind === 'artist'} on:click={() => fileInput.click()} title={$t('edit.chooseImage')}>
-              {#if imageUrl}<img src={imageUrl} alt="" />{/if}
-              <span class="image-overlay"><ImageUp size={28} /><span>{$t('edit.chooseImage')}</span></span>
-            </button>
-            <input bind:this={fileInput} type="file" accept="image/*" hidden on:change={pickImage} />
-          </div>
-        {/if}
-
-        <div class="fields">
-          <label>
-            <span>{kind === 'artist' ? $t('edit.name') : $t('edit.title')}</span>
-            <!-- svelte-ignore a11y_autofocus -->
-            <input type="text" bind:value={name} maxlength="300" autofocus />
-          </label>
-
-          {#if own}
-            <label class="check">
-              <input type="checkbox" bind:checked={explicit} />
-              <span>{$t('edit.explicit')}</span>
-            </label>
-          {:else if kind === 'track'}
-            <div class="row2">
-              <label>
-                <span>{$t('edit.trackNo')}</span>
-                <input type="number" min="1" max="999" bind:value={trackNo} />
-              </label>
-              <label>
-                <span>{$t('edit.discNo')}</span>
-                <input type="number" min="1" max="99" bind:value={discNo} />
-              </label>
-            </div>
-            <label class="check">
-              <input type="checkbox" bind:checked={explicit} />
-              <span>{$t('edit.explicit')}</span>
-            </label>
-          {/if}
-        </div>
-      </div>
-
-      {#if own}
-        <div class="credits">
-          <label class="check">
-            <input type="checkbox" bind:checked={ownArtists} on:change={() => !ownArtists && (artists = (item.release_artists || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null })))} />
-            <span>{$t('upload.ownTrackArtists')}<small>{ownArtists ? $t('upload.ownTrackArtistsHint') : $t('upload.asRelease', { names: (item.release_artists || []).map((a) => a.name).join(', ') || '—' })}</small></span>
-          </label>
-        </div>
-      {/if}
-
-      {#if editCredits}
-        <div class="credits">
-          <span class="caption">{$t('edit.artists')}</span>
-          <ArtistPicker bind:artists invalid={!artists.length} inputId="edit-artists" label={$t('edit.artists')} />
-        </div>
-      {/if}
-
-      {#if kind === 'track' && albumId && !own}
-        <div class="credits">
-          <span class="caption">{$t('edit.swapTrack')}</span>
-          <div class="add-artist">
-            <input type="text" bind:value={swapLink} placeholder={$t('edit.trackLink')} on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), swapTrack())} />
-            <button type="button" class="add" disabled={!swapLink.trim() || !!toolBusy} on:click={swapTrack}>
-              {#if toolBusy === 'swap'}<LoaderCircle class="spin" size={16} />{/if}
-              {$t('edit.replace')}
-            </button>
-          </div>
-          <small class="hint">{$t('edit.swapHint')}</small>
-        </div>
-      {/if}
-
-      {#if own}
-        <label class="credits lyrics">
-          <span class="caption">{$t('upload.lyrics')}</span>
-          {#if lyrics === undefined}
-            <LoaderCircle class="spin" size={16} />
-          {:else}
-            <textarea rows="6" maxlength="60000" bind:value={lyrics}></textarea>
-          {/if}
-          <small class="hint">{$t('upload.lyricsHint')}</small>
+    {#if own}
+      <div class="credits">
+        <label class="check">
+          <input type="checkbox" bind:checked={ownArtists} on:change={() => !ownArtists && (artists = (item.release_artists || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null })))} />
+          <span>{$t('upload.ownTrackArtists')}<small>{ownArtists ? $t('upload.ownTrackArtistsHint') : $t('upload.asRelease', { names: (item.release_artists || []).map((a) => a.name).join(', ') || '—' })}</small></span>
         </label>
-        <div class="tools">
-          <button type="button" class="tool" disabled={!!toolBusy} on:click={() => audioInput.click()}>
+      </div>
+    {/if}
+
+    {#if editCredits}
+      <div class="credits">
+        <span class="caption">{$t('edit.artists')}</span>
+        <ArtistPicker bind:artists invalid={!artists.length} inputId="edit-artists" label={$t('edit.artists')} />
+      </div>
+    {/if}
+
+    {#if kind === 'track' && albumId && !own}
+      <div class="credits">
+        <span class="caption">{$t('edit.swapTrack')}</span>
+        <div class="add-artist">
+          <input class="input" type="text" bind:value={swapLink} placeholder={$t('edit.trackLink')} on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), swapTrack())} />
+          <button type="button" class="pill outline lg" disabled={!swapLink.trim() || !!toolBusy} on:click={swapTrack}>
+            {#if toolBusy === 'swap'}<LoaderCircle class="spin" size={16} />{/if}
+            {$t('edit.replace')}
+          </button>
+        </div>
+        <small class="hint">{$t('edit.swapHint')}</small>
+      </div>
+    {/if}
+
+    {#if own}
+      <label class="credits lyrics">
+        <span class="caption">{$t('upload.lyrics')}</span>
+        {#if lyrics === undefined}
+          <LoaderCircle class="spin" size={16} />
+        {:else}
+          <textarea class="input" rows="6" maxlength="60000" bind:value={lyrics}></textarea>
+        {/if}
+        <small class="hint">{$t('upload.lyricsHint')}</small>
+      </label>
+      <div class="tools">
+        <button type="button" class="pill outline lg" disabled={!!toolBusy} on:click={() => audioInput.click()}>
+          {#if toolBusy === 'upload'}<LoaderCircle class="spin" size={16} />{:else}<FileMusic size={16} />{/if}
+          {#if uploadPct === null}{$t('upload.replaceAudio')}
+          {:else if uploadPct < 1}{$t('edit.uploading', { pct: Math.floor(uploadPct * 100) })}
+          {:else}{$t('edit.preparing')}{/if}
+        </button>
+        <input bind:this={audioInput} type="file" accept={AUDIO_ACCEPT} hidden on:change={uploadAudio} />
+        <a class="pill outline lg" href={paths.releaseEdit(item.album_id)} use:link on:click={() => dispatch('close')}><Pencil size={16} /> {$t('upload.editRelease')}</a>
+      </div>
+    {:else if kind === 'track'}
+      <div class="credits">
+        <span class="caption">{$t('edit.video')}</span>
+        <div class="add-artist">
+          <input class="input" type="url" inputmode="url" bind:value={videoLink} placeholder={$t('missing.videoPlaceholder')} on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), useVideo())} />
+          <button type="button" class="pill outline lg" disabled={!videoLink.trim() || !!toolBusy} on:click={useVideo}>
+            {#if toolBusy === 'video'}<LoaderCircle class="spin" size={16} />{/if}
+            {$t('missing.useVideo')}
+          </button>
+        </div>
+        <small class="hint">{$t('edit.videoHint')}</small>
+      </div>
+      <div class="tools">
+        {#if item.library_id}
+          <button type="button" class="pill outline lg" disabled={!!toolBusy} on:click={redownload}>
+            {#if toolBusy === 'audio'}<LoaderCircle class="spin" size={16} />{:else}<Download size={16} />{/if}
+            {$t('edit.redownload')}
+          </button>
+        {/if}
+        {#if item.library_id || item.missing}
+          <button type="button" class="pill outline lg" disabled={!!toolBusy} on:click={() => audioInput.click()}>
             {#if toolBusy === 'upload'}<LoaderCircle class="spin" size={16} />{:else}<FileMusic size={16} />{/if}
-            {#if uploadPct === null}{$t('upload.replaceAudio')}
+            {#if uploadPct === null}{$t('edit.uploadAudio')}
             {:else if uploadPct < 1}{$t('edit.uploading', { pct: Math.floor(uploadPct * 100) })}
             {:else}{$t('edit.preparing')}{/if}
           </button>
-          <input bind:this={audioInput} type="file" accept={AUDIO_ACCEPT} hidden on:change={uploadAudio} />
-          <a class="tool" href={paths.releaseEdit(item.album_id)} use:link on:click={() => dispatch('close')}><Pencil size={16} /> {$t('upload.editRelease')}</a>
-        </div>
-      {:else if kind === 'track'}
-        <div class="credits">
-          <span class="caption">{$t('edit.video')}</span>
-          <div class="add-artist">
-            <input type="url" inputmode="url" bind:value={videoLink} placeholder={$t('missing.videoPlaceholder')} on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), useVideo())} />
-            <button type="button" class="add" disabled={!videoLink.trim() || !!toolBusy} on:click={useVideo}>
-              {#if toolBusy === 'video'}<LoaderCircle class="spin" size={16} />{/if}
-              {$t('missing.useVideo')}
-            </button>
-          </div>
-          <small class="hint">{$t('edit.videoHint')}</small>
-        </div>
-        <div class="tools">
-          {#if item.library_id}
-            <button type="button" class="tool" disabled={!!toolBusy} on:click={redownload}>
-              {#if toolBusy === 'audio'}<LoaderCircle class="spin" size={16} />{:else}<Download size={16} />{/if}
-              {$t('edit.redownload')}
-            </button>
-          {/if}
-          {#if item.library_id || item.missing}
-            <button type="button" class="tool" disabled={!!toolBusy} on:click={() => audioInput.click()}>
-              {#if toolBusy === 'upload'}<LoaderCircle class="spin" size={16} />{:else}<FileMusic size={16} />{/if}
-              {#if uploadPct === null}{$t('edit.uploadAudio')}
-              {:else if uploadPct < 1}{$t('edit.uploading', { pct: Math.floor(uploadPct * 100) })}
-              {:else}{$t('edit.preparing')}{/if}
-            </button>
-            <input bind:this={audioInput} type="file" accept="audio/*,.flac,.m4a,.mp3,.wav,.ogg,.opus,.aac,.alac,.aiff" hidden on:change={uploadAudio} />
-          {/if}
-          <button type="button" class="tool" disabled={!!toolBusy} on:click={refreshLyrics}>
-            {#if toolBusy === 'lyrics'}<LoaderCircle class="spin" size={16} />{:else}<MicVocal size={16} />{/if}
-            {$t('edit.refreshLyrics')}
-          </button>
-        </div>
-      {/if}
+          <input bind:this={audioInput} type="file" accept="audio/*,.flac,.m4a,.mp3,.wav,.ogg,.opus,.aac,.alac,.aiff" hidden on:change={uploadAudio} />
+        {/if}
+        <button type="button" class="pill outline lg" disabled={!!toolBusy} on:click={refreshLyrics}>
+          {#if toolBusy === 'lyrics'}<LoaderCircle class="spin" size={16} />{:else}<MicVocal size={16} />{/if}
+          {$t('edit.refreshLyrics')}
+        </button>
+      </div>
     {/if}
+  {/if}
 
-    {#if error}<p class="error-text">{error}</p>{/if}
+  {#if error}<p class="error-text">{error}</p>{/if}
 
-    <div class="footer">
-      {#if canReset}
-        <button type="button" class="reset" on:click={reset} disabled={busy}><RotateCcw size={16} /> {$t('edit.reset')}</button>
-      {/if}
-      <div class="spacer"></div>
-      <button type="submit" class="save" disabled={busy || !item || (editCredits && !artists.length)}>
-        {#if busy}<LoaderCircle class="spin" size={16} />{/if}
-        {$t('edit.save')}
-      </button>
-    </div>
-  </form>
-</div>
+  <svelte:fragment slot="footer">
+    {#if canReset}
+      <button type="button" class="text-btn" on:click={reset} disabled={busy}><RotateCcw size={16} /> {$t('edit.reset')}</button>
+    {/if}
+    <button type="submit" class="pill primary lg" disabled={busy || !item || (editCredits && !artists.length)}>
+      {#if busy}<LoaderCircle class="spin" size={16} />{/if}
+      {$t('edit.save')}
+    </button>
+  </svelte:fragment>
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
-    background: rgba(0, 0, 0, 0.7);
-  }
-  .dialog {
-    width: min(560px, 100%);
-    max-height: 100%;
-    overflow-y: auto;
-    padding: 24px;
-    border-radius: 8px;
-    background: #282828;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-  }
-  h2 {
-    font-size: 22px;
-  }
   .loading {
     display: flex;
     flex-direction: column;
@@ -452,7 +410,7 @@
     position: relative;
     width: 180px;
     height: 180px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-press);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
@@ -476,7 +434,7 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 600;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.6);
     opacity: 0;
     transition: opacity 0.15s;
   }
@@ -508,42 +466,8 @@
     font-weight: 600;
     color: var(--text-dim);
   }
-  input {
-    height: 40px;
-    padding: 0 10px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-    color-scheme: dark;
-  }
-  input:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
-  }
-  .error-text {
-    margin: 12px 0 0;
-  }
   .lyrics {
     font-weight: 400;
-  }
-  textarea {
-    width: 100%;
-    padding: 8px 10px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font: 14px/1.5 var(--font);
-    resize: vertical;
-  }
-  textarea:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
   }
   .check {
     flex-direction: row;
@@ -571,7 +495,6 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-top: 20px;
   }
   .caption {
     font-size: 13px;
@@ -592,69 +515,10 @@
     flex: 1;
     min-width: 0;
   }
-  .add,
-  .tool {
-    display: inline-flex;
-    color: var(--text);
-    align-items: center;
-    gap: 6px;
-    height: 40px;
-    padding: 0 16px;
-    border-radius: 999px;
-    border: 1px solid #6a6a6a;
-    font-size: 14px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  @media (hover: hover) {
-    .add:hover:not(:disabled),
-    .tool:hover:not(:disabled) {
-      border-color: #fff;
-    }
-  }
   .tools {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 20px;
-  }
-  .footer {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 24px;
-  }
-  .spacer {
-    flex: 1;
-  }
-  .reset {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .reset:hover:not(:disabled) {
-      color: var(--text);
-    }
-  }
-  .save {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 28px;
-    border-radius: 999px;
-    background: #fff;
-    color: #000;
-    font-weight: 700;
-    transition: transform 0.1s;
-  }
-  @media (hover: hover) {
-    .save:hover:not(:disabled) {
-      transform: scale(1.04);
-    }
   }
   @media (max-width: 560px) {
     .body {

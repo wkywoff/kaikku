@@ -1,13 +1,11 @@
 <script>
-  import { modal } from '../modal.js';
-  import { onMount, onDestroy, createEventDispatcher } from 'svelte';
-  import { fade, scale } from 'svelte/transition';
+  import { onDestroy, createEventDispatcher } from 'svelte';
   import { api } from '../api.js';
   import { t } from '../i18n.js';
   import { toSquareJpeg } from '../image.js';
   import Artwork from './Artwork.svelte';
+  import Dialog from './Dialog.svelte';
   import Switch from './Switch.svelte';
-  import X from '@lucide/svelte/icons/x';
   import ImagePlus from '@lucide/svelte/icons/image-plus';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -84,12 +82,6 @@
   }
   onDestroy(() => newImageUrl && URL.revokeObjectURL(newImageUrl));
 
-  onMount(() => {
-    const onKey = (e) => e.key === 'Escape' && !busy && dispatch('close');
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
   async function save() {
     if (!title.trim()) return;
     busy = true;
@@ -119,76 +111,67 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="backdrop" use:modal={() => !busy && dispatch('close')} transition:fade={{ duration: 120 }} on:click|self={() => !busy && dispatch('close')} role="dialog" tabindex="-1" aria-modal="true" aria-label={$t('playlist.edit')}>
-  <form class="dialog" transition:scale={{ start: 0.96, duration: 150 }} on:submit|preventDefault={save}>
-    <div class="head">
-      <h2>{$t('playlist.edit')}</h2>
-      <button type="button" class="icon-btn" on:click={() => dispatch('close')} aria-label={$t('album.close')} disabled={busy}><X size={20} /></button>
-    </div>
-
-    <div class="details">
-      <div class="cover-col">
-        <button type="button" class="cover" on:click={() => fileInput.click()} disabled={busy} aria-label={$t('playlist.chooseCover')} title={$t('playlist.chooseCover')}>
-          {#if previewImages.length}
-            <img src={previewImages[0]} alt="" />
-          {:else}
-            <Artwork images={removeCover ? playlist.mosaic || [] : playlist.covers} iconSize={48} />
-          {/if}
-          <span class="cover-hover"><ImagePlus size={32} /><span>{$t('playlist.chooseCover')}</span></span>
-        </button>
-        {#if hasCustom}
-          <button type="button" class="link" on:click={dropImage} disabled={busy}>{$t('playlist.removeCover')}</button>
+<Dialog title={$t('playlist.edit')} locked={busy} onSubmit={save} on:close>
+  <div class="details">
+    <div class="cover-col">
+      <button type="button" class="cover" on:click={() => fileInput.click()} disabled={busy} aria-label={$t('playlist.chooseCover')} title={$t('playlist.chooseCover')}>
+        {#if previewImages.length}
+          <img src={previewImages[0]} alt="" />
+        {:else}
+          <Artwork images={removeCover ? playlist.mosaic || [] : playlist.covers} iconSize={48} />
         {/if}
-        <input bind:this={fileInput} type="file" accept="image/*" hidden on:change={pickImage} />
-      </div>
-      <div class="fields">
-        <label>
-          <span>{$t('playlist.name')}</span>
-          <!-- svelte-ignore a11y_autofocus -->
-          <input type="text" bind:value={title} maxlength="300" required autofocus />
-        </label>
-        <label>
-          <span>{$t('playlist.description')}</span>
-          <textarea bind:value={description} maxlength="1000" rows="4" placeholder={$t('playlist.descriptionPlaceholder')}></textarea>
-        </label>
-      </div>
-    </div>
-    <div class="row">
-      <div class="label">
-        <span>{$t('playlist.public')}</span>
-        <small>{$t('playlist.publicHint')}</small>
-      </div>
-      <Switch checked={isPublic} label={$t('playlist.public')} on:click={() => (isPublic = !isPublic)} />
-    </div>
-
-    {#if loadedPeople}
-      <div class="collab">
-        <div class="label">
-          <span>{$t('playlist.collaborators')}</span>
-          <small>{$t(users.length ? 'playlist.collaboratorsHint' : 'playlist.noFriends')}</small>
-        </div>
-        {#each users as u (u.id)}
-          <div class="row user">
-            <span class="name">{u.username}</span>
-            <Switch checked={collab.has(u.id)} label={$t('playlist.collaborator', { name: u.username })} disabled={!!collabBusy} on:click={() => toggleCollaborator(u)} />
-          </div>
-        {/each}
-      </div>
-    {/if}
-
-    {#if error}<p class="error-text">{error}</p>{/if}
-
-    <div class="footer">
-      <button type="button" class="delete" on:click={remove} disabled={busy}><Trash2 size={16} /> {$t('playlist.delete')}</button>
-      <div class="spacer"></div>
-      <button type="submit" class="save" disabled={busy || !title.trim()}>
-        {#if busy}<LoaderCircle class="spin" size={16} />{/if}
-        {$t('edit.save')}
+        <span class="cover-hover"><ImagePlus size={32} /><span>{$t('playlist.chooseCover')}</span></span>
       </button>
+      {#if hasCustom}
+        <button type="button" class="text-btn" on:click={dropImage} disabled={busy}>{$t('playlist.removeCover')}</button>
+      {/if}
+      <input bind:this={fileInput} type="file" accept="image/*" hidden on:change={pickImage} />
     </div>
-  </form>
-</div>
+    <div class="fields">
+      <label>
+        <span>{$t('playlist.name')}</span>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input class="input" type="text" bind:value={title} maxlength="300" required autofocus />
+      </label>
+      <label>
+        <span>{$t('playlist.description')}</span>
+        <textarea class="input" bind:value={description} maxlength="1000" rows="4" placeholder={$t('playlist.descriptionPlaceholder')}></textarea>
+      </label>
+    </div>
+  </div>
+  <div class="row">
+    <div class="label">
+      <span>{$t('playlist.public')}</span>
+      <small>{$t('playlist.publicHint')}</small>
+    </div>
+    <Switch checked={isPublic} label={$t('playlist.public')} on:click={() => (isPublic = !isPublic)} />
+  </div>
+
+  {#if loadedPeople}
+    <div class="collab">
+      <div class="label">
+        <span>{$t('playlist.collaborators')}</span>
+        <small>{$t(users.length ? 'playlist.collaboratorsHint' : 'playlist.noFriends')}</small>
+      </div>
+      {#each users as u (u.id)}
+        <div class="row user">
+          <span class="name">{u.username}</span>
+          <Switch checked={collab.has(u.id)} label={$t('playlist.collaborator', { name: u.username })} disabled={!!collabBusy} on:click={() => toggleCollaborator(u)} />
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if error}<p class="error-text">{error}</p>{/if}
+
+  <svelte:fragment slot="footer">
+    <button type="button" class="text-btn danger" on:click={remove} disabled={busy}><Trash2 size={16} /> {$t('playlist.delete')}</button>
+    <button type="submit" class="pill primary lg" disabled={busy || !title.trim()}>
+      {#if busy}<LoaderCircle class="spin" size={16} />{/if}
+      {$t('edit.save')}
+    </button>
+  </svelte:fragment>
+</Dialog>
 
 <style>
   .collab {
@@ -212,37 +195,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
-  }
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
-    background: rgba(0, 0, 0, 0.7);
-  }
-  .dialog {
-    width: min(560px, 100%);
-    max-height: 100%;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 24px;
-    border-radius: 8px;
-    background: #282828;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 6px;
-  }
-  h2 {
-    font-size: 22px;
   }
   .details {
     display: flex;
@@ -292,16 +244,6 @@
       opacity: 1;
     }
   }
-  .link {
-    font-size: 13px;
-    color: var(--text-dim);
-    text-decoration: underline;
-  }
-  @media (hover: hover) {
-    .link:hover {
-      color: var(--text);
-    }
-  }
   .fields {
     flex: 1;
     min-width: 0;
@@ -332,23 +274,6 @@
     font-weight: 600;
     color: var(--text-dim);
   }
-  input,
-  textarea {
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-    resize: vertical;
-  }
-  input:focus,
-  textarea:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
-  }
   .row {
     display: flex;
     align-items: center;
@@ -364,40 +289,5 @@
   .label small {
     font-size: 13px;
     color: var(--text-dim);
-  }
-  .footer {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 10px;
-  }
-  .spacer {
-    flex: 1;
-  }
-  .delete {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .delete:hover:not(:disabled) {
-      color: var(--danger);
-    }
-  }
-  .save {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 28px;
-    border-radius: 999px;
-    background: #fff;
-    color: #000;
-    font-weight: 700;
-  }
-  .save:disabled {
-    opacity: 0.6;
   }
 </style>

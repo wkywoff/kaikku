@@ -1,12 +1,10 @@
 <script>
-  import { modal } from '../modal.js';
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
-  import { fade, scale } from 'svelte/transition';
   import { api } from '../api.js';
   import { t } from '../i18n.js';
   import { refreshPlaylists } from '../stores/collection.js';
   import { parseTrackList, spotifyLink } from '../importList.js';
-  import X from '@lucide/svelte/icons/x';
+  import Dialog from './Dialog.svelte';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import FileUp from '@lucide/svelte/icons/file-up';
 
@@ -32,9 +30,6 @@
 
   onMount(() => {
     textarea?.focus();
-    const onKey = (e) => e.key === 'Escape' && !busy && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   });
   onDestroy(() => (cancelled = true));
 
@@ -144,114 +139,62 @@
   const label = (tr) => [tr.artists?.join(', '), tr.title].filter(Boolean).join(' — ');
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="backdrop" use:modal={() => !busy && close()} transition:fade={{ duration: 120 }} on:click|self={() => !busy && close()} role="dialog" tabindex="-1" aria-modal="true" aria-label={$t('import.title')}>
-  <div class="dialog" transition:scale={{ start: 0.96, duration: 150 }}>
-    <div class="head">
-      <h2>{$t('import.title')}</h2>
-      <button type="button" class="icon-btn" on:click={close} aria-label={$t('album.close')} disabled={busy && step !== 'matching' && step !== 'settling'}><X size={20} /></button>
+<Dialog title={$t('import.title')} locked={busy && step !== 'matching' && step !== 'settling'} keepOnBackdrop={busy} on:close={close}>
+  {#if step === 'input'}
+    <p class="hint">{$t('import.hint')}</p>
+    <textarea class="input" bind:this={textarea} bind:value={text} rows="7" placeholder={$t('import.placeholder')} disabled={busy}></textarea>
+    <div class="row">
+      <button type="button" class="text-btn" on:click={() => fileInput.click()} disabled={busy}><FileUp size={16} /> {$t('import.csv')}</button>
+      <input bind:this={fileInput} type="file" accept=".csv,.txt,text/csv,text/plain" hidden on:change={readFile} />
+      <div class="spacer"></div>
+      <button type="button" class="pill primary lg" on:click={start} disabled={busy || !text.trim()}>
+        {#if busy}<LoaderCircle class="spin" size={16} />{/if}
+        {$t('import.find')}
+      </button>
     </div>
-
-    {#if step === 'input'}
-      <p class="hint">{$t('import.hint')}</p>
-      <textarea bind:this={textarea} bind:value={text} rows="7" placeholder={$t('import.placeholder')} disabled={busy}></textarea>
-      <div class="row">
-        <button type="button" class="link" on:click={() => fileInput.click()} disabled={busy}><FileUp size={16} /> {$t('import.csv')}</button>
-        <input bind:this={fileInput} type="file" accept=".csv,.txt,text/csv,text/plain" hidden on:change={readFile} />
-        <div class="spacer"></div>
-        <button type="button" class="primary" on:click={start} disabled={busy || !text.trim()}>
-          {#if busy}<LoaderCircle class="spin" size={16} />{/if}
-          {$t('import.find')}
-        </button>
-      </div>
-    {:else if step === 'matching'}
-      <p>{$t('import.matching', { done, total: tracks.length })}</p>
-      <div class="bar"><div style="width: {(done / tracks.length) * 100}%"></div></div>
-    {:else if step === 'settling'}
-      <p>{$t('import.settling')}</p>
-      <div class="bar"><div style="width: 100%"></div></div>
-    {:else}
-      <p class="summary">{$t('import.found', { found: found.length, total: tracks.length })}</p>
-      {#if source.truncated}<p class="hint warn">{$t('import.truncated')}</p>{/if}
-      <label>
-        <span>{$t('playlist.name')}</span>
-        <input type="text" bind:value={title} maxlength="300" />
-      </label>
-      {#if missing.length}
-        <details>
-          <summary>{$t('import.missing', { n: missing.length })}</summary>
-          <ul>
-            {#each missing.slice(0, 100) as tr}<li>{label(tr)}</li>{/each}
-          </ul>
-        </details>
-      {/if}
-      <div class="row">
-        <div class="spacer"></div>
-        <button type="button" class="primary" on:click={create} disabled={busy || !found.length}>
-          {#if busy}<LoaderCircle class="spin" size={16} />{/if}
-          {$t('import.create')}
-        </button>
-      </div>
+  {:else if step === 'matching'}
+    <p>{$t('import.matching', { done, total: tracks.length })}</p>
+    <div class="bar"><div style="width: {(done / tracks.length) * 100}%"></div></div>
+  {:else if step === 'settling'}
+    <p>{$t('import.settling')}</p>
+    <div class="bar"><div style="width: 100%"></div></div>
+  {:else}
+    <p class="summary">{$t('import.found', { found: found.length, total: tracks.length })}</p>
+    {#if source.truncated}<p class="hint warn">{$t('import.truncated')}</p>{/if}
+    <label>
+      <span>{$t('playlist.name')}</span>
+      <input class="input" type="text" bind:value={title} maxlength="300" />
+    </label>
+    {#if missing.length}
+      <details>
+        <summary>{$t('import.missing', { n: missing.length })}</summary>
+        <ul>
+          {#each missing.slice(0, 100) as tr}<li>{label(tr)}</li>{/each}
+        </ul>
+      </details>
     {/if}
+    <div class="row">
+      <div class="spacer"></div>
+      <button type="button" class="pill primary lg" on:click={create} disabled={busy || !found.length}>
+        {#if busy}<LoaderCircle class="spin" size={16} />{/if}
+        {$t('import.create')}
+      </button>
+    </div>
+  {/if}
 
-    {#if error}<p class="error-text">{error}</p>{/if}
-  </div>
-</div>
+  {#if error}<p class="error-text">{error}</p>{/if}
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
-    background: rgba(0, 0, 0, 0.7);
-  }
-  .dialog {
-    width: min(560px, 100%);
-    max-height: 100%;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 24px;
-    border-radius: 8px;
-    background: #282828;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  h2 {
-    font-size: 22px;
+  p {
+    margin: 0;
   }
   .hint {
     color: var(--text-dim);
     font-size: 14px;
   }
   .warn {
-    color: #f0c674;
-  }
-  textarea,
-  input[type='text'] {
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font-size: 14px;
-    font-family: inherit;
-    resize: vertical;
-  }
-  textarea:focus,
-  input[type='text']:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
+    color: var(--warn);
   }
   label {
     display: flex;
@@ -268,32 +211,6 @@
   }
   .spacer {
     flex: 1;
-  }
-  .link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .link:hover:not(:disabled) {
-      color: var(--text);
-    }
-  }
-  .primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 28px;
-    border-radius: 999px;
-    background: #fff;
-    color: #000;
-    font-weight: 700;
-  }
-  .primary:disabled {
-    opacity: 0.6;
   }
   .bar {
     height: 6px;
