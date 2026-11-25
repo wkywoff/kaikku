@@ -1,12 +1,9 @@
 <script context="module">
   import { LRU } from '../lru.js';
-  const cache = new LRU(30); // deezer id артиста -> Promise<albums>
+  const cache = new LRU(30);
 </script>
 
 <script>
-  // «Ещё альбомы: <артист>» под треклистом альбома, как в Spotify: только
-  // релизы типа «альбом» (без синглов и EP), новые первыми, одна строка
-  // карточек и «Показать все» — страница дискографии с фильтром «Альбомы».
   import { api } from '../api.js';
   import { paths, link } from '../stores/nav.js';
   import { t } from '../i18n.js';
@@ -18,8 +15,8 @@
   import MediaCard from './MediaCard.svelte';
   import { cardsPerRow } from '../layout.js';
 
-  export let artist; // { id, name } — Deezer
-  export let excludeId = null; // текущий альбом
+  export let artist;
+  export let excludeId = null;
 
   let albums = [];
   let gridWidth = 0;
@@ -36,7 +33,6 @@
       .sort((x, y) => (y.release_date || '').localeCompare(x.release_date || ''));
   }
 
-  // Сколько карточек в строке (min 176 px; на телефоне — 2), как на странице артиста.
   $: perRow = gridWidth && grid ? cardsPerRow(grid) : 2;
 
   $: playingCtx = $playerPlaying ? $playingContext : null;

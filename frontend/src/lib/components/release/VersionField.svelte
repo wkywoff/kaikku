@@ -1,8 +1,4 @@
 <script>
-  // Раздел «Версия релиза» на странице правки (EditShell): привязать релиз
-  // к основному по ссылке (делюкс, clean) — он уйдёт из дискографии в
-  // «Другие версии» основного — или отвязать. Сохраняется вместе со
-  // страницей; versionOf — { id, title, cover_url } или null.
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
   import { sized } from '../../imageproxy.js';
@@ -11,7 +7,7 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
   export let versionOf = null;
-  export let selfId; // сам релиз: к себе не привязать
+  export let selfId;
   export let hint = '';
 
   let link = '';

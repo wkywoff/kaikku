@@ -1,6 +1,4 @@
 <script>
-  // Поле поиска-пилюля: в верхней панели на компьютере и вверху страницы
-  // поиска на телефоне (там верхней панели нет).
   import { navStore, navigate, paths, lastSearch } from '../stores/nav.js';
   import Search from '@lucide/svelte/icons/search';
   import X from '@lucide/svelte/icons/x';
@@ -11,22 +9,17 @@
   let query = $navStore.view === 'search' ? $navStore.q || '' : '';
   let debounce;
 
-  /** Фокус в поле (горячие клавиши «/» и Ctrl+K в TopBar). */
   export function focus() {
     input.focus();
     input.select();
   }
 
-  // Поле показывает запрос текущей страницы поиска (в том числе после «назад»).
-  // Вне поиска поле пустое; фокус в нём возвращает последний запрос.
   $: if (document.activeElement !== input) query = $navStore.view === 'search' ? $navStore.q || '' : '';
 
   function onInput() {
     clearTimeout(debounce);
     debounce = setTimeout(() => {
       const q = query.trim();
-      // Первый символ открывает страницу поиска (новая запись истории),
-      // дальше печать её только уточняет (replace).
       navigate(paths.search(q), { replace: $navStore.view === 'search' });
     }, 250);
   }
@@ -105,7 +98,7 @@
     background: none;
     border: none;
     outline: none;
-    font-size: 16px; /* меньше 16 px — iOS зумит страницу при фокусе */
+    font-size: 16px;
   }
   .search input::placeholder {
     color: var(--text-dim);

@@ -1,9 +1,3 @@
-// Заглушка обложки своего релиза, опубликованного без картинки: её рисует
-// сервер (internal/api/placeholder.go) — градиент в цвете от ID релиза и
-// пластинка посередине. Здесь — тот же оттенок и похожее превью на CSS,
-// чтобы в окне правки было видно, какой будет обложка.
-
-/** Оттенок заглушки, 0…359: FNV-1a от ID и fmix32 — как placeholderHue на сервере. */
 export function placeholderHue(id) {
   let h = 0x811c9dc5;
   for (const b of new TextEncoder().encode(String(id))) {
@@ -18,7 +12,6 @@ export function placeholderHue(id) {
   return (h >>> 0) % 360;
 }
 
-/** CSS-фон превью заглушки для релиза id. */
 export function placeholderBackground(id) {
   const hue = placeholderHue(id);
   return [

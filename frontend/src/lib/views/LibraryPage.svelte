@@ -1,15 +1,10 @@
 <script context="module">
-  // Последние ответы — чтобы «назад» в медиатеку показывал её сразу.
   let cachedAlbums = null;
   let cachedArtists = [];
   let cachedTimes = { added: {}, played: {} };
 </script>
 
 <script>
-  // Медиатека, как «Your Library» в Spotify: «Любимые треки», свои
-  // плейлисты, сохранённые альбомы и исполнители из подписок (фильтр-чипы),
-  // создать плейлист и импорт. Раньше всё это было на главной. Тем, кто
-  // может загружать свои релизы, — ещё «Загрузить» (/upload).
   import { api } from '../api.js';
   import { isPlaying as playerPlaying } from '../stores/player.js';
   import { paths, link, navigate } from '../stores/nav.js';
@@ -34,15 +29,13 @@
 
   pageTint().none();
 
-  // Первые карточки (что видно на экране) — без отложенной загрузки: при
-  // возврате «назад» обложки из кеша показываются сразу, а не мигают пустыми.
   const EAGER = 8;
 
   let albums = cachedAlbums || [];
   let artists = cachedArtists;
   let loading = !cachedAlbums;
   let error = '';
-  let filter = 'all'; // all | playlists | albums | artists
+  let filter = 'all';
 
   async function load() {
     try {
@@ -58,19 +51,16 @@
     .followedArtists()
     .then((d) => (artists = cachedArtists = d.artists))
     .catch(() => {});
-  // Когда что добавлено и слушалось — для сортировки; не пришло — порядок по типам.
   let times = cachedTimes;
   api
     .libraryTimes()
     .then((d) => (times = cachedTimes = d))
     .catch(() => {});
 
-  // Убрали из медиатеки или отписались на их страницах — карточки пропадают сразу.
   $: shownAlbums = albums.filter((a) => $savedAlbumIds.has(a.id));
   $: shownArtists = artists.filter((a) => $followedIds.has(a.id));
   $: mine = $playlists.mine;
   $: likedCount = $likedIds.size;
-  // Всё одной сеткой в выбранном порядке, «Любимые треки» — всегда первыми.
   $: items = sortLibrary(
     [
       ...(filter === 'all' || filter === 'playlists' ? mine.map((p) => ({ kind: 'playlist', key: `playlist:${p.id}`, name: p.title, p })) : []),
@@ -88,7 +78,6 @@
   ];
   $: empty = !loading && $collectionLoaded && !likedCount && !mine.length && !shownAlbums.length && !shownArtists.length;
 
-  // Какая карточка сейчас играет — по тому, откуда включена музыка (library.js).
   $: playingCtx = $playerPlaying ? $playingContext : null;
   $: isPlaying = (kind, id = '') => isContext(playingCtx, kind, id);
 
@@ -112,7 +101,6 @@
 <div class="page-pad library">
   <div class="top">
     <h1>{$t('library.title')}</h1>
-    <!-- На телефоне верхней панели нет — аккаунт здесь, справа вверху. -->
     <div class="phone-account"><AccountMenu /></div>
     <div class="top-actions">
       <button class="pill" on:click={() => (importing = true)}><Import size={16} /> {$t('home.import')}</button>

@@ -1,14 +1,4 @@
 <script>
-  // Треки в окне загрузки: зона для файлов, строки по порядку (перетащить
-  // за ручку или стрелками — как в DeezerTrackRows), у каждой — название,
-  // метка E, длительность и состояние загрузки; в меню — исполнители и
-  // текст трека, другой файл, удалить.
-  // Строка: { key, id (k… — когда файл обработан), title, durationMs,
-  //   explicit, artists (null — как у релиза), state, progress, error,
-  //   lyrics (undefined — ещё не загружен), lyricsInitial, open, busy (меняется файл),
-  //   other (трек с другого релиза: только переставить и убрать) }.
-  // Разделитель дисков — строка { key, sep: true }: треки под ним — на
-  // следующем диске (uploads.js: discsOf). Его тоже тащат за ручку и убирают.
   import { createEventDispatcher, tick } from 'svelte';
   import { dropRest, nextPaint, rowStep } from '../../dragDrop.js';
   import { api } from '../../api.js';
@@ -34,8 +24,8 @@
 
   export let rows = [];
   export let releaseArtists = [];
-  export let invalidTitles = false; // подсветить пустые названия (не хватает для публикации)
-  export let invalid = false; // нет ни одного трека
+  export let invalidTitles = false;
+  export let invalid = false;
 
   const dispatch = createEventDispatcher();
   let fileInput;
@@ -85,8 +75,6 @@
 
   const changed = () => ((rows = rows), dispatch('change'));
 
-  // --- диски ---
-  // Номер трека — место на своём диске; у разделителя — номер диска под ним.
   $: numbers = new Map(discsOf(rows).map(({ row, disc, n }) => [row.key, { disc, n }]));
   $: lastDisc = Math.max(1, ...[...numbers.values()].map((x) => x.disc));
   $: hasDiscs = rows.some((r) => r.sep);
@@ -105,7 +93,6 @@
   }
   const artistNames = (row) => (row.artists || releaseArtists).map((a) => a.name).join(', ');
 
-  // --- порядок: перетаскивание за ручку (как в очереди и DeezerTrackRows) ---
   function move(from, to) {
     if (from === to || to < 0 || to >= rows.length) return;
     const next = rows.slice();
@@ -113,7 +100,7 @@
     rows = next;
     dispatch('change');
   }
-  let drag = null; // { i, y0, dy, h, id }
+  let drag = null;
   function startDrag(e, i) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -123,7 +110,7 @@
   function moveDrag(e) {
     if (drag && e.pointerId === drag.id) drag = { ...drag, dy: e.clientY - drag.y0 };
   }
-  let settling = null; // { key, dy } — только что отпущенная строка доезжает на место (dragDrop.js)
+  let settling = null;
   async function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
     const d = { ...drag, dy: e.clientY - drag.y0 };
@@ -185,8 +172,6 @@
   {#if hasDiscs}<div class="disc-head"><Disc3 size={16} /> {$t('tracks.disc', { n: 1 })}</div>{/if}
   <div class="rows" class:dragging={!!drag} class:settling={!!settling}>
     {#each rows as row, i (row.key)}
-      <!-- Сдвиг — только пока тащат: transform у строки поднимает её в свой
-           слой, и подсказки исполнителей уходили под следующие строки. -->
       <div
         class="slot"
         class:lifted={drag?.i === i || settling?.key === row.key}
@@ -250,7 +235,6 @@
             {/if}
           </div>
           {#if row.other}
-            <!-- те же колонки, что у своих: E, длительность, значок -->
             <span class="e on" class:ghost={!row.explicit} title={row.explicit ? $t('upload.explicitHint') : null}>E</span>
             <span class="dur num">{formatTime((row.durationMs || 0) / 1000)}</span>
             <span class="ok linked" title={$t('edit.otherRelease')}><Link2 size={16} /></span>
@@ -358,7 +342,7 @@
     background: transparent;
   }
   .slot.open {
-    z-index: 2; /* подсказки исполнителей — поверх следующих строк */
+    z-index: 2;
   }
   .dragging .slot.lifted,
   .settling .slot {
@@ -375,12 +359,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 62px; /* у всех строк, и у разделителя дисков: перетаскивание считает шаг по одной */
+    min-height: 62px;
     padding: 4px 4px 4px 0;
     border-radius: 6px;
     background: #2e2e2e;
   }
-  /* Разделитель дисков: не трек, а подпись над треками следующего диска. */
   .row.sep {
     background: transparent;
     box-shadow: inset 0 -1px 0 var(--border);
@@ -406,7 +389,7 @@
   }
   .disc-head {
     margin: 16px 0 4px;
-    padding-left: 54px; /* под подписью разделителя: ручка (40) + отступы */
+    padding-left: 54px;
   }
   .add-disc {
     display: inline-flex;
@@ -496,7 +479,7 @@
   .who,
   .status {
     display: inline-flex;
-    line-height: 17px; /* у кнопки и у подписи — одна высота: строки равные, шаг перетаскивания ровный */
+    line-height: 17px;
     align-items: center;
     gap: 6px;
     padding: 0 8px;

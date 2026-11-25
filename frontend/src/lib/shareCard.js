@@ -3,29 +3,16 @@ import { artistsOf } from './rows.js';
 import { sized } from './imageproxy.js';
 import { num, word } from './wrappedText.js';
 
-// Картинка «Мои итоги года» для сторис и мессенджеров (1080×1920): топ-5
-// треков с обложками, ряд из пяти альбомов и пяти артистов, внизу — минуты,
-// треки, артисты.
-//
-// Рисуется в браузере на <canvas> и сразу отдаётся человеку файлом: сервер
-// её не создаёт и не хранит. Обложки — те же адреса, что на странице (свой
-// прокси картинок, тот же сайт), поэтому canvas можно сохранить в PNG.
-//
-// shareCardModel — что написано на карточке (чистая функция, под тесты);
-// renderShareCard — рисует модель; fitText — обрезка строки с многоточием.
-
 export const CARD_W = 1080;
 export const CARD_H = 1920;
-const TOP = 5; // мест в каждом топе
+const TOP = 5;
 
-// Вёрстка — в «точках» макета 360×640, холст втрое больше.
 const U = CARD_W / 360;
 const PAD = 26;
 const INNER = 360 - PAD * 2;
 const DISPLAY = 'Unbounded, "Onest Variable", system-ui, sans-serif';
 const TEXT = '"Onest Variable", system-ui, sans-serif';
 
-/** Что написано на карточке: data — ответ /api/me/wrapped. */
 export function shareCardModel(data, { lang = 'ru', username = '' } = {}) {
   const tr = (key, params) => translate(lang, key, params);
   const stat = (n, key) => ({ value: num(n, lang), label: word(n, key, lang) });
@@ -55,11 +42,10 @@ export function shareCardModel(data, { lang = 'ru', username = '' } = {}) {
   };
 }
 
-/** Строка, которая помещается в maxWidth: целиком или с «…» на конце. measure(text) → ширина. */
 export function fitText(text, maxWidth, measure) {
   text = String(text ?? '');
   if (measure(text) <= maxWidth) return text;
-  const chars = [...text]; // по символам, а не по половинкам эмодзи
+  const chars = [...text];
   let lo = 0;
   let hi = chars.length;
   while (lo < hi) {
@@ -70,9 +56,6 @@ export function fitText(text, maxWidth, measure) {
   return lo ? chars.slice(0, lo).join('').trimEnd() + '…' : '';
 }
 
-// Картинка по адресу; не загрузилась — null (на её месте будет заглушка).
-// Чужой сайт без CORS «пачкает» холст, и его уже не сохранить: такие
-// просим с CORS — без него картинка просто не придёт.
 function loadImage(url) {
   if (!url) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -95,8 +78,6 @@ function roundedPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Картинка в квадрате со скруглением r (r = половина стороны — круг),
-// обрезанная по центру, как object-fit: cover; нет картинки — тёмная плашка.
 function drawArt(ctx, img, x, y, size, r) {
   ctx.save();
   roundedPath(ctx, x, y, size, size, r);
@@ -112,7 +93,6 @@ function drawArt(ctx, img, x, y, size, r) {
   ctx.restore();
 }
 
-// Логотип: K, ветки которой — звуковые волны (как в шапке сайта, public/icon.svg).
 function drawMark(ctx, x, y, size) {
   ctx.save();
   ctx.translate(x, y);
@@ -127,11 +107,8 @@ function drawMark(ctx, x, y, size) {
   ctx.restore();
 }
 
-/** Рисует карточку; возвращает <canvas> 1080×1920. */
 export async function renderShareCard(model) {
   const sections = [model.songs, model.albums, model.artists];
-  // Шрифты сайта грузятся по наборам символов: просим их под текст карточки,
-  // иначе первая отрисовка была бы запасным шрифтом.
   const sample = [model.username, ...model.title, ...sections.flatMap((s) => [s.label, ...s.items.flatMap((i) => [i.title, i.sub || ''])]), ...model.stats.map((s) => s.label), '0123456789'].join(' ');
   const fonts = [`800 27px ${DISPLAY}`, `700 13px ${DISPLAY}`, `700 13px ${TEXT}`, `400 13px ${TEXT}`];
   const [images] = await Promise.all([
@@ -157,7 +134,6 @@ export async function renderShareCard(model) {
   };
   const white = (alpha = 1) => (ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`);
 
-  // Фон: тёмный, с фиолетовым пятном из левого верхнего угла (цвет страницы итогов).
   ctx.fillStyle = '#121212';
   ctx.fillRect(0, 0, 360, 640);
   ctx.save();
@@ -171,7 +147,6 @@ export async function renderShareCard(model) {
   ctx.fillRect(-72, 0, 360, 640 * (432 / 384));
   ctx.restore();
 
-  // Шапка: логотип слева, ник справа.
   drawMark(ctx, PAD, PAD, 22);
   white();
   font(700, 13, DISPLAY);
@@ -195,7 +170,6 @@ export async function renderShareCard(model) {
     y += 21;
   };
 
-  // Треки: номер, обложка, название и исполнители.
   if (model.songs.items.length) {
     kicker(model.songs.label);
     model.songs.items.forEach((item, i) => {
@@ -214,7 +188,6 @@ export async function renderShareCard(model) {
     y += 5;
   }
 
-  // Альбомы и артисты: ряд из пяти картинок с подписями.
   const strip = (section, imgs, round) => {
     if (!section.items.length) return;
     kicker(section.label);
@@ -232,7 +205,6 @@ export async function renderShareCard(model) {
   strip(model.albums, images[1], false);
   strip(model.artists, images[2], true);
 
-  // Подвал: «14 873 минуты · 1 204 трека · 311 исполнителей», числа жирнее.
   let x = PAD;
   ctx.textAlign = 'left';
   model.stats.forEach((s, i) => {
@@ -251,7 +223,6 @@ export async function renderShareCard(model) {
   return canvas;
 }
 
-/** PNG карточки (Blob). */
 export async function shareCardBlob(model) {
   const canvas = await renderShareCard(model);
   return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))), 'image/png'));

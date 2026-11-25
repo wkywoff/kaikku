@@ -1,8 +1,4 @@
 <script>
-  // Аватар и меню аккаунта: профиль, настройки, итоги года, установка, для админа —
-  // режим админа, приглашение, пользователи (сброс пароля, права админа);
-  // выход. На компьютере — в верхней панели, на телефоне — в шапке медиатеки
-  // (как у Spotify).
   import { navigateAfterPaint, paths } from '../stores/nav.js';
   import { signOut } from '../signout.js';
   import { api } from '../api.js';
@@ -23,8 +19,8 @@
 
   let root;
   let menuOpen = false;
-  let usersOpen = false; // админ: окно «Пользователи»
-  let invite = null; // { link } | { error }
+  let usersOpen = false;
+  let invite = null;
   let copied = false;
 
   async function createInvite() {
@@ -44,7 +40,7 @@
       await navigator.clipboard.writeText(invite.link);
       copied = true;
     } catch {
-      copied = false; // нет доступа к буферу — ссылку видно и её можно выделить
+      copied = false;
     }
   }
 

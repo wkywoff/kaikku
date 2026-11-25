@@ -1,12 +1,4 @@
 <script>
-  // Правка релиза из Deezer (/album/<id>/edit, только админ) в том же
-  // каркасе, что и свой релиз (EditShell): правки ложатся поверх данных
-  // Deezer (internal/api/overlay.go). Обложка, название, исполнители, тип,
-  // дата, треклист (порядок, замена и добавление треков по ссылке, правка
-  // трека — карандашом в строке) и «версия чего» сохраняются кнопкой
-  // «Сохранить»; скрыть / показать, обновить из Deezer и сбросить правки —
-  // сразу, из меню «…». Запись релиза в медиатеке заводится при открытии
-  // (claim), как раньше в окне правки.
   import { onMount, onDestroy, tick } from 'svelte';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
@@ -33,13 +25,13 @@
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import ExternalLink from '@lucide/svelte/icons/external-link';
 
-  export let id; // Deezer ID релиза
+  export let id;
 
   pageTint().none();
 
   let loading = true;
   let error = '';
-  let libId = null; // запись в медиатеке (claim)
+  let libId = null;
   let item = null;
   let title = '';
   let artists = [];
@@ -48,9 +40,9 @@
   let releaseDate = '';
   let hidden = false;
   let versionOf = null;
-  let rows = null; // треклист; null — Deezer не ответил, без него
-  let server = ''; // что на сервере — для «есть несохранённое»
-  let newImage = null; // Blob — уйдёт при сохранении
+  let rows = null;
+  let server = '';
+  let newImage = null;
   let newImageUrl = null;
   let saving = false;
   let editingTrack = null;
@@ -102,7 +94,7 @@
       const { tracks } = await api.discoverAlbum(id);
       rows = tracks.map((tr) => rowFromTrack(tr, id));
     } catch {
-      rows = null; // Deezer недоступен — остальное править можно
+      rows = null;
     }
   }
 
@@ -122,8 +114,6 @@
     }
   }
 
-  // Убрать обложку: новую, ещё не сохранённую, — просто забыть; свою
-  // сохранённую — удалить на сервере, и снова видна обложка Deezer.
   async function removeCover() {
     if (newImage) return dropImage();
     if (!confirm($t('edit.removeCoverConfirm'))) return;
@@ -141,19 +131,17 @@
     if (!artists.length) return toast($t('upload.missingPrefix', { list: $t('upload.missing.artists') }), 'error');
     saving = true;
     try {
-      // Новые артисты заводятся только при сохранении.
       [artists] = await createNewArtists([artists], api.createArtist);
       await tick();
       const was = JSON.parse(server);
       const now = JSON.parse(current);
-      // Исполнители, треклист и версия — только если их меняли.
       const fields = { title: now.title, released_at: now.released_at, record_type: now.record_type };
       if (now.artists.join() !== was.artists.join()) fields.artists = now.artists;
       if (now.tracklist && now.tracklist.join() !== was.tracklist?.join()) fields.tracklist = now.tracklist;
       if (now.version_of !== was.version_of) fields.version_of = now.version_of;
       await api.updateAlbum(libId, fields);
       if (newImage) await api.uploadAlbumCover(libId, newImage);
-      clearPageCaches(); // релиз мог переехать к другому артисту — его страницы в кеше устарели
+      clearPageCaches();
       await load();
       toast($t('upload.saved'));
     } catch (e) {
@@ -207,8 +195,6 @@
     ]);
   }
 
-  // Трек поправили в его окне: перечитать строку (а весь треклист — если
-  // порядок здесь не трогали: замена трека в окне меняет и его).
   async function trackSaved(trackId) {
     editingTrack = null;
     clearPageCaches();
@@ -221,7 +207,6 @@
       const row = rowFromTrack(await api.discoverTrack(trackId), id);
       rows = rows.map((r) => (r.id === trackId ? row : r));
     } catch {
-      // не страшно: обновится при сохранении
     }
   }
 

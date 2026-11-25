@@ -35,7 +35,6 @@ test('srcsetOf offers the same picture in several sizes, or nothing to choose fr
     srcsetOf(`/api/img/cover/${hash}/1000x1000-000000-80-0-0.jpg`, [200, 300]),
     `/api/img/cover/${hash}/200x200-000000-80-0-0.jpg 200w, /api/img/cover/${hash}/300x300-000000-80-0-0.jpg 300w`,
   );
-  // Уже 200×200 — всё равно набор, а не «не уменьшить».
   assert.equal(
     srcsetOf(`/api/img/artist/${hash}/200x200-000000-80-0-0.jpg`, [200, 320]),
     `/api/img/artist/${hash}/200x200-000000-80-0-0.jpg 200w, /api/img/artist/${hash}/320x320-000000-80-0-0.jpg 320w`,

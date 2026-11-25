@@ -1,5 +1,4 @@
 <script context="module">
-  /** Строка треклиста из трека Deezer (/api/discover/…); album — Deezer ID релиза. */
   export function rowFromTrack(tr, album) {
     const names = tr.contributors?.length ? tr.contributors.map((a) => a.name) : [tr.artist];
     return {
@@ -14,17 +13,6 @@
 </script>
 
 <script>
-  // Треклист релиза Deezer на странице правки (DeezerReleaseEditor) — в
-  // том же виде, что треки своего релиза (TrackRows): порядок —
-  // перетаскиванием за ручку или стрелками, у строки — карандаш (окно правки
-  // трека: название, исполнители, E, видео, файл, текст; на телефоне — только
-  // в меню) и меню: заменить трек другим по ссылке (не та версия на релизе)
-  // или убрать с релиза.
-  // Внизу — добавить трек Deezer по ссылке. Подставленный трек — настоящий
-  // трек Deezer со своим ISRC, аудио и текстом (internal/api/tracklist.go).
-  // Сохраняет страница: rows.map((r) => r.id) уходит на сервер.
-  // Строка: { id, title, artist (имена через запятую), other (с другого
-  // релиза), durationMs, explicit }.
   import { createEventDispatcher, tick } from 'svelte';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
@@ -41,11 +29,10 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
   export let rows = [];
-  export let albumId; // Deezer ID релиза: трек с другого релиза помечается
+  export let albumId;
 
   const dispatch = createEventDispatcher();
 
-  // --- ссылка: заменить строку (replacing — её индекс) или добавить в конец ---
   let replacing = -1;
   let link = '';
   let linkError = '';
@@ -106,7 +93,6 @@
     ]);
   }
 
-  // --- порядок: перетаскивание за ручку (как в TrackRows) ---
   function move(from, to) {
     if (from === to || to < 0 || to >= rows.length) return;
     const next = rows.slice();
@@ -115,7 +101,7 @@
     replacing = -1;
     dispatch('change');
   }
-  let drag = null; // { i, y0, dy, h, id }
+  let drag = null;
   function startDrag(e, i) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -125,7 +111,7 @@
   function moveDrag(e) {
     if (drag && e.pointerId === drag.id) drag = { ...drag, dy: e.clientY - drag.y0 };
   }
-  let settling = null; // { id, dy } — отпущенная строка доезжает на место (dragDrop.js)
+  let settling = null;
   async function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
     const d = { ...drag, dy: e.clientY - drag.y0 };
@@ -246,7 +232,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 62px; /* как в TrackRows */
+    min-height: 62px;
     padding: 4px 4px 4px 0;
     border-radius: 6px;
     background: #2e2e2e;
@@ -260,7 +246,7 @@
     flex-shrink: 0;
     color: var(--text-dim);
     cursor: grab;
-    touch-action: none; /* тащить, а не прокручивать */
+    touch-action: none;
   }
   .dragging .handle {
     cursor: grabbing;
@@ -331,7 +317,6 @@
   .error-text {
     margin: 0;
   }
-  /* Узко: место — названию; правка трека остаётся в меню «…». */
   @media (max-width: 560px) {
     .dur,
     .pencil,

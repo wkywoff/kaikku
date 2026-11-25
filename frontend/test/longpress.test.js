@@ -10,7 +10,7 @@ test('a held finger fires after the delay, at the place it was pressed', () => {
     p.down(10, 20);
     mock.timers.tick(499);
     assert.equal(fired.length, 0);
-    p.move(14, 22); // дрожь пальца — не прокрутка
+    p.move(14, 22);
     mock.timers.tick(1);
     assert.deepEqual(fired, [{ x: 10, y: 20 }]);
   } finally {

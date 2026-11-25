@@ -1,16 +1,10 @@
 import { writable } from 'svelte/store';
 
-// Недавние запросы поиска — на пустой странице поиска, как в Spotify. Только
-// на этом устройстве (localStorage): у каждого своё, и сервер их не видит.
-// Запоминается запрос, по которому что-то открыли или включили, или Enter —
-// не каждая буква, пока человек печатает.
-
 const KEY = 'kaikku_recent_searches';
 export const MAX_RECENT = 12;
 
 const norm = (q) => q.trim().toLocaleLowerCase();
 
-/** Запрос — первым; тот же (без учёта регистра) — не дублируется. */
 export function pushRecent(list, q, max = MAX_RECENT) {
   q = String(q || '').trim();
   if (!q) return list;
@@ -35,7 +29,6 @@ recentSearches.subscribe((v) => {
   try {
     localStorage.setItem(KEY, JSON.stringify(v));
   } catch {
-    /* не запомнится — не страшно */
   }
 });
 

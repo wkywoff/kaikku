@@ -1,7 +1,4 @@
 <script>
-  // Жанр (/genre/<slug>, теги Last.fm): твои треки этого жанра, другие
-  // артисты жанра, которых слушают на сервисе, и их хиты. Если у тебя есть
-  // микс этого жанра — ссылка на него.
   import { api } from '../api.js';
   import { isPlaying as playerPlaying } from '../stores/player.js';
   import { navStore, paths, link } from '../stores/nav.js';
@@ -43,7 +40,6 @@
   $: all = [...own, ...more];
   $: covers = [...new Set(all.map((r) => r.coverUrl).filter(Boolean))].slice(0, 4);
   $: playingCtx = $playerPlaying ? $playingContext : null;
-  // Своего контекста у жанра нет: в истории это будут альбомы треков.
   const play = () => all.length && playRows(all, null, null, { chosen: false });
 </script>
 
@@ -122,9 +118,6 @@
     padding-top: 20px;
     padding-bottom: 24px;
   }
-  /* Длинное название жанра: кнопка микса уезжала за экран, и страница
-     ездила вбок. Сжимается кнопка, а текст в ней сокращается многоточием
-     (у текста, а не у кнопки: она flex, у неё многоточия не бывает). */
   .mix {
     min-width: 0;
   }

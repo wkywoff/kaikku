@@ -1,13 +1,4 @@
 <script>
-  // Нижний плеер как у Spotify: слева обложка и название (ссылки на альбом и
-  // артиста), по центру shuffle / prev / play / next / repeat и прогресс,
-  // справа очередь, громкость, полноэкранный режим. Таймер сна — в меню
-  // трека (правый клик, долгое нажатие). Обложка с названием
-  // лежит на скруглённой плашке цвета обложки (тот же цвет, что у шапки
-  // страницы альбома), уходящей в чёрный. Настройка playerTint: 'full' —
-  // весь плеер цвета обложки (без плашки), 'plate' — только плашка, 'off' —
-  // без цвета. На телефоне — компактная полоса, нажатие
-  // открывает полноэкранный плеер.
   import { sized } from '../imageproxy.js';
   import { longpress } from '../longpress.js';
   import { swipeTrack } from '../swipe.js';
@@ -40,7 +31,7 @@
   import { wheelVolume } from '../wheelVolume.js';
   import { sidePlayer, sideFits } from '../stores/sidePlayer.js';
 
-  const smoothTime = player.smoothTime; // полоса прогресса плавная, цифры — по секундам
+  const smoothTime = player.smoothTime;
 
   export let queueOpen = false;
 
@@ -49,7 +40,6 @@
   $: s = $player;
   $: track = s.queue[s.index];
 
-  // Меню трека — как в списках, плюс таймер сна (как в «…» полноэкранного).
   function openTrackMenu(e) {
     const row = rowFromEntry(track);
     openMenu(
@@ -76,7 +66,6 @@
 
 {#if track}
   <footer class="player" class:tint-full={$settings.playerTint === 'full'} class:tint-off={$settings.playerTint === 'off'}>
-    <!-- Правый клик по треку — то же меню, что в списках. -->
     <div
       class="now"
       role="group"
@@ -98,7 +87,6 @@
         <span class="artist"><ArtistLinks menu artists={track.artists || [{ name: track.artist, href: track.artistHref }]} /></span>
       </div>
       <span class="like-slot"><LikeButton deezerId={track.deezerId} /></span>
-      <!-- На телефоне вся левая часть открывает полноэкранный плеер. -->
       <button class="open-full" on:click={() => dispatch('expand')} aria-label={$t('player.open')}></button>
     </div>
 
@@ -138,7 +126,6 @@
       <button class="icon-btn" class:on={queueOpen} on:click={() => dispatch('queue')} title={$t('player.queue')} aria-pressed={queueOpen}>
         <ListMusic size={18} />
       </button>
-      <!-- Колёсико мыши над кнопкой или ползунком меняет громкость. -->
       <div class="volume-group" use:wheelVolume>
         <button class="icon-btn" on:click={toggleMute} title={s.volume === 0 ? $t('player.unmute') : $t('player.mute')}>
           {#if s.volume === 0}<VolumeX size={18} />{:else if s.volume < 0.34}<Volume size={18} />{:else if s.volume < 0.67}<Volume1 size={18} />{:else}<Volume2 size={18} />{/if}
@@ -150,18 +137,11 @@
       </button>
     </div>
 
-    <!-- Тонкая полоса прогресса над мини-плеером на телефоне. -->
     <div class="mobile-progress" style="--pct: {s.duration ? ($smoothTime / s.duration) * 100 : 0}%"></div>
   </footer>
 {/if}
 
 <style>
-  /* 30% / 40% / 30%, как у Spotify. Боковые колонки всегда равны, а отступы
-     по краям одинаковые — иначе кнопки и Play съезжают с середины плеера
-     (у левой колонки был минимум 240 px: в узком окне она переставала
-     сжиматься, а правая сжималась дальше). Кнопкам справа места хватает
-     при любой ширине: в узком окне правая часть проще (ниже), название
-     слева обрезается многоточием. */
   .player {
     height: var(--player-h);
     display: grid;
@@ -172,13 +152,6 @@
     background: #000;
     position: relative;
   }
-  /* Весь плеер — скруглённая панель ровного цвета обложки, отступы 8 px
-     как у страницы над ним. Цвет — page, глубокий тон обложки, как у
-     страницы альбома в режиме «Вся страница». header (верх шапки) для
-     целого плеера слишком яркий: белый текст на нём плохо читается; base
-     темнее и серее — он для плашки, уходящей в чёрный. Высота та же, что
-     у чёрного плеера, панель выше на нижний отступ: --player-pad
-     учитывают очередь и тосты. */
   .player.tint-full {
     margin: 8px;
     border-radius: var(--radius);
@@ -189,8 +162,6 @@
     :global(:root:has(.player.tint-full)) {
       --player-pad: 8px;
     }
-    /* Плашки нет — её отступы не нужны: обложка крупнее и стоит в 12 px
-       от краёв панели сверху, снизу и слева, кнопки справа — тоже в 12 px. */
     .tint-full {
       padding: 0 12px;
     }
@@ -210,7 +181,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    -webkit-touch-callout: none; /* долгое нажатие — меню трека (longpress.js) */
+    -webkit-touch-callout: none;
     width: fit-content;
     max-width: 100%;
     min-width: 0;
@@ -218,8 +189,6 @@
     position: relative;
     isolation: isolate;
   }
-  /* Плашка: сплошной цвет под маской-градиентом. background-color
-     анимируется при смене трека, а сам градиент — нет. */
   .now::before {
     content: '';
     position: absolute;
@@ -278,7 +247,7 @@
     display: flex;
     flex-shrink: 0;
     position: relative;
-    z-index: 1; /* над .open-full на телефоне */
+    z-index: 1;
   }
   .center {
     display: flex;
@@ -332,9 +301,6 @@
   .extra .icon-btn {
     flex-shrink: 0;
   }
-  /* Ползунок громкости занимает, сколько остаётся в правой колонке: 100 px,
-     в узком окне меньше, но не короче 56 px — не прячется совсем. Кнопки
-     не сжимаются, уступает только он. */
   .volume {
     flex: 0 1 100px;
     min-width: 56px;
@@ -349,8 +315,6 @@
       padding-right: 24px;
     }
   }
-  /* Ещё уже — промежутки меньше, кнопки справа уже (32 px): ползунку
-     громкости остаётся место (около 70 px в самом узком окне). */
   @media (max-width: 940px) and (min-width: 769px) {
     .player {
       gap: 8px;
@@ -369,15 +333,11 @@
   }
 
   @media (max-width: 768px) {
-    /* Мини-плеер парит над страницей и нижней панелью (как в Spotify):
-       вокруг него видно контент, а не чёрную рамку. Отступ под него — в
-       App.svelte. Отступы одинаковые с обеих сторон: полосы прокрутки на
-       телефонной раскладке нет (App.svelte). */
     .player {
       position: fixed;
       left: 8px;
       right: 8px;
-      bottom: calc(var(--tabbar-h) + 4px + env(safe-area-inset-bottom)); /* над нижней панелью */
+      bottom: calc(var(--tabbar-h) + 4px + env(safe-area-inset-bottom));
       z-index: 40;
       height: 64px;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -386,14 +346,13 @@
       gap: 8px;
       border-radius: 8px;
       background: color-mix(in srgb, var(--player-base) 65%, #000);
-      overflow: hidden; /* свайп трека (swipe.js) уводит название за край плашки — не за плеер */
+      overflow: hidden;
     }
     .now {
       width: auto;
       padding: 0;
       gap: 10px;
     }
-    /* Плюс — справа, у кнопки Play, а не сразу за коротким названием. */
     .like-slot {
       margin-left: auto;
     }
@@ -404,7 +363,6 @@
       margin: 0;
       background: color-mix(in srgb, var(--player-base) 65%, #000);
     }
-    /* Без цвета мини-плеер — серая плашка, чтобы выделялся на странице. */
     .player.tint-off {
       background: var(--bg-press);
     }
@@ -413,7 +371,7 @@
       height: 44px;
     }
     .meta :global(a) {
-      pointer-events: none; /* на телефоне нажатие открывает плеер, а не ссылку */
+      pointer-events: none;
     }
     .open-full {
       display: block;

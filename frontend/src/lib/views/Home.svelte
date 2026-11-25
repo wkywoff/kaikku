@@ -1,16 +1,8 @@
 <script context="module">
-  // Последние ответы — чтобы «назад» на главную показывал её сразу; null —
-  // ещё не загружалось.
   let cached = { recent: null, mixes: null, releases: null, suggestions: null };
 </script>
 
 <script>
-  // Главная. Сверху «Недавно прослушанное» и миксы (собираются сами из
-  // истории и лайков, lib/mixes.js), ниже — открытия: новые релизы
-  // подписок, «Тебе может понравиться» (похожие на тех, кого слушаешь) и
-  // публичные плейлисты друзей. Play на карточке сразу играет.
-  // Своя музыка — в медиатеке (LibraryPage); итоги года — в меню аккаунта,
-  // а здесь только в сезон (wrappedSeasonYear).
   import { api } from '../api.js';
   import { nowPlaying, isPlaying as playerPlaying } from '../stores/player.js';
   import { paths, link } from '../stores/nav.js';
@@ -33,10 +25,8 @@
   let recent = cached.recent;
   let mixes = cached.mixes;
   let releases = cached.releases;
-  let suggestions = cached.suggestions; // { artists, based_on }
+  let suggestions = cached.suggestions;
 
-  // Части грузятся все сразу и друг другу не мешают: не ответила (Deezer
-  // занят) — её просто не будет.
   async function loadPart(fetch, apply, giveUp) {
     try {
       apply(await fetch());
@@ -49,14 +39,6 @@
   loadPart(api.newReleases, (d) => (releases = cached.releases = d.albums), () => (releases = releases ?? []));
   loadPart(api.suggestions, (d) => (suggestions = cached.suggestions = d), () => (suggestions = suggestions ?? { artists: [], based_on: [] }));
 
-  // Показываются части сверху вниз: часть видна, когда готовы и все выше
-  // неё. Иначе медленные «Новые релизы» (дискографии из Deezer) приходили
-  // последними и раздвигали уже показанное (CLS в Lighthouse). На месте
-  // первой неготовой — заглушка, и она всегда последняя на странице: её
-  // замена или исчезновение ничего выше не двигает.
-  //   0 недавнее (и медиатека — от неё подсказка нового аккаунта),
-  //   1 миксы, 2 новые релизы (без подписок их не будет — не ждём),
-  //   3 «Тебе может понравиться», 4 плейлисты друзей.
   $: ready = [
     recent !== null && $collectionLoaded,
     mixes !== null,
@@ -66,14 +48,12 @@
   $: shown = ready.includes(false) ? ready.indexOf(false) : ready.length;
 
   $: others = $playlists.others;
-  // Совсем новый аккаунт: ни истории, ни своей музыки — подсказка, с чего начать.
   $: empty =
     $collectionLoaded && !recent?.length && !$likedIds.size && !$playlists.mine.length && !$savedAlbumIds.size && !$followedIds.size;
   const wrappedYear = wrappedSeasonYear();
 
-  // Цвет главной — обложка того, что сейчас играет (или стоит на паузе).
   const tint = pageTint();
-  $: nowCover = $nowPlaying?.coverUrl || null; // строка: tint.from — только при смене обложки
+  $: nowCover = $nowPlaying?.coverUrl || null;
   $: tint.from(nowCover);
 
   const greetingKey = (() => {
@@ -84,11 +64,9 @@
     return 'home.evening';
   })();
 
-  // Какая карточка сейчас играет — по тому, откуда включена музыка (library.js).
   $: playingCtx = $playerPlaying ? $playingContext : null;
   $: isPlaying = (kind, id = '') => isContext(playingCtx, kind, id);
 
-  // Play на карточке; ошибка загрузки — в строку ошибки страницы.
   const run = (start) => start().catch((e) => (error = e.message));
 
   const recentKey = (it) => `${it.kind}:${it.album?.id || it.artist?.id || it.playlist?.id || it.mix?.id || ''}`;
@@ -104,8 +82,6 @@
 
   {#if error}<p class="error-text">{error}</p>{/if}
 
-  <!-- Первая полка видна сразу: её первый ряд — без отложенной загрузки,
-       первая картинка — главная на экране (LCP). -->
   <Shelf title={$t('home.recent')} items={recent || []} loading={shown === 0} key={recentKey} priority let:item let:eager let:first>
     {#if item.kind === 'liked'}
       <MediaCard href={paths.liked()} title={$t('liked.title')} subtitle={$t('playlist.kind')} onPlay={() => run(playLiked)} playing={isPlaying('liked')}>

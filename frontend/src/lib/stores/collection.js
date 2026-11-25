@@ -5,11 +5,6 @@ import { translate } from '../i18n.js';
 import { lang } from './settings.js';
 import { syncLikedContext } from '../library.js';
 
-// Личная медиатека текущего пользователя: что лайкнуто, какие альбомы
-// сохранены, на кого подписан, плейлисты (свои и чужие публичные). Грузится после входа
-// (App.svelte); лайк и сохранение меняются сразу на экране, а если сервер
-// ответил ошибкой — откатываются.
-
 export const likedIds = writable(new Set());
 export const savedAlbumIds = writable(new Set());
 export const followedIds = writable(new Set());
@@ -22,12 +17,11 @@ export async function loadCollection() {
   try {
     const [ids, lists] = await Promise.all([api.collection(), api.playlists()]);
     likedIds.set(new Set(ids.liked));
-    syncLikedContext(get(likedIds)); // очередь могла сохраниться до снятия лайка на другом устройстве
+    syncLikedContext(get(likedIds));
     savedAlbumIds.set(new Set(ids.albums));
     followedIds.set(new Set(ids.artists || []));
     playlists.set(lists);
   } catch {
-    /* без медиатеки сайт всё равно работает — кнопки просто «не лайкнуто» */
   }
   collectionLoaded.set(true);
 }
@@ -36,7 +30,6 @@ export async function refreshPlaylists() {
   try {
     playlists.set(await api.playlists());
   } catch {
-    /* оставляем старый список */
   }
 }
 
@@ -98,11 +91,6 @@ export async function addToPlaylist(playlist, deezerIds) {
   }
 }
 
-/**
- * Новый плейлист (по умолчанию «Мой плейлист №N»), сразу с треками, если
- * переданы. download: false — не ставить их на скачивание сразу (микс
- * целиком: скачаются, когда заиграют).
- */
 export async function createPlaylist(deezerIds = [], fields = {}, { download } = {}) {
   const n = get(playlists).mine.length + 1;
   try {

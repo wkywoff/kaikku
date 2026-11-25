@@ -9,14 +9,12 @@ global.localStorage = {
   removeItem: (k) => data.delete(k),
 };
 
-// Запрос через fetch: запоминаем адрес, отвечаем пустым JSON.
 let fetched = [];
 global.fetch = async (url) => {
   fetched.push(url);
   return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({}) };
 };
 
-// Загрузка файла идёт через XHR: ответ задаёт тест.
 let reply = { status: 200, body: '{}', headers: {} };
 let sent = [];
 global.XMLHttpRequest = class {

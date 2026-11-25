@@ -1,10 +1,6 @@
 import { derived } from 'svelte/store';
 import { lang } from './stores/settings.js';
 
-// Строки интерфейса. В шаблонах: {$t('player.play')} или с параметрами
-// {$t('search.none', { q })}. Нет перевода — берётся русская строка, нет и
-// её — сам ключ (так пропуск сразу виден).
-
 export const messages = {
   ru: {
     'nav.home': 'Главная',

@@ -1,10 +1,4 @@
 <script>
-  // Исполнители релиза или трека в окне загрузки. Выбранные — строками, как
-  // треки: первый — основной, порядок — перетаскиванием за ручку (или
-  // стрелками с фокусом на ручке), как в TrackRows. Поле: имя — подсказки (свои артисты kaikku, потом Deezer)
-  // и в конце «Создать артиста»; ссылка на артиста Deezer или kaikku —
-  // сразу этот артист. Созданный здесь — пока только имя (newArtist): его
-  // заводит на сервере сохранение релиза или правки (createNewArtists).
   import { createEventDispatcher, onDestroy, tick } from 'svelte';
   import { dropRest, nextPaint, rowStep } from '../../dragDrop.js';
   import { api } from '../../api.js';
@@ -21,9 +15,9 @@
   import Link from '@lucide/svelte/icons/link';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
-  export let artists = []; // [{ id, name, picture_url }] — основной первый
-  export let query = ''; // текст в поле (окно подставляет имя из тегов файла)
-  export let invalid = false; // подсветить: для публикации нужен хотя бы один
+  export let artists = [];
+  export let query = '';
+  export let invalid = false;
   export let label = '';
   export let inputId = 'artist-picker';
 
@@ -38,7 +32,6 @@
   let timer;
   let controller;
 
-  // Ссылка (или голый ID) — не ищем по имени, а берём артиста по ней.
   $: linkId = /\/|^\d+$|^k\d+$/.test(query.trim()) ? artistIdFrom(query) : null;
   $: looksLikeLink = /\/|deezer|^\d+$/.test(query.trim());
   $: name = query.trim();
@@ -137,7 +130,6 @@
     dispatch('change');
   }
 
-  // --- порядок: перетаскивание за ручку (как в TrackRows) ---
   function move(from, to) {
     if (from === to || to < 0 || to >= artists.length) return;
     const next = artists.slice();
@@ -145,7 +137,7 @@
     artists = next;
     dispatch('change');
   }
-  let drag = null; // { i, y0, dy, h, id }
+  let drag = null;
   function startDrag(e, i) {
     if (e.button !== 0 || artists.length < 2) return;
     e.preventDefault();
@@ -155,7 +147,7 @@
   function moveDrag(e) {
     if (drag && e.pointerId === drag.id) drag = { ...drag, dy: e.clientY - drag.y0 };
   }
-  let settling = null; // { id, dy } — отпущенная строка доезжает на место (dragDrop.js)
+  let settling = null;
   async function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
     const d = { ...drag, dy: e.clientY - drag.y0 };
@@ -182,8 +174,6 @@
     e.preventDefault();
     move(i, i + dir);
   }
-  // Подпись под именем: откуда артист — только если в списке есть и свои
-  // (kaikku), и из Deezer; новый (ещё не заведён) — всегда.
   const sourceOf = (a) => (isNewArtist(a) || isLocalId(a.id) ? 'kaikku' : 'Deezer');
   $: mixed = new Set(artists.map(sourceOf)).size > 1;
   $: noteOf = (a) => (isNewArtist(a) ? $t('upload.newArtistHint') : mixed ? sourceOf(a) : '');
@@ -243,7 +233,6 @@
       <ul class="options" id={listId} role="listbox">
         {#each options as opt, i}
           <li role="option" aria-selected={i === active} class:active={i === active}>
-            <!-- mousedown: раньше blur поля, иначе список закрылся бы до клика -->
             <button type="button" on:mousedown|preventDefault={() => choose(opt)}>
               {#if opt.kind === 'artist'}
                 {#if opt.artist.picture_url}<img src={sized(opt.artist.picture_url, 64)} alt="" />{:else}<span class="ph"><UserRound size={14} /></span>{/if}
@@ -271,7 +260,6 @@
     flex-direction: column;
     gap: 8px;
   }
-  /* Строки — как у треков в TrackRows: ручка, картинка, имя и подпись. */
   .rows {
     display: flex;
     flex-direction: column;
@@ -315,7 +303,7 @@
     flex-shrink: 0;
     color: var(--text-dim);
     cursor: grab;
-    touch-action: none; /* тащить, а не прокручивать */
+    touch-action: none;
   }
   .dragging .handle {
     cursor: grabbing;

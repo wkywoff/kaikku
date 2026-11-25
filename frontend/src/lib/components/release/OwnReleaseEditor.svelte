@@ -1,17 +1,4 @@
 <script>
-  // Правка своего релиза (/album/<id>/edit, id — k…; раньше /upload/<id>) в
-  // общем каркасе EditShell. Сверху — релиз: обложка, название,
-  // исполнители, тип, дата; ниже — треки (TrackRows).
-  // Файлы и обложка уходят на сервер сразу (файлы — по одному, очередью),
-  // поля — кнопкой «Сохранить». «Опубликовать» проверяет, что всё нужное
-  // есть (то же проверяет сервер), и открывает страницу релиза; обложка не
-  // обязательна — без неё сервер ставит заглушку. Пустые поля
-  // заполняются из тегов первого файла: название альбома, дата, исполнитель
-  // (его остаётся выбрать в подсказках), обложка.
-  // В треки можно добавить существующий трек по ссылке (Deezer или kaikku,
-  // как замена трека в окне правки) — он встаёт в релиз как есть, его здесь
-  // не правят; а релиз — привязать версией к другому (делюкс, clean): он
-  // уйдёт из дискографии в «Другие версии» основного.
   import { onMount, onDestroy, tick } from 'svelte';
   import { api } from '../../api.js';
   import { t } from '../../i18n.js';
@@ -38,34 +25,32 @@
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Link2 from '@lucide/svelte/icons/link-2';
 
-  export let id; // k…
+  export let id;
 
   pageTint().none();
 
   let loading = true;
   let error = '';
-  // Поля релиза.
   let title = '';
-  let artists = []; // [{ id, name, picture_url }]
+  let artists = [];
   let recordType = 'single';
-  let recordTouched = false; // выбрали тип сами — больше не подбирается по трекам
+  let recordTouched = false;
   let releaseDate = '';
   let coverUrl = '';
   let coverFromFile = false;
   let draft = true;
-  let owner = ''; // кто загрузил — если правит не он (админ)
+  let owner = '';
   let artistQuery = '';
   const touched = { title: false, releaseDate: false };
-  let rows = []; // строки TrackRows: треки и разделители дисков ({ key, sep: true })
+  let rows = [];
   let sepSeq = 0;
   const sepKey = () => `disc-${++sepSeq}`;
-  // Что лежит на сервере (то же, что body() без published) — для «есть несохранённое».
   let server = null;
   let saving = false;
   let coverBusy = false;
-  let showMissing = false; // нажали «Опубликовать», а чего-то не хватает — подсветить
-  let versionOf = null; // { id, title, cover_url } основного релиза или null (VersionField)
-  let trackLink = ''; // добавить существующий трек
+  let showMissing = false;
+  let versionOf = null;
+  let trackLink = '';
   let trackLinkError = '';
   let trackLinkBusy = false;
 
@@ -79,7 +64,7 @@
       durationMs: tr.duration_ms,
       explicit: !!tr.explicit,
       artists: tr.artists ? tr.artists.map(ref) : null,
-      other: !!tr.other, // с другого релиза: только порядок и «убрать»
+      other: !!tr.other,
       state: 'done',
       progress: 1,
       error: '',
@@ -103,8 +88,6 @@
     draft = st.draft;
     owner = st.owner || '';
     versionOf = st.version_of || null;
-    // Ещё не загруженные файлы — в конец; если их положили под новый диск,
-    // которого на сервере пока нет, — вместе с его разделителем.
     const lastSep = rows.findLastIndex((r) => r.sep);
     const newDisc = lastSep >= 0 && rows.slice(lastSep + 1).every((r) => !r.id) ? [rows[lastSep]] : [];
     const pending = rows.filter((r) => !r.id && !r.sep);
@@ -123,7 +106,6 @@
     };
   }
 
-  // Тип — по трекам, пока его не выбрали руками.
   $: trackRows = rows.filter((r) => !r.sep);
   $: if (!loading && !recordTouched) recordType = recordTypeFor(trackRows);
 
@@ -145,7 +127,6 @@
   $: if (showMissing && !problems.length) showMissing = false;
   $: setRouteTitle(`releaseEdit:${id}`, title.trim() || $t('upload.untitled'));
 
-  // --- загрузка файлов ---
   const queue = createQueue(
     (item, onProgress, signal) => api.addReleaseAudio(id, item.file, { onProgress, signal }),
     () => syncQueue(),
@@ -166,7 +147,7 @@
   function uploaded(row, { track, tags, cover_url }) {
     Object.assign(row, rowFrom(track, row));
     row.title = track.title;
-    server.tracks = [...server.tracks, trackBody(row, track.disc || 1)]; // сервер добавил трек в конец последнего диска
+    server.tracks = [...server.tracks, trackBody(row, track.disc || 1)];
     server = server;
     const pre = prefillFromTags({ title, artists }, tags, touched);
     if (pre.title) title = pre.title;
@@ -196,7 +177,7 @@
     rows = [
       ...rows,
       ...queue.items.slice(before).map((item) => ({
-        key: item.key, // по нему syncQueue находит строку
+        key: item.key,
         id: null,
         title: item.file.name,
         durationMs: 0,
@@ -218,18 +199,16 @@
 
   async function removeRow(row) {
     if (row.other) {
-      rows = rows.filter((r) => r !== row); // сам трек остаётся, где был
+      rows = rows.filter((r) => r !== row);
       return;
     }
     if (!row.id) {
       const item = queue.items.find((i) => i.key === row.key);
       if (item && item.state !== 'error' && item.state !== 'queued') return toast($t('upload.waitUpload'));
-      if (item) item.state = 'error'; // из очереди — не грузить
+      if (item) item.state = 'error';
       rows = rows.filter((r) => r !== row);
       return;
     }
-    // Последний трек опубликованного релиза сервер не удалит, а добавленные
-    // с других релизов он увидит только после сохранения.
     const rest = trackRows.filter((r) => r !== row);
     if (!draft && rest.length && !server.tracks.some((tr) => tr.id !== row.id)) return toast($t('upload.saveFirst'));
     if (!confirm($t('upload.deleteTrackConfirm', { title: row.title }))) return;
@@ -261,7 +240,6 @@
     }
   }
 
-  // --- существующий трек ---
   async function addExisting() {
     trackLinkError = '';
     if (isShortDeezerLink(trackLink)) return (trackLinkError = $t('edit.shortLink'));
@@ -281,7 +259,6 @@
     }
   }
 
-  // --- обложка ---
   async function setCover(file) {
     coverBusy = true;
     try {
@@ -297,7 +274,6 @@
     }
   }
 
-  // Убрать обложку: у опубликованного сервер сразу ставит заглушку.
   async function removeCover() {
     if (!confirm($t(draft ? 'upload.removeCoverConfirm' : 'upload.removeCoverConfirmLive'))) return;
     coverBusy = true;
@@ -314,7 +290,6 @@
     }
   }
 
-  // --- сохранение ---
   function body(published) {
     const b = JSON.parse(current);
     if (published !== undefined) b.published = published;
@@ -328,30 +303,28 @@
     }
     saving = true;
     try {
-      // Тексты — до релиза: публикация не должна обогнать их.
       for (const r of rows) {
         if (r.id && r.lyrics !== undefined && r.lyrics !== r.lyricsInitial) {
           await api.saveTrackLyrics(r.id, r.lyrics);
           r.lyricsInitial = r.lyrics;
         }
       }
-      // Новые артисты заводятся только теперь, вместе с релизом.
       const own = rows.filter((r) => !r.sep && r.artists);
       const [release, ...lists] = await createNewArtists([artists, ...own.map((r) => r.artists)], api.createArtist);
       artists = release;
       own.forEach((r, i) => (r.artists = lists[i]));
       rows = rows;
-      await tick(); // current — уже с их ID
+      await tick();
       const st = await api.saveRelease(id, body(published));
       fill(st);
       clearPageCaches();
       if (published === true) {
         toast($t('upload.published'));
-        await tick(); // dirty пересчитается — защита от ухода не спросит зря
+        await tick();
         navigate(paths.album(id));
       } else toast($t(published === false ? 'upload.unpublished' : 'upload.saved'));
     } catch (e) {
-      if (e.data?.missing?.length) showMissing = true; // сервер проверяет то же, что problems
+      if (e.data?.missing?.length) showMissing = true;
       else toast(e.message, 'error');
     } finally {
       saving = false;
@@ -380,7 +353,6 @@
     ]);
   }
 
-  // --- уйти со страницы ---
   const unguard = guardLeave(() => !(dirty || uploading) || confirm($t('upload.leaveConfirm')));
   function beforeUnload(e) {
     if (dirty || uploading) e.preventDefault();
@@ -400,7 +372,6 @@
     queue.stop();
   });
 
-  // Сводка под обложкой: как релиз будет подписан на своей странице.
   $: totalSec = trackRows.reduce((sum, r) => sum + (r.id ? r.durationMs || 0 : 0), 0) / 1000;
   $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' · ');
 

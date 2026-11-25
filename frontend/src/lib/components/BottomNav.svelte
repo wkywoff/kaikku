@@ -1,6 +1,4 @@
 <script>
-  // Нижняя панель на телефоне, как у Spotify: Главная, Поиск, Медиатека.
-  // Верхней панели на телефоне нет; меню аккаунта — в шапке медиатеки.
   import { navStore, paths, link, lastSearch } from '../stores/nav.js';
   import House from '@lucide/svelte/icons/house';
   import Search from '@lucide/svelte/icons/search';
@@ -29,9 +27,6 @@
     display: none;
   }
   @media (max-width: 768px) {
-    /* Затемнение низа страницы, как у Spotify: начинается выше мини-плеера
-       (::before) и густеет к низу по плавной кривой, без видимого края —
-       контент под панелью уходит в темноту, подписи читаются. */
     .bottom-nav {
       position: fixed;
       left: 0;
@@ -59,7 +54,7 @@
       left: 0;
       right: 0;
       bottom: 100%;
-      height: 140px; /* мини-плеер (64 + отступ) и ещё столько же над ним */
+      height: 140px;
       pointer-events: none;
       background: linear-gradient(
         180deg,

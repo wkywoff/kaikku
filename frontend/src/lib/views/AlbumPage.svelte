@@ -1,14 +1,9 @@
 <script context="module">
   import { LRU } from '../lru.js';
-  // Кеш между заходами: «назад» показывает страницу сразу.
   const cache = new LRU(30);
 </script>
 
 <script>
-  // Страница альбома из каталога Deezer (/album/<id>), с ручными правками
-  // админа поверх, или своего релиза (k…, загрузка). Правят и тот и другой
-  // на странице правки (/album/<id>/edit): свой — автор и админ, Deezer —
-  // админ; черновик своего видят только автор и админ.
   import { sized } from '../imageproxy.js';
   import { api } from '../api.js';
   import { player, isPlaying as playerPlaying, shuffleOn } from '../stores/player.js';
@@ -45,14 +40,12 @@
 
   const tint = pageTint();
 
-  // album: { deezerId, libraryId?, title, type, coverUrl, artists: [{id, name, href, picture}], releaseDate, label, durationSec, href }
   let album = null;
   let rows = [];
   let loading = true;
   let error = '';
   let showCover = false;
 
-  // Перезагрузить без кеша — после правки.
   function reload() {
     cache.delete($navStore.id);
     load($navStore.id);
@@ -101,7 +94,7 @@
         hidden: !!a.hidden,
         explicit: !!a.explicit,
         versions: versions || [],
-        own: isLocalId(a.id), // свой релиз (загрузка)
+        own: isLocalId(a.id),
         draft: !!draft,
         editable: !!editable,
       },
@@ -113,12 +106,11 @@
     album = data.album;
     rows = data.rows;
     tint.from(album.coverUrl);
-    refresh(rows.map((r) => r.deezerId)); // статусы медиатеки — всегда свежие, даже из кеша
+    refresh(rows.map((r) => r.deezerId));
   }
 
   $: saved = !!album?.deezerId && $savedAlbumIds.has(album.deezerId);
 
-  // Вкладка: «bowling – сингл от rexv2 | kaikku».
   $: if (album) {
     const type = recordTypeLabel(album.type, $lang);
     setRouteTitle(`${$navStore.view}:${$navStore.id}`, $t('title.album', {
@@ -129,14 +121,10 @@
   }
   $: totalSec = album?.durationSec || rows.reduce((s, r) => s + (r.durationMs || 0) / 1000, 0);
 
-  // Играет ли сейчас этот альбом — включённый отсюда, из дискографии или с
-  // главной (а не его трек из плейлиста или радио).
   $: playingHere = isContext($playingContext, 'album', $navStore.id);
 
-  // Откуда играет — для истории прослушиваний.
-  $: context = { kind: 'album', id: $navStore.id, title: album?.title }; // title — для «Из …» в очереди плеера
+  $: context = { kind: 'album', id: $navStore.id, title: album?.title };
 
-  // Скрытый релиз вне режима админа не играет (треки серые).
   $: unavailable = !!album?.hidden && !$canEdit;
 
   function onPlay() {
@@ -225,12 +213,10 @@
       <Shuffle size={28} />
     </button>
     {#if album.deezerId}
-      <!-- Сохранить в свою медиатеку (главная); треки альбома скачиваются в фоне. -->
       <button class="icon-btn big save" class:saved title={$t(saved ? 'album.unsave' : 'album.save')} aria-label={$t(saved ? 'album.unsave' : 'album.save')} aria-pressed={saved} on:click={() => toggleSaveAlbum(album.deezerId)}>
         {#if saved}<CircleCheck size={32} />{:else}<CirclePlus size={32} />{/if}
       </button>
     {/if}
-    <!-- Правка — одна страница: свой релиз правят автор и админ, Deezer — админ. -->
     {#if album.deezerId && (album.own ? album.editable : $canEdit)}
       <a class="icon-btn" href={paths.releaseEdit(album.deezerId)} use:link title={$t('upload.editRelease')} aria-label={$t('upload.editRelease')}>
         <Pencil size={22} />
@@ -254,7 +240,6 @@
     {#if album.versions?.length}
       <AlbumVersions versions={album.versions} explicit={album.explicit} />
     {/if}
-    <!-- Ещё альбомы каждого основного артиста (только для альбомов из Deezer). -->
     {#if album.deezerId}
       {#each album.artists.filter((a) => a.id) as a (a.id)}
         <MoreAlbums artist={a} excludeId={album.deezerId} />

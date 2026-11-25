@@ -1,10 +1,4 @@
 <script>
-  // Очередь внутри полноэкранного плеера, как в Apple Music: сверху
-  // «перемешивать», «повтор» и «автовоспроизведение», ниже — что играет
-  // дальше («Из «альбома»») и что подобрало автовоспроизведение. Трек:
-  // нажать — включить; за ручку справа — перетащить на другое место (или
-  // стрелками с клавиатуры); смахнуть влево — убрать из очереди (на
-  // компьютере ещё крестик при наведении).
   import { sized } from '../imageproxy.js';
   import { player, queueState } from '../stores/player.js';
   import { settings } from '../stores/settings.js';
@@ -19,7 +13,7 @@
 
   export let compact = false;
 
-  $: s = $queueState; // без позиции трека: очередь не пересобирается на каждый тик
+  $: s = $queueState;
   $: current = s.queue[s.index];
   $: after = s.queue.map((item, i) => ({ item, i })).filter(({ i }) => i > s.index);
   $: sections = [
@@ -27,7 +21,6 @@
     { key: 'auto', title: $t('queue.autoplay'), sub: $t('queue.autoplayHint'), list: after.filter(({ item }) => item.autoplay) },
   ].filter((sec) => sec.list.length);
 
-  // «Из «UN/O/DEAD»» — откуда включили (context у элемента очереди).
   function fromLabel(cur, tr) {
     const ctx = cur?.context;
     if (!ctx) return '';
@@ -35,8 +28,7 @@
     return name ? tr('queue.from', { name }) : '';
   }
 
-  // --- перетаскивание за ручку: только внутри своего раздела ---
-  let drag = null; // { i, lo, hi, y0, dy, h, id }
+  let drag = null;
   function startDrag(e, i, list) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -50,14 +42,12 @@
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
     const { i } = drag;
-    const to = targetOf({ ...drag, dy: e.clientY - drag.y0 }); // не ждать пересчёта target
+    const to = targetOf({ ...drag, dy: e.clientY - drag.y0 });
     drag = null;
     if (to !== i) player.moveInQueueTo(i, to);
   }
-  // Куда встанет: на сколько строк сдвинули, в пределах раздела.
   const targetOf = (d) => (d ? Math.max(d.lo, Math.min(d.hi, d.i + Math.round(d.dy / d.h))) : -1);
   $: target = targetOf(drag);
-  // Сдвиг строки, пока тащат: сама — за пальцем, соседи расступаются.
   function shift(i, d, to) {
     if (!d) return 0;
     if (i === d.i) return d.dy;
@@ -73,9 +63,8 @@
     if (to >= list[0].i && to <= list[list.length - 1].i) player.moveInQueueTo(i, to);
   }
 
-  // --- смахнуть влево — убрать ---
-  let swipe = null; // { i, x0, y0, dx, w, on, id }
-  let swiped = false; // палец смахивал — это не нажатие на трек
+  let swipe = null;
+  let swiped = false;
   function rowDown(e, i) {
     if (e.button !== 0 || (e.target instanceof Element && e.target.closest('.handle, .remove'))) return;
     swipe = { i, x0: e.clientX, y0: e.clientY, dx: 0, w: e.currentTarget.offsetWidth, on: false, id: e.pointerId };
@@ -85,7 +74,7 @@
     const dx = e.clientX - swipe.x0;
     const dy = e.clientY - swipe.y0;
     if (!swipe.on) {
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) return void (swipe = null); // это прокрутка
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) return void (swipe = null);
       if (dx > -10 || Math.abs(dx) < Math.abs(dy)) return;
       e.currentTarget.setPointerCapture(e.pointerId);
       swipe = { ...swipe, on: true };
@@ -124,7 +113,6 @@
       {#each sec.list as { item, i } (i + ':' + (item.id || item.deezerId))}
         <div class="slot" class:lifted={drag?.i === i} style="transform: translateY({shift(i, drag, target)}px)">
           <div class="swipe-bg" aria-hidden="true"><Trash2 size={20} /></div>
-          <!-- Смахнуть — только жест в дополнение к кнопке «убрать» (крестик). -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="row"
@@ -135,7 +123,6 @@
             on:pointerup={rowUp}
             on:pointercancel={() => (swipe = null)}
           >
-            <!-- Обложка 300 px, как у карточек: на телефоне 64 мыльная, а эта же картинка обычно уже в кеше. -->
             <button class="pick" on:click={() => pick(i)} aria-label={`${$t('player.play')}: ${item.title}`}>
               {#if item.coverUrl}<img src={sized(item.coverUrl, 300)} alt="" loading="lazy" draggable="false" />{:else}<span class="ph"></span>{/if}
               <span class="meta"><span class="title">{item.title}</span><span class="artist">{item.artist}</span></span>
@@ -170,7 +157,6 @@
     gap: 20px;
     min-height: 0;
   }
-  /* Три «таблетки», как в Apple Music; включённая — залита светлым. */
   .pills {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -240,7 +226,6 @@
     background: rgba(255, 255, 255, 0.12);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   }
-  /* Под строкой при смахивании — красная подложка с корзиной. */
   .swipe-bg {
     position: absolute;
     inset: 0;
@@ -264,7 +249,7 @@
     padding: 6px 0;
     border-radius: inherit;
     background: transparent;
-    touch-action: pan-y; /* по вертикали — прокрутка, по горизонтали — смахнуть */
+    touch-action: pan-y;
     transition: transform 0.2s ease;
   }
   .row.swiping {
@@ -330,7 +315,7 @@
     flex-shrink: 0;
     color: rgba(255, 255, 255, 0.45);
     cursor: grab;
-    touch-action: none; /* тащить, а не прокручивать */
+    touch-action: none;
   }
   .list.dragging .handle {
     cursor: grabbing;

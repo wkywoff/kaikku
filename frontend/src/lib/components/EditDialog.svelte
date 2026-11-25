@@ -1,19 +1,4 @@
 <script>
-  // Правка метаданных админом: артист (имя, фото), трек (название, номер,
-  // диск, исполнители, метка E). Релиз правится на своей странице
-  // (/album/<id>/edit, views/ReleaseEditPage.svelte). Артист правится по
-  // записи в медиатеке (id — наш); если её ещё нет — по deezerId сервер её
-  // заводит. Трек правится по Deezer ID, скачивать его не нужно.
-  // Исполнители задаются ссылками на артистов (Deezer залил трек дубликату
-  // артиста — ссылка на настоящего переносит его к нему).
-  // У трека, открытого со страницы альбома, — замена на трек с другого
-  // релиза по ссылке.
-  // У трека ещё «перекачать аудио», «загрузить свой файл» и «найти текст заново».
-  // «Сбросить» возвращает данные и картинку из Deezer.
-  // Своего артиста (загрузка, k…) здесь правит тот, кто его завёл: имя и
-  // фото, без сброса — сбрасывать не к чему. Свой трек (k…) — автор релиза
-  // и админ: название, E, исполнители (свои или как у релиза), текст и
-  // файл; порядок и диски — в правке релиза.
   import { modal } from '../modal.js';
   import { onMount, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
@@ -38,12 +23,12 @@
   import { paths, link } from '../stores/nav.js';
   import Pencil from '@lucide/svelte/icons/pencil';
 
-  export let kind; // 'artist' | 'track'
-  export let id = null; // артист в медиатеке
-  export let deezerId = null; // артист, если id ещё нет; трек — всегда
-  export let albumId = null; // трек: Deezer ID альбома, со страницы которого открыли
+  export let kind;
+  export let id = null;
+  export let deezerId = null;
+  export let albumId = null;
   const byDeezer = kind === 'track';
-  const own = kind === 'track' && isLocalId(deezerId); // свой трек: /api/uploads/tracks
+  const own = kind === 'track' && isLocalId(deezerId);
 
   const dispatch = createEventDispatcher();
 
@@ -54,26 +39,23 @@
   let trackNo = '';
   let discNo = '';
   let explicit = false;
-  let artists = []; // [{ id, name, picture_url }] — основной первый
+  let artists = [];
   let initial = { explicit: false, artists: '' };
   let toolBusy = '';
-  let newImage = null; // Blob
+  let newImage = null;
   let newImageUrl = null;
   let fileInput;
   let audioInput;
-  let uploadPct = null; // 0..1 — отправка; 1 — сервер обрабатывает
+  let uploadPct = null;
   let swapLink = '';
-  let ownArtists = false; // свой трек: свои исполнители, а не как у релиза
-  let lyrics; // свой трек: текст (undefined — ещё грузится)
+  let ownArtists = false;
+  let lyrics;
   let lyricsInitial = '';
 
-  // Картинка, какую видят все: своя или с Deezer (своих копий Deezer не храним).
   $: imageUrl = newImageUrl || (kind === 'track' ? null : sized(item?.image_url, 300));
   $: customImage = kind === 'artist' ? item?.picture_custom : item?.cover_custom;
   $: canReset = !own && (byDeezer || !!item?.deezer_id) && !isLocalId(item?.deezer_id) && (item?.edited || customImage);
 
-  // onMount синхронный: функцию очистки из async-колбэка Svelte не вызывает,
-  // и обработчик Esc оставался бы висеть после закрытия окна.
   onMount(() => {
     load();
     const onKey = (e) => e.key === 'Escape' && !busy && dispatch('close');
@@ -108,17 +90,14 @@
     trackNo = it.track_no ?? '';
     discNo = it.disc_no ?? '';
     explicit = !!it.explicit;
-    // Свой трек без своих исполнителей — как у релиза: с них и начинать, если отметят «свои».
     artists = (it.artists || (own && it.release_artists) || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null }));
     ownArtists = own && !!it.artists;
     initial = { explicit, artists: ids(artists) };
   }
 
   const ids = (list) => list.map((a) => a.id).join(',');
-  // Исполнители известны, только если Deezer ответил: иначе их не трогаем.
   $: editCredits = kind !== 'artist' && (own ? ownArtists : !!item?.artists?.length);
 
-  // Нашлось не то (или не нашлось вовсе) — скачать с указанного видео.
   let videoLink = '';
   async function useVideo() {
     toolBusy = 'video';
@@ -230,7 +209,6 @@
     }
     busy = true;
     try {
-      // Новые артисты заводятся только при сохранении.
       if (editCredits) [artists] = await createNewArtists([artists], api.createArtist);
       if (kind === 'artist') {
         await api.updateArtist(id, { name });
@@ -248,7 +226,7 @@
         if (explicit !== initial.explicit) fields.explicit = explicit;
         await api.updateDeezerTrack(deezerId, fields);
       }
-      clearPageCaches(); // релиз мог переехать к другому артисту — его страницы в кеше устарели
+      clearPageCaches();
       dispatch('saved');
     } catch (e) {
       error = e.message;
@@ -264,7 +242,7 @@
     try {
       if (kind === 'artist') await api.resetArtist(id);
       else await api.resetDeezerTrack(deezerId);
-      clearPageCaches(); // релиз мог переехать к другому артисту — его страницы в кеше устарели
+      clearPageCaches();
       dispatch('saved');
     } catch (e) {
       error = e.message;
@@ -339,8 +317,6 @@
       {/if}
 
       {#if editCredits}
-        <!-- Как в загрузке: имя — подсказки (свои артисты, потом Deezer) и
-             «Создать артиста»; ссылка на артиста — сразу он. -->
         <div class="credits">
           <span class="caption">{$t('edit.artists')}</span>
           <ArtistPicker bind:artists invalid={!artists.length} inputId="edit-artists" label={$t('edit.artists')} />
@@ -400,7 +376,6 @@
               {$t('edit.redownload')}
             </button>
           {/if}
-          <!-- Не скачался (missing) — свой файл и станет треком. -->
           {#if item.library_id || item.missing}
             <button type="button" class="tool" disabled={!!toolBusy} on:click={() => audioInput.click()}>
               {#if toolBusy === 'upload'}<LoaderCircle class="spin" size={16} />{:else}<FileMusic size={16} />{/if}
@@ -446,7 +421,7 @@
   }
   .dialog {
     width: min(560px, 100%);
-    max-height: 100%; /* по видимой высоте окна (в отступах подложки), а не 100vh — во вкладке браузера адресная строка её отъедает */
+    max-height: 100%;
     overflow-y: auto;
     padding: 24px;
     border-radius: 8px;

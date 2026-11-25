@@ -18,8 +18,6 @@ function createAuthStore() {
     set(token);
   };
 
-  // Вход общий на все вкладки: вышли или вошли другим в одной — остальные
-  // следуют за ней (выход перезагрузит страницу в App.svelte, смена человека — здесь).
   globalThis.addEventListener?.('storage', (e) => {
     if (e.key !== STORAGE_KEY && e.key !== null) return;
     const next = localStorage.getItem(STORAGE_KEY);
@@ -34,8 +32,6 @@ function createAuthStore() {
       localStorage.setItem(STORAGE_KEY, token);
       apply(token);
     },
-    // Продление: только если общий токен всё ещё тот, что продлевали. Иначе
-    // устаревшая вкладка вернула бы вход тому, кто уже вышел.
     renew(old, fresh) {
       if (current !== old) return;
       if (localStorage.getItem(STORAGE_KEY) !== old) return;

@@ -1,7 +1,4 @@
 <script>
-  // Полка на главной: заголовок и один ряд карточек (сколько помещается по
-  // ширине) с кнопкой «Показать все», как у Spotify. Карточку рисует
-  // страница: <Shelf {items} let:item>…</Shelf>.
   import { cardsPerRow } from '../layout.js';
   import { t } from '../i18n.js';
 
@@ -9,19 +6,14 @@
   export let subtitle = '';
   export let items = [];
   export let key = (item) => item.id;
-  // loading — данные ещё идут: заголовок и ряд серых карточек на их месте
-  // (главная); round — круглые, как у артистов.
   export let loading = false;
   export let round = false;
-  // priority — полка первая на странице: её первый ряд виден сразу, картинки
-  // грузятся без отложенной загрузки (слот получает eager, первая — first).
   export let priority = false;
 
   let expanded = false;
   let width = 0;
   let grid;
 
-  // Сколько карточек в ряду сетки (min 176 px; на телефоне — 2).
   $: perRow = width && grid ? cardsPerRow(grid) : 2;
   $: visible = expanded ? items : items.slice(0, perRow);
 </script>
@@ -96,8 +88,6 @@
     grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
     margin: 0 -12px;
   }
-  /* Заглушка карточки — те же размеры, что у MediaCard. «Дышит» только
-     прозрачностью: её браузер анимирует без перерисовки. */
   .ghost {
     padding: 12px;
     min-width: 0;

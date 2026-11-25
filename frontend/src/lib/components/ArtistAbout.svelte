@@ -1,10 +1,4 @@
 <script>
-  // «Об исполнителе» на странице артиста: описание с Deezer или Last.fm
-  // (сервер выбирает текст на языке интерфейса, bio.go) или свой текст, под
-  // ним — жанры по тегам Last.fm (tags.go).
-  // Свой пишут владелец своего артиста и админ в режиме админа; пустой
-  // свой текст скрывает описание, «Вернуть автоматическое» — снова найденное.
-  // Они же ставят свои жанры (до MAX_TAGS) вместо тегов Last.fm.
   import { api } from '../api.js';
   import { artistBios as bioCache } from '../artistCache.js';
   import { t } from '../i18n.js';
@@ -17,9 +11,9 @@
 
   export let artistId;
 
-  const MAX_TAGS = 5; // как artistPageTags на сервере
+  const MAX_TAGS = 5;
 
-  let bio = null; // { text, source, url, editable, tags, tags_custom }
+  let bio = null;
   let expanded = false;
   let editing = false;
   let draft = '';
@@ -38,11 +32,9 @@
       bioCache.set(key, b);
       if (my === seq) bio = b;
     } catch {
-      /* без описания страница всё равно полная */
     }
   }
 
-  // «Ещё» — только когда текст правда длиннее пяти строк (примерно).
   $: long = !!bio?.text && (bio.text.length > 420 || bio.text.split('\n').length > 4);
   $: sourceName = bio?.source === 'lastfm' ? 'Last.fm' : bio?.source === 'deezer' ? 'Deezer' : '';
 
@@ -51,7 +43,6 @@
     editing = true;
   }
 
-  // --- жанры ---
   let editingTags = false;
   let tagDraft = [];
   let tagInput = '';
@@ -62,7 +53,6 @@
     editingTags = true;
   }
 
-  // addTag — из поля в список; false — не влезло.
   function addTag() {
     const tag = tagInput.trim().toLowerCase();
     if (!tag) return true;

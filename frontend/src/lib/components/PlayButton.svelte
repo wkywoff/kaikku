@@ -1,13 +1,11 @@
 <script>
-  // Круглая кнопка Play/Pause с залитыми глифами (как у Spotify). Цвет —
-  // динамический акцент страницы (variant="accent") или белый (плеер).
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import { t } from '../i18n.js';
 
   export let playing = false;
   export let loading = false;
-  export let size = 56; // px
-  export let variant = 'accent'; // 'accent' | 'white'
+  export let size = 56;
+  export let variant = 'accent';
   export let label = '';
   export let disabled = false;
 </script>
@@ -65,7 +63,4 @@
   .play-button:active:not(:disabled) {
     transform: scale(0.96);
   }
-  /* Треугольник и так стоит центром тяжести посередине (вершины 7, 7 и 22
-     по x — центр 12 из 24): это и есть оптический центр. Прежний сдвиг на
-     1 вправо поверх него уводил значок от центра. */
 </style>

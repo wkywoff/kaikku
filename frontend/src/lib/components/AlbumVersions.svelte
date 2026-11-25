@@ -1,7 +1,4 @@
 <script>
-  // «Другие версии» под треклистом: делюкс, clean и другие релизы, которые
-  // админ привязал к основному (internal/api/versions.go). На странице
-  // версии здесь и основной релиз. Все карточки, без «Показать все».
   import { paths } from '../stores/nav.js';
   import { t } from '../i18n.js';
   import { year } from '../format.js';
@@ -11,10 +8,9 @@
   import { toast } from '../stores/toast.js';
   import MediaCard from './MediaCard.svelte';
 
-  export let versions = []; // альбомы Deezer (с правками)
-  export let explicit = false; // текущий релиз
+  export let versions = [];
+  export let explicit = false;
 
-  // Clean/Explicit — только если в группе есть и те, и другие.
   $: mixed = versions.some((v) => !!v.explicit !== explicit);
   const subtitle = (v, mixed) => [year(v.release_date), mixed && $t(v.explicit ? 'album.explicit' : 'album.clean')].filter(Boolean).join(' • ');
 

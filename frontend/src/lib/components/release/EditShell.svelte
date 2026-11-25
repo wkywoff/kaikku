@@ -1,11 +1,4 @@
 <script>
-  // Каркас страницы правки релиза (/album/<id>/edit), общий у своего релиза
-  // (OwnReleaseEditor) и релиза Deezer (DeezerReleaseEditor): ссылка назад,
-  // заголовок с метками, слева — обложка и сводка (на широком экране не
-  // уезжает, пока правишь треки), справа — разделы-карточки, внизу —
-  // панель сохранения. Здесь же — общий вид полей внутри разделов
-  // (.card, .field, .label, поля ввода, .link-row): их разметка — в
-  // редакторах и блоках release/*, а стили одни на всех.
   import { link } from '../../stores/nav.js';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -52,7 +45,7 @@
     --edit-w: 1120px;
     padding-top: 16px;
     padding-bottom: 32px;
-    max-width: calc(var(--edit-w) + 64px); /* + поля page-pad */
+    max-width: calc(var(--edit-w) + 64px);
     margin: 0 auto;
   }
   .back {
@@ -121,7 +114,6 @@
     color: #ffb95c;
   }
 
-  /* --- раскладка: обложка слева, разделы справа --- */
   .layout {
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
@@ -142,7 +134,6 @@
     min-width: 0;
   }
 
-  /* --- разделы и поля (разметка — в редакторах и release/*) --- */
   .release-edit :global(b.req) {
     color: var(--danger);
     font-weight: 700;
@@ -236,7 +227,6 @@
     opacity: 0.5;
   }
 
-  /* --- панель сохранения --- */
   .savebar {
     position: sticky;
     bottom: 0;
@@ -244,14 +234,9 @@
     margin-top: 8px;
     background: rgba(18, 18, 18, 0.94);
     backdrop-filter: blur(8px);
-    /* Фон и линия сверху — во всю ширину, хотя панель в колонке страницы
-       (App.svelte): тени без размытия продолжают их в стороны, clip-path
-       оставляет только высоту панели и линию над ней. */
     box-shadow: 0 0 0 100vmax rgba(18, 18, 18, 0.94);
     clip-path: inset(-1px -100vmax 0);
   }
-  /* Линия — отдельным слоем высотой 1 px: тенью под фоном она просвечивала
-     сквозь его прозрачность полосами по бокам, где страница шире колонки. */
   .savebar::before {
     content: '';
     position: absolute;
@@ -307,8 +292,6 @@
     opacity: 0.5;
   }
 
-  /* На телефоне панель — над нижним меню и мини-плеером (App.svelte),
-     а не под ними. */
   @media (max-width: 768px) {
     .savebar {
       bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
@@ -318,7 +301,6 @@
     }
   }
 
-  /* Узко: обложка со сводкой — строкой над разделами. */
   @media (max-width: 900px) {
     .layout {
       grid-template-columns: minmax(0, 1fr);

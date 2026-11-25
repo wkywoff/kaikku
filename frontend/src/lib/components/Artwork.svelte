@@ -1,29 +1,18 @@
 <script>
-  // Обложка для того, у чего нет своей картинки:
-  //   liked    — «Любимые треки»: сердце из столбиков эквалайзера в цветах
-  //              значка приложения;
-  //   playlist — мозаика 2×2 из обложек треков (если их 4+), иначе первая
-  //              обложка, а у пустого — значок;
-  //   mix      — микс (lib/mixes.js): первая обложка и цветная полоса
-  //              с названием, как Daily Mix у Spotify.
-  // Заполняет родителя (квадрат задаёт Hero/MediaCard).
   import { sized, srcsetOf, CARD_SIZES } from '../imageproxy.js';
   import { fromHistory } from '../stores/nav.js';
   import ListMusic from '@lucide/svelte/icons/list-music';
 
-  export let kind = 'playlist'; // 'liked' | 'playlist' | 'mix'
-  export let label = ''; // mix: название на полосе
-  export let hue = 0; // mix: оттенок полосы
+  export let kind = 'playlist';
+  export let label = '';
+  export let hue = 0;
   export let images = [];
   export let iconSize = 64;
-  // Ширина всей картинки и клетки мозаики (атрибут sizes): по умолчанию —
-  // карточка; шапка плейлиста передаёт свои.
   export let sizes = CARD_SIZES;
   export let tileSizes = '(max-width: 768px) calc(25vw - 16px), 90px';
-  export let eager = false; // видна сразу (первый ряд главной): грузить не лениво
-  const restored = fromHistory(); // открыли «назад»/«вперёд»: картинки уже в кеше (MediaCard)
+  export let eager = false;
+  const restored = fromHistory();
 
-  // Столбики сердца в квадрате 100×100: x и y левого верхнего угла, высота.
   const BARS = [
     [15, 32, 16],
     [23, 24, 34],
@@ -80,7 +69,6 @@
     object-fit: cover;
     display: block;
   }
-  /* Полоса снизу в цвет микса, на ней название — тёмным, как у Spotify. */
   .mix .band {
     position: absolute;
     left: 0;

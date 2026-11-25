@@ -1,7 +1,4 @@
 <script>
-  // Микс (lib/mixes.js, internal/api/mixes.go): подборка, которая собирается
-  // сама из истории и лайков. Его можно слушать и сохранить себе плейлистом
-  // — тогда он перестанет меняться.
   import { api } from '../api.js';
   import { player, isPlaying as playerPlaying, shuffleOn } from '../stores/player.js';
   import { navStore, navigate, paths, link } from '../stores/nav.js';
@@ -26,7 +23,7 @@
   let mix = null;
   let rows = [];
   let loading = true;
-  let missing = false; // у человека сейчас нет такого микса
+  let missing = false;
   let error = '';
   let saving = false;
 
@@ -58,9 +55,6 @@
     if (rows.length) playRows(rows, null, context, { chosen: false });
   }
 
-  // Сохранить как плейлист: снимок микса на сегодня, дальше он не меняется
-  // (поэтому в описании плейлиста нет «обновляется каждый день»). Сервер
-  // берёт данные каждого трека у Deezer — это несколько секунд.
   async function save() {
     saving = true;
     const ids = rows.map((r) => r.deezerId).filter(Boolean);

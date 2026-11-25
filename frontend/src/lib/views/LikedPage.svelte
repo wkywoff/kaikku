@@ -1,6 +1,4 @@
 <script>
-  // «Любимые треки» — всё, что пользователь отметил плюсом, новые сверху.
-  // Снятый лайк сразу убирает строку (likedIds — общий стор).
   import { api } from '../api.js';
   import { player, isPlaying as playerPlaying, shuffleOn } from '../stores/player.js';
   import { paths, link } from '../stores/nav.js';
@@ -28,7 +26,7 @@
   let loading = true;
   let error = '';
 
-  pageTint().color({ r: 255, g: 77, b: 46 }); // как обложка «Любимых» (#ff4d2e, Artwork.svelte)
+  pageTint().color({ r: 255, g: 77, b: 46 });
 
   async function load() {
     try {
@@ -46,7 +44,6 @@
   $: rows = all.filter((r) => $likedIds.has(r.deezerId));
   let filter = '';
   $: sort = $sortPrefs.liked;
-  // Сервер отдаёт новые сверху — это и есть «дата добавления» по убыванию.
   $: shown = sort.key === 'added' && sort.desc ? filterRows(rows, filter) : sortRows(filterRows(rows, filter), sort.key, sort.desc, $lang);
   $: sortOptions = [
     { key: 'added', label: $t('sort.added'), desc: true },

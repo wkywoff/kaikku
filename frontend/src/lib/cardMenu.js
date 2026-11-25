@@ -17,13 +17,8 @@ import UserPlus from '@lucide/svelte/icons/user-plus';
 import UserCheck from '@lucide/svelte/icons/user-check';
 import Radio from '@lucide/svelte/icons/radio';
 
-// Меню карточек (MediaCard: правый клик, долгое нажатие, «…»): то, что в
-// Spotify можно сделать с альбомом, плейлистом, артистом или миксом, не
-// открывая его. Треки грузятся только по нажатию на пункт.
-
 const report = (e) => toast(e.message, 'error');
 
-// Треки места — строками списка, с отметкой, что уже скачано (refresh).
 async function loaded(load) {
   const rows = await load();
   await refresh(rows.map((r) => r.deezerId));
@@ -53,7 +48,6 @@ function queueItem(load) {
   };
 }
 
-// «Добавить в плейлист»: все треки места — в новый или свой плейлист.
 function playlistItem(load, skipId = null) {
   const tr = get(t);
   const ids = async () => (await load()).map((r) => r.deezerId).filter(Boolean);
@@ -80,7 +74,6 @@ function playlistItem(load, skipId = null) {
   };
 }
 
-/** album: { id, title, artist_id?, contributors? } */
 export function albumMenuItems(album) {
   const tr = get(t);
   const saved = get(savedAlbumIds).has(album.id);
@@ -90,7 +83,6 @@ export function albumMenuItems(album) {
     { label: tr(saved ? 'album.unsave' : 'album.save'), icon: saved ? CircleCheck : CirclePlus, onClick: () => toggleSaveAlbum(album.id) },
     shareItem(paths.album(album.id), album.title),
   ];
-  // Несколько исполнителей (совместный релиз) — выбор, как в меню трека.
   const artists = (album.contributors || []).filter((a) => a.id);
   const go = { label: tr('menu.goToArtist'), icon: UserRound };
   if (artists.length > 1) items.push({ separator: true }, { ...go, submenu: artists.map((a) => ({ label: a.name, href: paths.artist(a.id), image: a.picture_url || null })) });
@@ -98,14 +90,12 @@ export function albumMenuItems(album) {
   return items;
 }
 
-/** playlist: { id, title, is_public, mine } */
 export function playlistMenuItems(playlist) {
   const items = [queueItem(() => playlistRows(playlist.id)), playlistItem(() => playlistRows(playlist.id), playlist.id)];
   if (playlist.is_public || playlist.mine) items.push(shareItem(paths.playlist(playlist.id), playlist.title));
   return items;
 }
 
-/** artist: { id, name } */
 export function artistMenuItems(artist) {
   const tr = get(t);
   const following = get(followedIds).has(artist.id);
@@ -116,7 +106,6 @@ export function artistMenuItems(artist) {
   ];
 }
 
-/** mix: { id } — свой у каждого, поэтому без «Поделиться». */
 export function mixMenuItems(mix) {
   return [queueItem(() => mixRows(mix.id)), playlistItem(() => mixRows(mix.id))];
 }

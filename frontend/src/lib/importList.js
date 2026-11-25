@@ -1,17 +1,7 @@
-// Разбор списка треков для импорта плейлиста (кроме ссылки Spotify — её
-// разбирает сервер, internal/api/import.go):
-//   - CSV из Exportify, TuneMyMusic и похожих: заголовок с «Track Name» и
-//     «Artist Name(s)» (берём название, исполнителей, длительность и пометку
-//     Explicit — чтобы не взять clean-версию вместо обычной);
-//   - строки «Исполнитель — Трек» (дефис или тире; номера «1.» не мешают),
-//     строка без тире — просто название.
-// → [{ title, artists: [...], duration_ms?, explicit? }], не больше MAX_IMPORT.
-
 export const MAX_IMPORT = 300;
 
 const SPOTIFY = /(?:open\.spotify\.com\/|spotify:)(?:intl-[a-z-]+\/)?(?:embed\/)?(playlist|album)[/:][A-Za-z0-9]{22}/i;
 
-/** Ссылка на плейлист или альбом Spotify, если текст — она. */
 export function spotifyLink(text) {
   const t = String(text || '').trim();
   return SPOTIFY.test(t) && !t.includes('\n') ? t : null;
@@ -38,7 +28,6 @@ function splitArtists(s) {
     .filter(Boolean);
 }
 
-// CSV по RFC 4180: кавычки, запятые и переводы строк внутри кавычек.
 export function parseCsv(text) {
   const rows = [];
   let row = [];

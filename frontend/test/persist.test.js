@@ -31,7 +31,6 @@ test('the unshuffled order is saved as places in the queue', () => {
 
 test('a position saved for another queue is ignored', () => {
   saveQueue({ queue: [a, b, c], index: 2, currentTime: 30 }, null);
-  // Другая вкладка или старая версия записала очередь заново, позицию не тронула.
   storage.set('kaikku_queue', JSON.stringify({ queue: [{ id: 'x' }, { id: 'y' }], index: 1, time: 7, order: null }));
   const q = loadSavedQueue();
   assert.deepEqual(q.queue.map((e) => e.id), ['x', 'y']);

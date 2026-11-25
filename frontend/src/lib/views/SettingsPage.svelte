@@ -1,6 +1,4 @@
 <script>
-  // Настройки (на этом устройстве): язык, переход между треками,
-  // выравнивание громкости, вид треклистов. Применяются сразу.
   import { settings } from '../stores/settings.js';
   import { auth } from '../stores/auth.js';
   import { signOut } from '../signout.js';
@@ -20,11 +18,9 @@
 
   pageTint().from(null);
 
-  // Версия сервера — внизу страницы, для сообщений об ошибках. 1.2.0 → v1.2.0.
   let version = '';
   api.health().then((h) => (version = /^\d/.test(h.version) ? `v${h.version}` : h.version)).catch(() => {});
 
-  // Смена пароля: после неё остальные устройства выходят, это — получает новый вход.
   let pwOpen = false;
   let pwOld = '';
   let pwNew = '';
@@ -43,7 +39,7 @@
       pwOpen = false;
       pwOld = pwNew = pwNew2 = '';
       toast($t(apps?.enabled ? 'settings.passwordChangedApps' : 'settings.passwordChanged'));
-      api.subsonic().then((a) => (apps = a), () => {}); // пароль для приложений снят
+      api.subsonic().then((a) => (apps = a), () => {});
     } catch (e) {
       pwError = e.status === 403 ? $t('settings.wrongPassword') : e.status === 429 ? $t('login.tooMany') : e.message;
     } finally {
@@ -51,9 +47,7 @@
     }
   }
 
-  // Last.fm: «Подключить» уводит на last.fm, тот возвращает на /lastfm?token=…
-  // (та же страница настроек) — токен меняем на привязку и убираем из адреса.
-  let lastfm = null; // { available, auth_url, username?, scrobble?, love?, pending? }
+  let lastfm = null;
   let lastfmBusy = false;
 
   async function loadLastfm() {
@@ -106,8 +100,7 @@
     loadLastfm();
   }
 
-  // Приложения (Subsonic API): свой пароль, показывается здесь же.
-  let apps = null; // { enabled, username, password? }
+  let apps = null;
   let appsBusy = false;
   api.subsonic().then((a) => (apps = a), () => {});
 
@@ -129,7 +122,6 @@
       await navigator.clipboard.writeText(text);
       toast($t('apps.copied'));
     } catch {
-      // видно на экране — можно выделить руками
     }
   }
 
@@ -158,8 +150,6 @@
 
   <section>
     <h2>{$t('settings.playback')}</h2>
-    <!-- На iPhone звук идёт без Web Audio (stores/player.js, directAudio):
-         перехода и выравнивания там нет. -->
     {#if directAudio}<p class="note">{$t('settings.iosAudio')}</p>{/if}
     <div class="row" class:disabled={directAudio}>
       <div class="label">

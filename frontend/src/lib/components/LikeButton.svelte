@@ -1,7 +1,4 @@
 <script>
-  // «В любимые» для играющего трека (плеер, полноэкранный плеер): плюс,
-  // а если трек уже там — зелёная галочка. Без Deezer ID (старые записи
-  // медиатеки) лайкнуть нельзя — кнопки нет.
   import { t } from '../i18n.js';
   import { likedIds, toggleLike } from '../stores/collection.js';
   import CircleCheck from '@lucide/svelte/icons/circle-check';

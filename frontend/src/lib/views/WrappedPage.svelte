@@ -1,14 +1,4 @@
 <script>
-  // Итоги года, как Spotify Wrapped: минуты, главный исполнитель и трек,
-  // топы, месяцы и часы, рекорды. Всё считает сервер (handlers_wrapped.go)
-  // в часовом поясе браузера; топ-50 треков можно включить или сохранить
-  // плейлистом, альбомы — ряд самых слушаемых, остальные по «Показать все»
-  // (WrappedAlbumsPage).
-  //
-  // Сетка одна на всю страницу: каждый блок — карточка одной ширины с одним
-  // внутренним отступом (--pad), цветная или серая (.panel — списки). Строки
-  // треков и карточки альбомов выступают в отступ ровно на свои поля, так что
-  // обложки, номера и заголовки стоят на одной линии с текстом карточек.
   import { api } from '../api.js';
   import { navStore, navigate, paths, link } from '../stores/nav.js';
   import { lang } from '../stores/settings.js';
@@ -34,7 +24,7 @@
   let data = null;
   let error = '';
   let saving = false;
-  let sharing = false; // открыто окно «Поделиться итогами» (картинка с топами)
+  let sharing = false;
 
   pageTint().color(WRAPPED_TINT);
 
@@ -51,20 +41,15 @@
     }
   }
 
-  // Номер в списке — место в топе, а не номер трека в альбоме.
   $: rows = (data?.top_tracks || []).map((tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null }));
   $: topArtist = data?.top_artists?.[0];
   $: topTrack = data?.top_tracks?.[0];
-  // Трек года открывается в своём альбоме, выделенным (как ссылка «Поделиться»).
   $: topTrackHref = topTrack ? paths.albumTrack(paths.album(topTrack.album_id), topTrack.id) : null;
   $: maxMonth = Math.max(1, ...(data?.months || [0]));
   $: maxHour = Math.max(1, ...(data?.hours || [0]));
   $: bestMonth = data ? data.months.indexOf(Math.max(...data.months)) : -1;
-  // История пишется не с начала года — скажем, откуда итоги.
   $: partial = !!data?.since && data.since > `${data.year}-01-15`;
 
-  // Альбомы — один ряд, сколько помещается (как полки главной); на телефоне,
-  // где в ряду два, — два ряда. Остальные — по «Показать все».
   let albumsWidth = 0;
   $: perRow = albumsWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(albumsWidth / 176)));
   $: shownAlbums = (data?.top_albums || []).slice(0, perRow < 4 ? perRow * 2 : perRow);
@@ -73,7 +58,6 @@
   const monthName = (m, l) => new Date(2000, m, 1).toLocaleDateString(l === 'en' ? 'en-US' : 'ru-RU', { month: 'long' });
   const monthShort = (m, l) => new Date(2000, m, 1).toLocaleDateString(l === 'en' ? 'en-US' : 'ru-RU', { month: 'narrow' });
 
-  // Время суток, когда музыки больше всего.
   function persona(hours) {
     const parts = { night: [0, 6], morning: [6, 12], day: [12, 18], evening: [18, 24] };
     let best = 'day';
@@ -85,7 +69,6 @@
     return best;
   }
 
-  // 12 345 минут → «≈ 8 дней 13 часов»
   function inDays(minutes, l) {
     const d = Math.floor(minutes / 1440);
     const h = Math.floor((minutes % 1440) / 60);
@@ -180,8 +163,6 @@
         <section class="card song">
           <p class="kicker">{$t('wrapped.topSong')}</p>
           <div class="song-hero">
-            <!-- Обложка ведёт туда же, что и название: для клавиатуры и
-                 скринридера хватает ссылки-названия. -->
             <a class="song-cover" href={topTrackHref} use:link aria-hidden="true" tabindex="-1">
               {#if topTrack.cover_url}<img src={sized(topTrack.cover_url, 300)} alt="" />{:else}<span class="ph square"><Disc3 size={64} /></span>{/if}
             </a>
@@ -470,7 +451,7 @@
     display: flex;
   }
   .song-link {
-    align-self: flex-start; /* ссылка — по тексту, а не во всю ширину карточки */
+    align-self: flex-start;
   }
   @media (hover: hover) {
     .song-link:hover {
@@ -490,7 +471,6 @@
     flex-direction: column;
     gap: 8px;
   }
-  /* Серая карточка под списки: та же ширина, радиус и отступ, что у цветных. */
   .panel {
     background: var(--bg-card);
     color: var(--text);
@@ -502,7 +482,7 @@
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    min-height: 48px; /* как с кнопкой Play: заголовки обеих карточек на одной высоте */
+    min-height: 48px;
   }
   .panel-actions {
     display: flex;
@@ -521,8 +501,6 @@
       text-decoration: underline;
     }
   }
-  /* Строки треков (поля 12px, на телефоне 8px) и карточки альбомов (12px)
-     выступают в отступ карточки на свои поля. */
   .rows {
     margin: 0 -12px;
   }
@@ -530,8 +508,6 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
     margin: 0 -12px -12px;
-    /* Подсветка альбома под курсором — на тон светлее самой карточки,
-       иначе на её фоне не видна. */
     --bg-card: var(--bg-hover);
   }
   .bars {

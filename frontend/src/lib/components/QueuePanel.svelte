@@ -1,9 +1,4 @@
 <script>
-  // Очередь — шторка справа (на телефоне — во весь экран): сейчас играет,
-  // далее и то, что подобрало автовоспроизведение; клик по треку
-  // переключает на него, стрелки переставляют. Внизу — переключатель
-  // автовоспроизведения (то же, что в настройках). На телефоне закрывается
-  // и жестом «назад» (там она во весь экран, как отдельный экран).
   import { sized } from '../imageproxy.js';
   import { createEventDispatcher, onMount } from 'svelte';
   import { backCloses } from '../stores/nav.js';
@@ -23,7 +18,7 @@
     if (matchMedia('(max-width: 768px)').matches) return backCloses(() => dispatch('close'));
   });
 
-  $: s = $queueState; // без позиции трека: очередь не пересобирается на каждый тик
+  $: s = $queueState;
   $: current = s.queue[s.index];
   $: after = s.queue.map((item, i) => ({ item, i })).filter(({ i }) => i > s.index);
   $: upcoming = after.filter(({ item }) => !item.autoplay);

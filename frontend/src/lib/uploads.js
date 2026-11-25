@@ -1,23 +1,13 @@
-// Загрузка своих релизов (окно /upload/<id>): то, что не зависит от
-// страницы, — тип релиза по трекам, чего не хватает для публикации, что
-// заполнить из тегов файла, очередь загрузки файлов.
-
 export const RECORD_TYPES = ['single', 'ep', 'album', 'compile'];
 
-// Аудио, которое принимает сервер (uploads_audio.go), и его предел.
 export const AUDIO_ACCEPT = 'audio/*,.flac,.wav,.aif,.aiff,.mp3,.m4a,.mp4,.aac,.ogg,.oga,.opus,.mka,.webm';
 export const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
 const AUDIO_EXT = /\.(flac|wav|aiff?|mp3|m4a|mp4|aac|ogg|oga|opus|mka|webm)$/i;
 
-/** Похоже ли на аудиофайл (по типу или расширению — у FLAC тип бывает пустой). */
 export const isAudioFile = (file) => file.type.startsWith('audio/') || AUDIO_EXT.test(file.name);
 
 const HALF_HOUR = 30 * 60 * 1000;
 
-/**
- * Тип релиза по трекам, как у Spotify: 1–3 трека и меньше получаса —
- * сингл, 4–6 и меньше получаса — EP, иначе альбом.
- */
 export function recordTypeFor(tracks) {
   const n = tracks.length;
   const ms = tracks.reduce((sum, t) => sum + (t.durationMs || 0), 0);
@@ -26,12 +16,6 @@ export function recordTypeFor(tracks) {
   return 'album';
 }
 
-/**
- * Чего не хватает для публикации — те же коды, что у сервера
- * (missingForPublish в uploads.go), и ещё «файлы не догрузились». Обложка
- * не обязательна: без неё сервер ставит заглушку (lib/placeholder.js).
- * r: { title, artists, recordType, releaseDate, rows }.
- */
 export function missingForPublish(r) {
   const missing = [];
   if (!r.title?.trim()) missing.push('title');
@@ -40,17 +24,11 @@ export function missingForPublish(r) {
   if (!r.releaseDate) missing.push('release_date');
   const ready = r.rows.filter((row) => row.id);
   if (!ready.length) missing.push('tracks');
-  if (ready.some((row) => !row.other && !row.title?.trim())) missing.push('track_titles'); // у добавленных с других релизов — свои
+  if (ready.some((row) => !row.other && !row.title?.trim())) missing.push('track_titles');
   if (r.rows.some((row) => !row.id)) missing.push('uploading');
   return missing;
 }
 
-/**
- * Диски в списке треков окна загрузки: строка-разделитель ({ sep: true })
- * открывает следующий диск. Пустой диск не считается — разделитель в самом
- * начале или два подряд номер не сдвигают. → [{ row, disc, n }] для строк
- * треков, n — номер на своём диске.
- */
 export function discsOf(rows) {
   const out = [];
   let disc = 1;
@@ -65,7 +43,6 @@ export function discsOf(rows) {
   return out;
 }
 
-/** Строки из треков с номерами дисков (ответ сервера): перед каждым следующим диском — разделитель. */
 export function withSeparators(tracks, sepKey) {
   const out = [];
   tracks.forEach((tr, i) => {
@@ -75,10 +52,8 @@ export function withSeparators(tracks, sepKey) {
   return out;
 }
 
-/** Порядок файлов «как в папке»: 2 раньше 10. */
 export const naturalCompare = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 
-/** Полная дата из тега (YYYY-MM-DD или YYYY-MM-DDThh…); год сам по себе — не дата. */
 export function fullDate(tag) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(tag || '');
   if (!m) return '';
@@ -86,11 +61,6 @@ export function fullDate(tag) {
   return Number.isNaN(d.getTime()) || d.getUTCDate() !== Number(m[3]) ? '' : `${m[1]}-${m[2]}-${m[3]}`;
 }
 
-/**
- * Что взять из тегов загруженного файла: только в пустые поля и в дату,
- * которую человек ещё не трогал (touched.releaseDate — менял сам или она
- * уже взята из другого файла). → { title?, releaseDate?, artistQuery? }
- */
 export function prefillFromTags(form, tags, touched = {}) {
   const out = {};
   if (!tags) return out;
@@ -102,13 +72,6 @@ export function prefillFromTags(form, tags, touched = {}) {
   return out;
 }
 
-/**
- * Очередь загрузки файлов — по одному: сервер обрабатывает их тоже по
- * одному, а так первый трек готов раньше. run(item, onProgress, signal)
- * загружает; onChange() — состояние элементов поменялось. Занятый сервер
- * (503) — повтор через Retry-After, до maxRetries раз.
- * Элемент: { key, file, state: 'queued'|'uploading'|'processing'|'done'|'error', progress, error, result }.
- */
 export function createQueue(run, onChange, { maxRetries = 5, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const items = [];
   let busy = false;
@@ -184,18 +147,10 @@ export function createQueue(run, onChange, { maxRetries = 5, wait = (ms) => new 
   };
 }
 
-// Новый артист из ArtistPicker — пока только имя (ID `new:<имя>`): на
-// сервере его заводят при сохранении, а не по клику «Создать артиста»,
-// чтобы брошенный выбор не оставлял лишних артистов.
 const NEW_ARTIST = 'new:';
 export const newArtist = (name) => ({ id: NEW_ARTIST + name, name, picture_url: null });
 export const isNewArtist = (a) => a.id.startsWith(NEW_ARTIST);
 
-/**
- * Заводит новых артистов из списков (релиз, треки; null пропускаются) через
- * create(name) → { id, name, picture_url } и возвращает списки с ними.
- * Один и тот же новый артист в разных списках заводится один раз.
- */
 export async function createNewArtists(lists, create) {
   const made = new Map();
   for (const a of lists.flatMap((list) => list || [])) {

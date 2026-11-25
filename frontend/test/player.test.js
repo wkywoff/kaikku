@@ -1,8 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-// --- Минимальные стабы браузерного окружения, до импорта player.js ---
-
 class FakeAudio {
   constructor() {
     FakeAudio.instances.push(this);
@@ -43,7 +41,6 @@ class FakeAudio {
     this.paused = true;
     this.dispatch('pause');
   }
-  // Как в браузере: на естественном конце сначала 'pause', потом 'ended'.
   finish() {
     this.paused = true;
     this.ended = true;
@@ -64,7 +61,7 @@ class FakeAudioContext {
     this.destination = fakeNode();
     this.currentTime = 0;
     this.state = 'running';
-    this.gainCalls = []; // для проверки, что фейд реально планировался
+    this.gainCalls = [];
     this.gainNodes = [];
     FakeAudioContext.last = this;
   }
@@ -106,7 +103,6 @@ global.window = {
   AudioContext: FakeAudioContext,
   addEventListener: (type, fn) => (windowListeners[type] ||= []).push(fn),
 };
-// Media Session: что плеер сообщает экрану блокировки.
 const mediaSession = { metadata: null, playbackState: 'none', setActionHandler() {}, setPositionState() {} };
 Object.defineProperty(global, 'navigator', { value: { mediaSession }, configurable: true });
 global.MediaMetadata = function (data) {
@@ -114,18 +110,12 @@ global.MediaMetadata = function (data) {
 };
 
 const streamedUrls = [];
-// Треки не из медиатеки (/stream/deezer/{id}/url): пока deezerLibrary[id]
-// нет — ссылка на поток и job; когда есть — уже медиатека.
 const deezerLibrary = {};
-const jobs = {}; // job_id -> { status, track_id? }
-const radioTracks = {}; // артист -> треки его радио (/discover/artists/{id}/radio)
-// Ответ на адрес с этим кусочком ждёт, пока тест не отпустит обещание.
+const jobs = {};
+const radioTracks = {};
 const held = new Map();
-// Deezer ID, для которых сервер не может дать ссылку (502: Deezer занят и т.п.).
 const failingLinks = new Set();
-// Deezer ID, которых нет на YouTube (404 с reason not_found).
 const notFoundLinks = new Set();
-// Лайки на «сервере» и Deezer ID, снять лайк с которых сервер не даёт.
 const serverLiked = [];
 const failingUnlikes = new Set();
 const fakeFetch = async (url) => {
@@ -153,15 +143,12 @@ const fakeFetch = async (url) => {
   if (job && jobs[job[1]]) return json({ job_id: job[1], ...jobs[job[1]] });
   if (url.includes('/stream-url')) {
     streamedUrls.push(url);
-    // Файл трека удалён на сервере как неслушаемый.
     if (url.includes('evicted')) return { ok: false, status: 404, json: async () => ({ error: 'track not found' }) };
-    // Трек с "loud" в id приходит с поправкой -6 дБ.
     const gain_db = url.includes('loud') ? -6 : 0;
     return { ok: true, status: 200, json: async () => ({ url: 'https://fake/' + url, gain_db }) };
   }
   return { ok: false, status: 404, json: async () => ({ error: 'not found' }) };
 };
-// Заголовки — как у настоящего ответа (api.js читает X-Auth-Token).
 global.fetch = async (url) => ({ headers: new Headers(), ...(await fakeFetch(url)) });
 
 const { player } = await import('../src/lib/stores/player.js');
@@ -241,25 +228,25 @@ test('moveInQueue swaps two tracks and keeps index pointing at the same playing 
     { id: 'm1', title: 'M1' },
     { id: 'm2', title: 'M2' },
   ];
-  await player.playQueue(tracks, 0); // играет m1 на index 0
-  player.moveInQueue(0, 1); // переставить m1 на позицию 1
+  await player.playQueue(tracks, 0);
+  player.moveInQueue(0, 1);
 
   let s;
   player.subscribe((v) => (s = v))();
   assert.equal(s.queue[0].id, 'm2');
   assert.equal(s.queue[1].id, 'm1');
-  assert.equal(s.index, 1); // index должен был последовать за m1
+  assert.equal(s.index, 1);
 });
 
 test('moveInQueueTo drags a track to another place and keeps the playing one current', async () => {
   const tracks = ['d0', 'd1', 'd2', 'd3'].map((id) => ({ id, title: id }));
-  await player.playQueue(tracks, 1); // играет d1
-  player.moveInQueueTo(3, 2); // d3 — перед d2
+  await player.playQueue(tracks, 1);
+  player.moveInQueueTo(3, 2);
   let s;
   player.subscribe((v) => (s = v))();
   assert.deepEqual(s.queue.map((t) => t.id), ['d0', 'd1', 'd3', 'd2']);
   assert.equal(s.index, 1);
-  player.moveInQueueTo(0, 3); // уже прослушанный — в конец: играющий сдвигается
+  player.moveInQueueTo(0, 3);
   player.subscribe((v) => (s = v))();
   assert.deepEqual(s.queue.map((t) => t.id), ['d1', 'd3', 'd2', 'd0']);
   assert.equal(s.queue[s.index].id, 'd1');
@@ -276,13 +263,13 @@ test('track gain_db scales the slot gain together with the volume', async () => 
   settings.set('normalize', true);
   player.setVolume(0.5);
   await player.playQueue([{ id: 'loud1', title: 'Loud' }], 0);
-  const gain = FakeAudioContext.last.gainNodes[0].gain.value; // активный слот 0 до последнего теста
+  const gain = FakeAudioContext.last.gainNodes[0].gain.value;
   assert.ok(Math.abs(gain - 0.5 * Math.pow(10, -6 / 20)) < 1e-9, `gain = ${gain}`);
 
   player.setVolume(1);
   assert.ok(Math.abs(FakeAudioContext.last.gainNodes[0].gain.value - Math.pow(10, -6 / 20)) < 1e-9);
 
-  settings.set('normalize', false); // выключили посреди трека — сразу громкость оригинала
+  settings.set('normalize', false);
   assert.equal(FakeAudioContext.last.gainNodes[0].gain.value, 1);
 });
 
@@ -293,7 +280,6 @@ test('a track that keeps failing is retried once, not in an endless loop', async
   const fetchesFor = () => streamedUrls.filter((u) => u.includes('broken')).length;
   const before = fetchesFor();
 
-  // Каждая новая ссылка снова даёт error (битый файл / 403 от nginx).
   for (let i = 0; i < 5; i++) {
     el.dispatch('error');
     await new Promise((r) => setTimeout(r, 0));
@@ -304,8 +290,6 @@ test('a track that keeps failing is retried once, not in an endless loop', async
   player.subscribe((v) => (s = v))();
   assert.ok(s.error, 'после неудачного повтора показывается ошибка');
 
-  // Если трек реально заиграл, следующая ошибка (например, TTL ссылки
-  // истёк на паузе) снова заслуживает повтора.
   el.dispatch('playing');
   el.dispatch('error');
   await new Promise((r) => setTimeout(r, 0));
@@ -331,7 +315,7 @@ test('shuffle keeps the current track playing and restores the original order', 
 test('with shuffle on, Play of a whole album starts from a random track, a picked track plays first', async () => {
   const tracks = ['r1', 'r2', 'r3', 'r4'].map((id) => ({ id, title: id }));
   const random = Math.random;
-  Math.random = () => 0; // Fisher–Yates с нулём: r1 уезжает в конец
+  Math.random = () => 0;
   try {
     await player.playQueue([{ id: 'r0', title: 'r0' }], 0);
     player.toggleShuffle();
@@ -357,13 +341,13 @@ test('repeat all wraps next() to the start; repeat one restarts on end', async (
   player.subscribe((v) => (s = v))();
   assert.equal(player.canGoNext(s), false, 'без повтора после последнего ничего нет');
 
-  player.cycleRepeat(); // all
+  player.cycleRepeat();
   await player.next();
   player.subscribe((v) => (s = v))();
   assert.equal(s.repeat, 'all');
   assert.equal(s.index, 0);
 
-  player.cycleRepeat(); // one
+  player.cycleRepeat();
   const el = FakeAudio.instances[0];
   el.currentTime = 120;
   const plays = el.playCalls;
@@ -373,7 +357,7 @@ test('repeat all wraps next() to the start; repeat one restarts on end', async (
   assert.equal(el.currentTime, 0);
   assert.equal(el.playCalls, plays + 1);
 
-  player.cycleRepeat(); // off
+  player.cycleRepeat();
   player.subscribe((v) => (s = v))();
   assert.equal(s.repeat, 'off');
 });
@@ -401,14 +385,11 @@ test('a track not in the library plays from the stream link right away', async (
   assert.equal(el.src, '/api/stream/deezer/dz1?st=a&e=1', 'ссылка из клика — без лишних запросов');
   assert.equal(streamedUrls.length, 0);
 
-  // Ошибка (например, ссылка протухла на паузе) — новая ссылка через сервер,
-  // по Deezer ID: трек ещё качается — снова поток.
   el.dispatch('error');
   await new Promise((r) => setTimeout(r, 0));
   assert.ok(streamedUrls.some((u) => u.endsWith('/stream/deezer/dz1/url')));
   assert.equal(el.src, '/api/stream/deezer/dz1?st=sig&e=1');
 
-  // Скачался — сервер даёт ссылку на медиатеку и id, дальше трек как обычный.
   deezerLibrary.dz1 = 'lib-dz1';
   el.dispatch('playing');
   el.dispatch('error');
@@ -424,7 +405,7 @@ test('playRows queues the whole list: undownloaded tracks stream, downloaded one
   const rows = [
     { deezerId: 'dz2', title: 'Fresh', artists: [{ name: 'Someone' }], durationMs: 180000 },
     { libraryTrackId: 'have1', deezerId: 'dz3', title: 'Old', artists: [] },
-    { title: 'No source' }, // ни id, ни Deezer ID — пропускается
+    { title: 'No source' },
   ];
 
   await playRows(rows, 0);
@@ -435,7 +416,6 @@ test('playRows queues the whole list: undownloaded tracks stream, downloaded one
   assert.ok(isCurrentRow(rows[0], s.queue[s.index]), 'строка потока подсвечена как играющая (по Deezer ID)');
   assert.ok(!isCurrentRow(rows[1], s.queue[s.index]));
 
-  // Клик по скачанному — играет из медиатеки, нескачанный остаётся в очереди.
   streamedUrls.length = 0;
   await playRows(rows, 1);
   assert.ok(streamedUrls.some((u) => u.endsWith('/tracks/have1/stream-url')));
@@ -444,10 +424,6 @@ test('playRows queues the whole list: undownloaded tracks stream, downloaded one
   assert.equal(s.queue.length, 2);
 });
 
-// Последний тест в файле — completeTransitionTo() меняет "активный" слот,
-// так что после него FakeAudio.instances[0] уже не обязательно активен;
-// остальные тесты этого не предполагают, но новые тесты после этого места
-// добавлять не стоит без учёта этого.
 test('approaching track end triggers preload+crossfade, then ended() transitions without an extra fetch', async () => {
   streamedUrls.length = 0;
   const tracks = [
@@ -456,22 +432,20 @@ test('approaching track end triggers preload+crossfade, then ended() transitions
   ];
   await player.playQueue(tracks, 0);
 
-  const activeBefore = FakeAudio.instances[0]; // activeSlot ещё не менялся ни в одном предыдущем тесте
+  const activeBefore = FakeAudio.instances[0];
   activeBefore.duration = 200;
 
   const nextEl = FakeAudio.instances[1];
   const playsBeforePreload = nextEl.playCalls;
 
-  // За 5с до конца (<= PRELOAD_LEAD_SECONDS=8) — должна начаться предзагрузка.
   activeBefore.currentTime = 195;
   activeBefore.dispatch('timeupdate');
-  await new Promise((r) => setTimeout(r, 0)); // дать fetch-стабу разрешиться
+  await new Promise((r) => setTimeout(r, 0));
 
   assert.ok(streamedUrls.some((u) => u.includes('cb')), 'preload should fetch a signed URL for the next track');
   assert.equal(nextEl.playCalls, playsBeforePreload, 'предзагрузка только буферизует — без play()');
-  nextEl.currentTime = 3; // браузер мог что-то сдвинуть — к фейду трек всё равно должен начаться с нуля
+  nextEl.currentTime = 3;
 
-  // За 3с до конца (<= CROSSFADE_SECONDS=4) — должен запуститься фейд громкости.
   const fetchCountAfterPreload = streamedUrls.length;
   activeBefore.currentTime = 197;
   activeBefore.dispatch('timeupdate');
@@ -483,15 +457,12 @@ test('approaching track end triggers preload+crossfade, then ended() transitions
   player.subscribe((v) => (s = v))();
   assert.equal(s.index, 0, 'index не должен меняться до фактического ended()');
 
-  // Трек реально закончился — переход должен произойти БЕЗ повторного fetch,
-  // раз аудио уже готово и играет на втором слоте.
   activeBefore.finish();
   player.subscribe((v) => (s = v))();
   assert.equal(s.index, 1, 'ended() при готовом preload должен сразу переключить index');
   assert.equal(streamedUrls.length, fetchCountAfterPreload, 'переход на подготовленный трек не должен делать новый stream-url запрос');
   assert.equal(s.isPlaying, true, "'pause' перед 'ended' не должен показывать паузу — следующий трек играет");
 
-  // Кнопка play/pause управляет новым активным треком.
   player.toggle();
   assert.equal(nextEl.paused, true, 'toggle() ставит на паузу играющий трек');
   player.subscribe((v) => (s = v))();
@@ -520,13 +491,13 @@ test('without crossfade the next track starts right at the end (gapless), with n
     const other = FakeAudio.instances.find((e) => e !== cur);
     cur.duration = 200;
 
-    cur.currentTime = 192; // за 8 с — предзагрузка, но ещё без play()
+    cur.currentTime = 192;
     cur.dispatch('timeupdate');
     await new Promise((r) => setTimeout(r, 0));
     assert.ok(other.src.includes('gb'), 'следующий трек загружается заранее');
     const plays = other.playCalls;
 
-    cur.currentTime = 199.997; // у самого конца (в фейке время стоит) — следующий трек стартует сразу
+    cur.currentTime = 199.997;
     cur.dispatch('timeupdate');
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(other.playCalls, plays + 1, 'следующий трек стартует до ended(), а не после');
@@ -558,7 +529,7 @@ test('without crossfade, if the timer is late, ended() still switches to the pre
     const fetches = streamedUrls.length;
     const plays = other.playCalls;
 
-    cur.finish(); // таймер не успел (например, вкладка в фоне)
+    cur.finish();
     let s;
     player.subscribe((v) => (s = v))();
     assert.equal(other.playCalls, plays + 1);
@@ -608,7 +579,7 @@ test('the listened time counts only playback, not seeks, and goes out when the t
       el.currentTime = t;
       el.dispatch('timeupdate');
     }
-    el.currentTime = 150; // перемотка вперёд — не слушал
+    el.currentTime = 150;
     el.dispatch('timeupdate');
     for (let t = 150.5; t <= 160; t += 0.5) {
       el.currentTime = t;
@@ -635,7 +606,7 @@ test('a song resumed after the sleep timer is a play of its own, also when it wa
 
     player.setSleepTimer('track');
     el.finish();
-    player.seek(50); // следующий трек ждёт на паузе — перемотали его и включили
+    player.seek(50);
     await player.toggle();
     const el2 = FakeAudio.instances.findLast((e) => e.src.includes('sh2'));
     el2.duration = 200;
@@ -673,7 +644,7 @@ test('a scrobble goes out at half the track or 4 minutes, never for a track of 3
   try {
     await player.playQueue([{ id: 's1', title: 'S1' }, { id: 's2', title: 'S2' }, { id: 's3', title: 'S3' }], 0);
     const el = FakeAudio.instances.find((e) => e.src.includes('s1'));
-    el.duration = 600; // 10 минут: порог — 4 минуты, не половина
+    el.duration = 600;
     el.currentTime = 239;
     el.dispatch('timeupdate');
     assert.deepEqual(scrobbled, []);
@@ -782,7 +753,7 @@ test('while a song plays only its position is saved, not the whole queue again',
     setItem(k, v);
   };
   try {
-    Date.now = () => realNow() + 6000; // позиция пишется не чаще раза в 5 с
+    Date.now = () => realNow() + 6000;
     el.currentTime = 33;
     el.dispatch('timeupdate');
     assert.deepEqual(written, ['kaikku_queue_pos']);
@@ -826,7 +797,7 @@ test('"add to queue" goes after songs queued by hand but before autoplay picks',
   player.setHooks({ autoplay: async () => [{ id: 'auto1', title: 'A1' }, { id: 'auto2', title: 'A2' }] });
   try {
     await player.playQueue([{ id: 'base', title: 'Base' }], 0);
-    await player.next(); // очередь кончилась — автовоспроизведение добавило auto1, auto2 и играет auto1
+    await player.next();
     let s;
     player.subscribe((v) => (s = v))();
     assert.deepEqual(s.queue.map((e) => e.id), ['base', 'auto1', 'auto2']);
@@ -873,7 +844,7 @@ test('a song removed from a playlist no longer counts as playing from it', async
   player.subscribe((v) => (s = v))();
   assert.equal(s.queue[0].deezerId, '1', 'трек доигрывает');
   assert.deepEqual(s.queue.map((e) => e.context), [null, ctx, ctx], 'остальные всё ещё из плейлиста');
-  await player.toggle(); // пауза и продолжить — метка не возвращается
+  await player.toggle();
   await player.toggle();
   assert.equal(get(playingContext), null);
 });
@@ -899,7 +870,7 @@ test('an unliked song no longer counts as playing from Liked', async () => {
   assert.equal(s.queue[0].deezerId, 'l1', 'трек доигрывает');
   assert.deepEqual(s.queue.map((e) => e.context), [null, LIKED, LIKED], 'остальные всё ещё из Любимых');
 
-  serverLiked.push('l3'); // l2 сняли на другом устройстве
+  serverLiked.push('l3');
   await loadCollection();
   player.subscribe((v) => (s = v))();
   assert.deepEqual(s.queue.map((e) => e.context), [null, null, LIKED], 'после загрузки медиатеки — по лайкам с сервера');
@@ -915,7 +886,7 @@ test('"play next" goes right after the playing song, in the order songs were add
   assert.deepEqual(s.queue.map((e) => e.id), ['n1', 'pn1', 'pn2', 'n2', 'n3', 'q1']);
   assert.equal(s.index, 0);
 
-  await player.next(); // играет pn1 — следующее «следующим» встаёт после pn2
+  await player.next();
   await player.playNext({ id: 'pn3', title: 'PN3' });
   player.subscribe((v) => (s = v))();
   assert.deepEqual(s.queue.map((e) => e.id), ['n1', 'pn1', 'pn2', 'pn3', 'n2', 'n3', 'q1']);
@@ -927,7 +898,7 @@ test('sleep timer "end of track": the queue stops after this song and the next o
   const other = FakeAudio.instances.find((e) => e !== el);
   el.duration = 200;
   player.setSleepTimer('track');
-  el.currentTime = 195; // в обычном режиме тут готовился бы переход
+  el.currentTime = 195;
   el.dispatch('timeupdate');
   await new Promise((r) => setTimeout(r, 0));
   assert.ok(!other.src.includes('sl2'), 'следующий трек не готовится');
@@ -940,7 +911,7 @@ test('sleep timer "end of track": the queue stops after this song and the next o
   assert.equal(s.isPlaying, false, '…но не играет');
   assert.equal(s.duration, 90);
 
-  await player.prev(); // позиция старого элемента не мешает — уходим к первому треку
+  await player.prev();
   player.subscribe((v) => (s = v))();
   assert.equal(s.index, 0);
 });
@@ -961,7 +932,7 @@ test('sleep timer in minutes fades out and pauses; switching it off cancels it',
     assert.equal(el.paused, false, 'выключенный таймер ничего не делает');
 
     player.setSleepTimer(30);
-    Date.now = () => realNow() + 31 * 60000; // время вышло, пока вкладка спала
+    Date.now = () => realNow() + 31 * 60000;
     el.dispatch('timeupdate');
     player.subscribe((v) => (s = v))();
     assert.equal(s.sleep, null);
@@ -981,7 +952,7 @@ test('a song picked while the sleep timer fades out keeps playing', async (t) =>
     const el = FakeAudio.instances.find((e) => e.src.includes('sf1'));
     player.setSleepTimer(30);
     Date.now = () => realNow() + 31 * 60000;
-    el.dispatch('timeupdate'); // время вышло — звук затухает
+    el.dispatch('timeupdate');
     await player.next();
     const el2 = FakeAudio.instances.find((e) => e.src.includes('sf2'));
     t.mock.timers.tick(3000);
@@ -1003,11 +974,11 @@ test('the sleep timer stops the music also when it goes off in the last seconds 
     player.setSleepTimer(30);
     Date.now = () => realNow() + 31 * 60000;
     streamedUrls.length = 0;
-    el.dispatch('timeupdate'); // время вышло за 2 с до конца трека
+    el.dispatch('timeupdate');
     await new Promise((r) => setImmediate(r));
     assert.ok(!streamedUrls.some((u) => u.includes('se2')), 'следующий трек не готовится');
 
-    el.finish(); // трек кончился раньше, чем затухание
+    el.finish();
     let s;
     player.subscribe((v) => (s = v))();
     assert.equal(s.isPlaying, false);
@@ -1071,13 +1042,12 @@ test('select: subscribers hear only about their part, not every position tick', 
   const seenPlaying = [];
   const offNow = now.subscribe((v) => seenNow.push(v));
   const offPlaying = playing.subscribe((v) => seenPlaying.push(v));
-  for (let t = 1; t <= 10; t++) s.update((x) => ({ ...x, currentTime: t })); // timeupdate
+  for (let t = 1; t <= 10; t++) s.update((x) => ({ ...x, currentTime: t }));
   assert.deepEqual(seenNow, [entry]);
   assert.deepEqual(seenPlaying, [false]);
   s.update((x) => ({ ...x, isPlaying: true }));
   assert.deepEqual(seenPlaying, [false, true]);
   assert.equal(seenNow.length, 1);
-  // patchEntry: тот же элемент, новый массив очереди — текущий трек сообщается снова.
   s.update((x) => ({ ...x, queue: [...x.queue] }));
   assert.equal(seenNow.length, 2);
   s.update((x) => ({ ...x, index: 1 }));
@@ -1113,8 +1083,6 @@ test('queueState: the queue lists hear about the queue and modes, not about posi
 });
 
 test('a late answer for an earlier song does not replace the song picked after it', async () => {
-  // Ссылку на нескачанный трек сервер ищет секунды; за это время включили
-  // другой, скачанный, — он отвечает сразу и должен остаться играть.
   let release;
   held.set('late1', new Promise((r) => (release = r)));
   try {
@@ -1170,7 +1138,6 @@ test('when the next song fails on its own, the player moves on — at most three
     assert.equal(s.index, 3, 'два несыгравших пропущены');
     assert.ok(FakeAudio.instances.some((e) => e.src.includes('sD') && !e.paused));
 
-    // Ломается всё подряд (YouTube, сеть) — после трёх пропусков стоп.
     await player.playQueue([{ id: 'sB', title: 'B' }, missing('nf4'), missing('nf5'), missing('nf6'), missing('nf7'), { id: 'sE', title: 'E' }], 0);
     FakeAudio.instances.find((e) => e.src.includes('sB')).finish();
     await wait();
@@ -1195,7 +1162,6 @@ test('a song clicked by hand that fails stays put; Play on an album skips to wha
     assert.equal(s.index, 0, 'остаётся на выбранном, с сообщением');
     assert.ok(!FakeAudio.instances.some((e) => e.src.includes('sF')));
 
-    // Play на карточке альбома выбирает не трек, а альбом: сбойный первый пропускается.
     await playRows([{ deezerId: 'nf8', title: 'First' }, { libraryTrackId: 'sG', deezerId: 'g2', title: 'Second' }], 0, { kind: 'album', id: '5' }, { chosen: false });
     await wait();
     player.subscribe((v) => (s = v))();
@@ -1261,7 +1227,7 @@ test('the lock screen shows a pause when the queue or the sleep timer ends the m
   const el = FakeAudio.instances.find((e) => e.src.includes('ls1'));
   el.play();
   assert.equal(mediaSession.playbackState, 'playing');
-  el.finish(); // очередь кончилась
+  el.finish();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(mediaSession.playbackState, 'paused');
 

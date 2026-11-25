@@ -7,7 +7,7 @@ test('trackIdFrom: Deezer and kaikku links, a bare ID', () => {
   assert.equal(trackIdFrom('https://www.deezer.com/en/track/491201822?utm=x'), '491201822');
   assert.equal(trackIdFrom('https://music.example.com/album/62145332?track=491201822'), '491201822');
   assert.equal(trackIdFrom('https://music.example.com/album/62145332?from=x&track=491201822'), '491201822');
-  assert.equal(trackIdFrom('https://music.example.com/album/62145332'), null); // альбом, не трек
+  assert.equal(trackIdFrom('https://music.example.com/album/62145332'), null);
   assert.equal(trackIdFrom('Тихий вечер'), null);
 });
 

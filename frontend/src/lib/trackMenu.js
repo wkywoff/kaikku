@@ -17,7 +17,6 @@ import Trash2 from '@lucide/svelte/icons/trash-2';
 import Pencil from '@lucide/svelte/icons/pencil';
 import Radio from '@lucide/svelte/icons/radio';
 
-/** Шапка меню трека на телефоне (шторка снизу): обложка, название, исполнители. */
 export function trackMenuHeader(row) {
   return {
     title: row.title,
@@ -26,10 +25,6 @@ export function trackMenuHeader(row) {
   };
 }
 
-// Пункты контекстного меню трека (правый клик / «…» в TrackList) — только
-// то, что работает: плейлисты, лайк, очередь, радио, переходы, правка (админ).
-//   playlist — { id, mine } если список — плейлист; onRemove — убрать из него;
-//   onEdit — открыть правку (кто вправе — решает вызывающий: админ, автор релиза).
 export function trackMenuItems(row, { playlist = null, onRemove = null, onEdit = null } = {}) {
   const tr = get(t);
   const items = [];
@@ -75,7 +70,6 @@ export function trackMenuItems(row, { playlist = null, onRemove = null, onEdit =
     },
   });
 
-  // Радио: этот трек, потом похожие (радио его исполнителя).
   const radioArtist = row.deezerId ? mainArtistId(row) : null;
   if (radioArtist) {
     items.push({
@@ -85,7 +79,6 @@ export function trackMenuItems(row, { playlist = null, onRemove = null, onEdit =
     });
   }
 
-  // Ссылка на трек — страница его альбома с этим треком (выделен).
   if (row.album?.href && row.deezerId) items.push(shareItem(paths.albumTrack(row.album.href, row.deezerId), row.title));
 
   const artists = (row.artists || []).filter((a) => a.href);

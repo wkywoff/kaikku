@@ -1,9 +1,5 @@
 import { normalizeText } from './rows.js';
 
-// Сортировка списков, как в Spotify: треки в «Любимых» и плейлистах
-// (название, исполнитель, альбом, дата добавления, длительность) и
-// карточки медиатеки (недавние, добавленные, по алфавиту).
-
 const collators = new Map();
 function collator(lang) {
   if (!collators.has(lang)) collators.set(lang, new Intl.Collator(lang, { sensitivity: 'base', numeric: true }));
@@ -18,11 +14,6 @@ const TRACK_KEYS = {
   duration: (r) => r.durationMs || null,
 };
 
-/**
- * Треки по ключу; 'custom' (и неизвестный ключ) — как пришли. desc —
- * по убыванию. Пустые значения — всегда в конце; при равенстве — исходный
- * порядок.
- */
 export function sortRows(rows, key, desc = false, lang = 'ru') {
   const get = TRACK_KEYS[key];
   if (!get) return rows;
@@ -43,11 +34,6 @@ function sortBy(items, get, desc, lang) {
     .map((x) => x.item);
 }
 
-/**
- * Карточки медиатеки: items — [{ key: 'album:ID', name }], times — ответ
- * /api/me/library/times. recent — недавно слушал или добавил, added —
- * недавно добавил, alpha — по алфавиту.
- */
 export function sortLibrary(items, mode, times = { added: {}, played: {} }, lang = 'ru') {
   if (mode === 'alpha') return sortBy(items, (x) => normalizeText(x.name), false, lang);
   const at = (k, m) => (m?.[k] ? Date.parse(m[k]) : 0);

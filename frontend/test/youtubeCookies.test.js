@@ -22,7 +22,7 @@ test('the toast after an upload names what still stands in the way first', () =>
 test('a song that needs a sign-in gets a hint for its case', () => {
   const adult = "signin: download: … Sorry, this content is age-restricted. To view this video, please provide more info so we can be sure you're an adult.";
   assert.equal(signInHint(adult, true), 'missing.signinAge');
-  assert.equal(signInHint(adult, false), 'missing.signinNoCookies'); // куки с тех пор удалили
+  assert.equal(signInHint(adult, false), 'missing.signinNoCookies');
   assert.equal(signInHint('signin: download: … Sign in to confirm your age', false), 'missing.signinNoCookies');
   assert.equal(signInHint('signin: download: … Sign in to confirm your age', true), 'missing.signinRetry');
   assert.equal(signInHint(undefined, false), 'missing.signinNoCookies');

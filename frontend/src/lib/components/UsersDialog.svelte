@@ -1,11 +1,4 @@
 <script>
-  // Админ: пользователи. Для выбранного человека —
-  //  - одноразовая ссылка на новый пароль (почты у нас нет): он откроет её и
-  //    сам задаст пароль, админ его не видит. Ссылка живёт 24 часа, новая
-  //    отменяет старую (handlers_password.go);
-  //  - права админа: выдать или снять (handlers_roles.go).
-  // Себя в списке нет: свой пароль меняют в настройках, а снять права с себя
-  // одним неловким нажатием здесь нельзя.
   import { onMount, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
   import { api } from '../api.js';
@@ -20,7 +13,7 @@
   const dispatch = createEventDispatcher();
   let users = [];
   let userId = '';
-  let link = null; // { url, username }
+  let link = null;
   let copied = false;
   let busy = false;
   let error = '';
@@ -60,12 +53,10 @@
       await navigator.clipboard.writeText(link.url);
       copied = true;
     } catch {
-      copied = false; // ссылку видно — её можно выделить и скопировать руками
+      copied = false;
     }
   }
 
-  // Выдать или снять права админа — после подтверждения: админ может всё,
-  // в том числе снять права с того, кто их выдал.
   async function setAdmin(user, admin) {
     if (!confirm($t(admin ? 'users.grantConfirm' : 'users.revokeConfirm', { name: user.username }))) return;
     busy = true;

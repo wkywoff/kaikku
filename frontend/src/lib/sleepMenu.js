@@ -3,10 +3,8 @@ import { t } from './i18n.js';
 import { player } from './stores/player.js';
 import { toast } from './stores/toast.js';
 
-// Таймер сна (кнопка-луна в плеере): варианты как в Spotify.
 const MINUTES = [5, 10, 15, 30, 45, 60];
 
-/** Сколько минут осталось (округление вверх), для подписи. */
 export function sleepMinutesLeft(sleep, now = Date.now()) {
   return sleep?.at ? Math.max(1, Math.ceil((sleep.at - now) / 60000)) : 0;
 }

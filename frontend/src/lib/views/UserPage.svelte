@@ -1,8 +1,4 @@
 <script>
-  // Профиль человека (/user/<ник>): подписка и публичные плейлисты.
-  // Подписаны друг на друга — друзья: их зовут в соавторы плейлиста
-  // (PlaylistDialog). В своём профиле — люди вокруг: друзья, кто подписан
-  // на тебя (подписаться в ответ) и на кого подписан ты.
   import { api } from '../api.js';
   import { isPlaying as playerPlaying } from '../stores/player.js';
   import { navStore, paths, link } from '../stores/nav.js';
@@ -25,7 +21,7 @@
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
 
   const name = $navStore.id;
-  let page = null; // { user, me, playlists, people? }
+  let page = null;
   let missing = false;
   let error = '';
   let busy = false;
@@ -45,7 +41,6 @@
   $: playingCtx = $playerPlaying ? $playingContext : null;
   const hue = mixHue(`user-${name.toLowerCase()}`);
 
-  // Подписаться / отписаться — на профиле и в списках своего профиля.
   async function toggle(p) {
     busy = true;
     try {

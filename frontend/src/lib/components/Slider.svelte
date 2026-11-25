@@ -1,7 +1,4 @@
 <script>
-  // Ползунок прогресса/громкости в стиле Spotify: тонкая полоса, заливка до
-  // текущего значения, при наведении — акцентный цвет и кружок. Пока
-  // человек тянет, показывается его значение, а не обновления плеера.
   import { createEventDispatcher } from 'svelte';
 
   export let value = 0;
@@ -21,13 +18,10 @@
     dragValue = Number(e.target.value);
     dispatch('input', dragValue);
   }
-  // Значение для change — то, что выбрал человек (dragValue), а не
-  // e.target.value: к моменту change Svelte мог уже вернуть в <input>
-  // текущую позицию плеера, и перемотка «отпрыгивала» назад.
   function onChange(e) {
     dispatch('change', dragging ? dragValue : Number(e.target.value));
     dragging = false;
-    if (matchMedia('(hover: none)').matches) e.target.blur(); // палец отпустил — фокус ползунку не нужен
+    if (matchMedia('(hover: none)').matches) e.target.blur();
   }
 </script>
 
@@ -56,9 +50,6 @@
     cursor: pointer;
     --fill: #fff;
   }
-  /* Акцентный цвет — под курсором и с клавиатуры. На телефоне полоса
-     всегда белая: после касания фокус оставался на ней, и она так и
-     оставалась цветной. */
   @media (hover: hover) {
     .slider:hover,
     .slider:focus-visible {

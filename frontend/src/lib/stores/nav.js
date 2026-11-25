@@ -3,26 +3,13 @@ import { parseRoute, paths } from '../route.js';
 
 export { paths };
 
-// navStore — текущий маршрут (см. lib/route.js), синхронизирован с адресом
-// страницы. Плеер живёт в App.svelte вне экранов и переживает навигацию.
-// Называется navStore, не nav: иначе компилятор Svelte путает импорт с
-// элементом <nav>.
 export const navStore = writable(parseRoute(location.pathname, location.search));
 
-// Активные прокручиваемые контейнеры со scrollMemory: перед уходом со
-// страницы их позиция записывается в текущую запись истории.
 const scrollers = new Set();
-let cameFromHistory = false; // последний переход — «назад»/«вперёд»
+let cameFromHistory = false;
 
-/** Последний переход — «назад»/«вперёд» (кнопкой, жестом), а не по ссылке. */
 export const fromHistory = () => cameFromHistory;
 
-// Окна (lib/modal.js) закрываются жестом «назад», а не уводят со страницы:
-// открытое окно кладёт в историю свою запись с тем же адресом; «назад»
-// снимает её и закрывает окно. Закрыли окно сами (крестик, Esc) — запись
-// убирается через history.back(), и на этот popstate навигация не реагирует.
-// Перезагрузили страницу с открытым окном: окна закрыты, а запись осталась
-// помеченной как запись окна — снять пометку.
 if (history.state?.overlay) {
   const { overlay: _, ...rest } = history.state;
   history.replaceState(rest, '');
@@ -44,7 +31,7 @@ function showPage() {
 
 const overlays = [];
 let skipPops = 0;
-let replaceAfterBack = null; // адрес, которым заменить страницу под окном
+let replaceAfterBack = null;
 
 const reopeners = new Map();
 export function reopensOnForward(kind, reopen) {
@@ -56,18 +43,17 @@ export function reopensOnForward(kind, reopen) {
 
 export const reopening = (kind) => history.state?.overlay === kind && !overlays.some((o) => o.pos === pos);
 
-/** Окно открылось: «назад» вызовет close. Вернёт функцию «окно закрылось». */
 export function backCloses(close, kind = 'window') {
   const entry = { close, pos: null };
   overlays.push(entry);
   settled(() => {
-    if (!overlays.includes(entry)) return; // закрыли раньше, чем дошла очередь
+    if (!overlays.includes(entry)) return;
     if (!reopening(kind)) pushEntry({ ...history.state, overlay: kind });
     entry.pos = pos;
   });
   return () => {
     const i = overlays.indexOf(entry);
-    if (i < 0) return; // уже закрыто «назад»
+    if (i < 0) return;
     overlays.splice(i, 1);
     if (entry.pos && history.state?.overlay && pos >= entry.pos) popOverlayEntries(1);
   };
@@ -92,9 +78,6 @@ function returnTo(from) {
   history.go(from - pos || 1);
 }
 
-// Закрылись сразу несколько окон (плеер вместе с очередью в нём) — снять
-// их записи одним переходом: несколько history.back() подряд браузеры
-// выполняют ненадёжно.
 let pendingPops = 0;
 function popOverlayEntries(n) {
   if (!pendingPops) {
@@ -107,12 +90,6 @@ function popOverlayEntries(n) {
   pendingPops += n;
 }
 
-// Запись окна снимается не сразу: history.go() срабатывает позже, своим
-// popstate. Пока он не пришёл, новая запись или переход попали бы не туда:
-// пункт меню на телефоне закрывает меню (его запись снимается) и тут же
-// открывает окно или другую страницу. Такие записи ждут (settled). Если
-// popstate так и не пришёл, через секунду ждать перестаём — иначе встала
-// бы вся навигация.
 const waiting = [];
 let giveUpWaiting = null;
 const historyBusy = () => pendingPops > 0 || skipPops > 0;
@@ -132,9 +109,6 @@ function runWaiting() {
   }
 }
 
-// Страница, с которой нельзя просто уйти (окно загрузки с несохранённым
-// или с идущей загрузкой): guardLeave(fn) — fn спрашивает человека и
-// возвращает true, если уходить. Возвращает снятие защиты.
 let leaveGuard = null;
 export function guardLeave(fn) {
   leaveGuard = fn;
@@ -148,7 +122,6 @@ window.addEventListener('popstate', () => {
   const from = pos;
   pos = entryPos();
   if (replaceAfterBack) {
-    // Запись окна снята (navigate ниже) — теперь заменить саму страницу.
     history.replaceState({ pos }, '', replaceAfterBack);
     replaceAfterBack = null;
     cameFromHistory = false;
@@ -178,27 +151,17 @@ window.addEventListener('popstate', () => {
     returnTo(from);
     return;
   }
-  // История уже переключилась — отложенная запись позиции ушла бы в чужую запись.
   for (const s of scrollers) s.cancel();
   cameFromHistory = true;
   showPage();
 });
 
-// navigate открывает path. replace: true — заменить текущую запись истории
-// (например, пока человек печатает поисковый запрос), а не плодить новую
-// на каждую букву.
 export function navigate(path, { replace = false } = {}) {
   if (historyBusy()) return settled(() => navigate(path, { replace }));
   if (path === address()) return;
   if (!mayLeave()) return;
   for (const s of scrollers) s.flush();
   cameFromHistory = false;
-  // Со страницы ушли при открытом окне: окно закроется вместе со страницей,
-  // а его запись в истории не оставлять — иначе «назад» вело бы на ту же
-  // страницу ещё раз. Обычный переход её заменяет. Переход «вместо этой
-  // страницы» (удалили плейлист → на главную) сначала снимает её, потом
-  // заменяет саму страницу (popstate выше) — иначе «назад» вело бы на
-  // удалённый плейлист.
   if (history.state?.overlay) {
     overlays.length = 0;
     if (replace) {
@@ -213,22 +176,12 @@ export function navigate(path, { replace = false } = {}) {
   showPage();
 }
 
-// navigateAfterPaint — переход из меню: сначала меню исчезает с экрана,
-// потом переход. Айфон снимает страницу для свайпа «назад» в момент
-// перехода, и меню, закрытое в том же кадре, осталось бы на снимке.
 export function navigateAfterPaint(path) {
   requestAnimationFrame(() => requestAnimationFrame(() => navigate(path)));
 }
 
-// Последний поисковый запрос: иконка поиска возвращает к нему.
 export const lastSearch = writable('');
 
-// scrollMemory — action для прокручиваемого контейнера страницы (main в
-// App.svelte; он живёт всё время, меняется только содержимое). Позиция
-// прокрутки хранится в записи истории: «назад»/«вперёд» возвращают туда же,
-// новый переход открывает страницу сверху. Данные страница грузит
-// асинхронно, поэтому позиция восстанавливается, как только содержимого
-// хватает (но не дольше 2 с).
 export function scrollMemory(node) {
   let observer = null;
   let giveUp = null;
@@ -268,7 +221,7 @@ export function scrollMemory(node) {
     },
   };
   function onScroll() {
-    if (observer) return; // ещё восстанавливаем — не перезаписывать позицию нулём
+    if (observer) return;
     clearTimeout(saveHandle);
     saveHandle = setTimeout(saver.flush, 150);
   }
@@ -279,7 +232,7 @@ export function scrollMemory(node) {
   const unsubscribe = navStore.subscribe(() => {
     if (first) {
       first = false;
-      target = history.state?.scroll || 0; // перезагрузка страницы
+      target = history.state?.scroll || 0;
       if (target > 0) {
         observer = new MutationObserver(tryRestore);
         observer.observe(node, { childList: true, subtree: true });
@@ -301,9 +254,6 @@ export function scrollMemory(node) {
   };
 }
 
-// link — action для <a href="/…">: обычный клик открывает страницу внутри
-// приложения (без перезагрузки, плеер продолжает играть), а клик колёсиком,
-// Ctrl/Cmd/Shift+клик и «открыть в новой вкладке» остаются браузеру.
 export function link(node) {
   function onClick(e) {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

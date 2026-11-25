@@ -1,7 +1,4 @@
 <script>
-  // Все альбомы, прослушанные за год (/wrapped/<год>/albums) — «Показать все»
-  // из итогов года, как вся дискография у артиста: сетка обложек, под каждой —
-  // сколько раз слушали. Порядок — от самого слушаемого, его считает сервер.
   import { api } from '../api.js';
   import { isPlaying as playerPlaying } from '../stores/player.js';
   import { navStore, paths, link } from '../stores/nav.js';
@@ -16,7 +13,7 @@
   let data = null;
   let error = '';
 
-  pageTint().none(WRAPPED_TINT); // фон ровный (полоса сверху), кнопки — как в итогах
+  pageTint().none(WRAPPED_TINT);
 
   $: load($navStore.year);
   let seq = 0;
@@ -31,7 +28,6 @@
     }
   }
 
-  // Какой альбом сейчас играет (если включён отсюда или с его страницы).
   $: playingCtx = $playerPlaying ? $playingContext : null;
 
   function onPlay(albumId) {
@@ -84,9 +80,6 @@
     padding-top: 20px;
     padding-bottom: 16px;
     background: var(--bg);
-    /* Содержимое — в колонке страницы (App.svelte), а фон полосы — во всю
-       ширину: тень без размытия продолжает его в стороны, clip-path
-       оставляет её только по высоте полосы. */
     box-shadow: 0 0 0 100vmax var(--bg);
     clip-path: inset(0 -100vmax);
   }

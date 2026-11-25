@@ -1,9 +1,4 @@
 <script>
-  // Левая колонка страницы правки релиза (EditShell): обложка — нажать или
-  // перетащить картинку, — и сводка, как релиз будет подписан на своей
-  // странице. Под обложкой — «убрать» (removeLabel; событие remove), если
-  // её есть что убирать. Своему релизу без обложки показывается превью заглушки,
-  // которую сервер поставит при публикации (lib/placeholder.js).
   import { createEventDispatcher } from 'svelte';
   import { t } from '../../i18n.js';
   import { placeholderBackground } from '../../placeholder.js';
@@ -13,14 +8,14 @@
 
   export let coverUrl = '';
   export let busy = false;
-  export let placeholderFor = null; // ID своего релиза: превью заглушки, пока нет обложки
-  export let optional = false; // подписать «необязательно»
+  export let placeholderFor = null;
+  export let optional = false;
   export let hint = '';
   export let kindLine = '';
   export let title = '';
-  export let artists = ''; // имена через запятую
+  export let artists = '';
   export let meta = '';
-  export let removeLabel = ''; // подпись кнопки «убрать обложку»; пусто — кнопки нет
+  export let removeLabel = '';
 
   const dispatch = createEventDispatcher();
   let input;
@@ -187,7 +182,6 @@
   .sum-meta {
     color: var(--text-faint);
   }
-  /* Узко (EditShell): обложка и сводка — рядом, сводка над подсказкой. */
   @media (max-width: 900px) {
     .summary-card {
       padding-top: 0;

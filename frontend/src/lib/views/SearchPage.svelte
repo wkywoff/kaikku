@@ -1,11 +1,9 @@
 <script context="module">
   import { LRU } from '../lru.js';
-  const cache = new LRU(20); // запрос -> результаты, чтобы «назад» не ждал Deezer
+  const cache = new LRU(20);
 </script>
 
 <script>
-  // Результаты поиска (запрос — в адресе, поле ввода — в верхней панели):
-  // лучший результат, треки, исполнители, альбомы — как у Spotify.
   import { onDestroy } from 'svelte';
   import SearchField from '../components/SearchField.svelte';
   import { sized } from '../imageproxy.js';
@@ -28,14 +26,13 @@
   import { recentSearches, rememberSearch, removeRecent } from '../stores/recentSearches.js';
   import { tagTitle, mixHue } from '../mixes.js';
 
-  // Плитки жанров — на пустой странице поиска, один раз за открытие.
   let genres = [];
   api
     .genres()
     .then((d) => (genres = d.genres))
     .catch(() => {});
 
-  let results = null; // { tracks, artists, albums }
+  let results = null;
   let loading = false;
   let error = '';
 
@@ -43,8 +40,6 @@
 
   const tint = pageTint();
   let seq = 0;
-  // Запрос, который ещё идёт: человек печатает дальше — он отменяется, и
-  // сервер не тратит на брошенную выдачу общий лимит Deezer.
   let inflight = null;
   onDestroy(() => inflight?.abort());
   async function run(q) {
@@ -81,20 +76,16 @@
     }
   }
 
-  // Треки из разных альбомов: место в альбоме тут ни при чём — иначе
-  // TrackList режет выдачу заголовками «Диск N».
   $: rows = (results?.tracks || []).map((tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null }));
   $: topArtist = results?.artists?.[0];
   $: people = results?.users || [];
   $: empty = results && !rows.length && !results.artists?.length && !results.albums?.length && !people.length;
 
-  // Play на карточках артистов и альбомов.
   $: playingCtx = $playerPlaying ? $playingContext : null;
   const playCard = (start) => start().catch((e) => toast(e.message, 'error'));
 </script>
 
 <div class="page-pad search">
-  <!-- На телефоне верхней панели нет — поле поиска здесь. -->
   <div class="phone-search"><SearchField /></div>
   {#if !$navStore.q}
     {#if $recentSearches.length}
@@ -137,7 +128,6 @@
       <p class="muted">{$t('search.noneText')}</p>
     </div>
   {:else if results}
-    <!-- Что-то из выдачи открыли или включили — запрос запоминается. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div class="results" on:click|capture={(e) => e.target instanceof Element && e.target.closest('a, button, .row') && rememberSearch($navStore.q)}>
     <div class="top">
@@ -159,7 +149,6 @@
       {/if}
     </div>
 
-    <!-- Человек — только по нику целиком (internal/api/profiles.go). -->
     {#if people.length}
       <section>
         <h2>{$t('search.people')}</h2>
@@ -323,7 +312,6 @@
     font-weight: 700;
     color: var(--text-dim);
   }
-  /* Колонками по ширине, а не одним столбиком: справа было пусто. */
   .recent ul {
     list-style: none;
     margin: 0;

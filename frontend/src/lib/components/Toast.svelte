@@ -1,5 +1,4 @@
 <script>
-  // Уведомление внизу по центру (stores/toast.js), над плеером.
   import { fly } from 'svelte/transition';
   import { toasts } from '../stores/toast.js';
 </script>
@@ -32,7 +31,7 @@
   }
   @media (max-width: 768px) {
     .toast {
-      bottom: calc(var(--tabbar-h) + 84px + env(safe-area-inset-bottom)); /* над мини-плеером и нижней панелью */
+      bottom: calc(var(--tabbar-h) + 84px + env(safe-area-inset-bottom));
     }
   }
 </style>

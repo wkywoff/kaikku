@@ -1,10 +1,4 @@
 <script>
-  // Полноэкранный плеер: огромная обложка, фон — несколько цветов обложки,
-  // которые медленно переливаются, как у Apple Music (MeshBackground,
-  // выключается в настройках), и все кнопки управления. На компьютере открывается кнопкой «во весь
-  // экран» (и включает полноэкранный режим браузера), на телефоне — по
-  // нажатию на мини-плеер. Закрывается Esc, кнопкой, свайпом вниз или
-  // жестом «назад» (backCloses, stores/nav.js).
   import { sized } from '../imageproxy.js';
   import { swipeTrack } from '../swipe.js';
   import { onMount, createEventDispatcher } from 'svelte';
@@ -39,17 +33,14 @@
   import { rowFromEntry } from '../library.js';
   import { focusTrap } from '../focusTrap.js';
 
-  const smoothTime = player.smoothTime; // полоса прогресса плавная, цифры — по секундам
+  const smoothTime = player.smoothTime;
 
   export let browserFullscreen = false;
 
   const dispatch = createEventDispatcher();
 
   $: s = $player;
-  // Соседние треки — их обложки лежат по бокам большой и видны, пока её
-  // тянут пальцем (swipe.js): следующая въезжает на место, как в Spotify.
-  // В маленькой обложке над текстом (телефон) соседние — вплотную.
-  const PEEK_GAP = 24; // px, как .peek в стилях
+  const PEEK_GAP = 24;
   $: nextEntry =
     s.index + 1 < s.queue.length ? s.queue[s.index + 1] : s.repeat !== 'off' && s.queue.length > 1 ? s.queue[0] : null;
   $: prevEntry = s.index > 0 ? s.queue[s.index - 1] : s.repeat !== 'off' && s.queue.length > 1 ? s.queue[s.queue.length - 1] : null;
@@ -59,22 +50,14 @@
     dispatch('close');
   }
 
-  // Свайп от края экрана на iPhone — системный «назад»: запретить его сайт
-  // не может, и он сам уводит плеер вбок за пальцем. Анимация закрытия
-  // после него показала бы плеер ещё раз — закрываемся сразу.
   let closedByBack = false;
   const reopened = reopening('player');
   const flyIn = (node) => (reopened && appleTouch ? { duration: 0 } : fly(node, { y: 40, duration: 220 }));
   const flyOut = (node) => (closedByBack && appleTouch ? { duration: 0 } : fly(node, { y: 40, duration: 220 }));
 
-  // Текст и очередь — режимы плеера, как в Apple Music: справа от обложки на
-  // компьютере, вместо неё на телефоне. Включён один из них; очередь не
-  // запоминается, текст — да (stores/lyrics.js), и после очереди
-  // возвращается.
   let showQueue = false;
   $: lyricsShown = $lyricsOpen && !showQueue;
   $: side = lyricsShown || showQueue;
-  // Маленькая обложка над текстом (телефон) — назад к большой, как в Apple Music.
   function backToCover() {
     showQueue = false;
     lyricsOpen.set(false);
@@ -85,7 +68,6 @@
       lyricsOpen.set(true);
     } else lyricsOpen.update((on) => !on);
   }
-  // «Назад» при открытой очереди закрывает её, а не плеер.
   let releaseQueueBack = null;
   $: syncQueueBack(showQueue);
   function syncQueueBack(on) {
@@ -101,7 +83,6 @@
     }
   }
 
-  // «…» рядом с лайком: меню трека и таймер сна.
   function openMore(e) {
     const row = rowFromEntry(track);
     openMenu(
@@ -115,17 +96,10 @@
     );
   }
 
-  // Свайп вниз закрывает плеер, как шторку в Apple Music/Spotify. Пока
-  // плеер открыт, браузеру запрещено «потянуть, чтобы обновить» — иначе
-  // тот же жест перезагружал страницу. Слайдеры и кнопки свайп не начинают;
-  // если плеер прокручен (низкий экран), сначала прокручивается он.
-  const CLOSE_AT = 110; // px
-  // Плеер всё время на своём слое видеокарты (will-change в стилях): иначе
-  // браузер выносил его туда в первый момент свайпа, перерисовывая всё с
-  // большой обложкой, и начало свайпа дёргалось. Сдвиг — раз за кадр.
-  let dragging = false; // пока тянут — фон не перерисовывается
+  const CLOSE_AT = 110;
+  let dragging = false;
   function swipeDown(node) {
-    let start = null; // { x, y, t, axis }
+    let start = null;
     let dy = 0;
     let frame = 0;
     const apply = () => {
@@ -134,16 +108,12 @@
     };
     const onStart = (e) => {
       if (e.touches.length !== 1 || node.querySelector('.now-playing')?.scrollTop > 0) return;
-      // Текст песни листается пальцем — это не свайп плеера.
       if (e.target instanceof Element && e.target.closest('input, .slider, [role=slider], .lyrics, .queue-view .list')) return;
       start = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: e.timeStamp, axis: null };
       dy = 0;
       node.style.transition = 'none';
     };
-    // Направление решает первое движение: повели вбок (на iPhone — жест
-    // «назад» от края, он сам уводит плеер) — вниз за пальцем плеер уже не
-    // идёт, иначе он ехал бы сразу в две стороны.
-    const AXIS_LOCK = 8; // px
+    const AXIS_LOCK = 8;
     const onMove = (e) => {
       if (!start) return;
       const t = e.touches[0];
@@ -151,7 +121,7 @@
         const ax = Math.abs(t.clientX - start.x);
         const ay = Math.abs(t.clientY - start.y);
         if (Math.max(ax, ay) < AXIS_LOCK) {
-          if (t.clientY > start.y) e.preventDefault(); // и пока не решено — не прокрутка
+          if (t.clientY > start.y) e.preventDefault();
           return;
         }
         start.axis = ax > ay ? 'x' : 'y';
@@ -167,14 +137,14 @@
       }
       dy = Math.max(0, t.clientY - start.y);
       if (dy > 0) {
-        e.preventDefault(); // не прокрутка и не обновление страницы
+        e.preventDefault();
         dragging = true;
       }
       if (!frame) frame = requestAnimationFrame(apply);
     };
     const onEnd = (e) => {
       if (!start) return;
-      const fast = dy > 40 && dy / Math.max(1, e.timeStamp - start.t) > 0.6; // резкий короткий взмах
+      const fast = dy > 40 && dy / Math.max(1, e.timeStamp - start.t) > 0.6;
       start = null;
       dragging = false;
       cancelAnimationFrame(frame);
@@ -205,11 +175,7 @@
     };
   }
 
-  // Текст на телефоне, как в Apple Music: пока песня играет и экран не
-  // трогают 3 с, полоса с кнопками уезжает вниз и текст занимает весь
-  // экран; любое касание возвращает её. На паузе и на компьютере (там
-  // текст сбоку, а не над кнопками) не прячется.
-  const DOCK_IDLE = 3000; // мс
+  const DOCK_IDLE = 3000;
   const narrow = matchMedia('(max-width: 900px)');
   let dock;
   let dockH = 0;
@@ -217,8 +183,6 @@
   let dockTimer = 0;
   let swallowClick = false;
   function wake(e) {
-    // Касание там, где была спрятанная полоса, только возвращает её — а
-    // не перематывает на строку текста под пальцем.
     swallowClick = dockHidden && e?.type === 'pointerdown' && !!dock && e.clientY >= dock.getBoundingClientRect().top;
     dockHidden = false;
     clearTimeout(dockTimer);
@@ -244,24 +208,18 @@
     window.addEventListener('keydown', wake, true);
     window.addEventListener('click', onClickCapture, true);
     if (browserFullscreen && document.fullscreenEnabled) {
-      // Во весь экран — вся страница, а не только плеер: в полноэкранном
-      // режиме браузер показывает лишь выбранный элемент, и меню «…» с
-      // уведомлениями (они вне плеера) были бы не видны. Плеер и так
-      // закрывает страницу целиком.
       document.documentElement.requestFullscreen().catch(() => {});
     }
-    // Выход из полноэкранного режима браузера (Esc) закрывает и плеер.
     const onFsChange = () => {
       if (browserFullscreen && !document.fullscreenElement) close();
     };
     const onKey = (e) => {
-      // Esc при открытом меню трека закрывает только меню.
       if (e.key === 'Escape' && !document.fullscreenElement && !get(contextMenu)) close();
     };
     document.addEventListener('fullscreenchange', onFsChange);
-    window.addEventListener('keydown', onKey, true); // до обработчика меню, пока оно ещё открыто
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      releaseQueueBack?.(); // очередь — запись поверх плеерной; обе снимаются разом
+      releaseQueueBack?.();
       closedByOther();
       forgetQueue();
       clearTimeout(dockTimer);
@@ -271,19 +229,14 @@
       document.removeEventListener('fullscreenchange', onFsChange);
       window.removeEventListener('keydown', onKey, true);
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-      // На компьютере плеер снова открывается просто плеером: текст — по
-      // кнопке. На телефоне он остаётся, как в Apple Music.
       if (!narrow.matches) lyricsOpen.set(false);
     };
   });
 </script>
 
-<!-- Фон — снаружи прокручиваемой части: внутри неё Safari на iPhone
-     растягивал его только до отступов под «чёлкой» и полосой жестов. -->
 <div class="np-shell" use:swipeDown use:focusTrap in:flyIn out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
   <MeshBackground cover={track?.coverUrl || null} animated={$settings.animatedBg && !dragging && s.isPlaying} />
   <div class="now-playing" class:dock-hidden={dockHidden}>
-    <!-- На компьютере — «свернуть» слева, на телефоне — «ручка» шторки по центру. -->
     <div class="top">
       <button class="icon-btn close" on:click={close} aria-label={$t('player.minimize')} title={$t('player.minimize')}>
         <span class="chev">{#if browserFullscreen}<Minimize2 size={22} />{:else}<ChevronDown size={26} />{/if}</span>
@@ -353,10 +306,8 @@
               </button>
             </div>
 
-            <!-- Текст и очередь — под «назад» и «вперёд», как в Apple Music. -->
             <div class="extras">
               <button class="icon-btn lyrics-btn" class:on={lyricsShown} on:click={toggleLyrics} aria-pressed={lyricsShown} aria-label={$t(lyricsShown ? 'lyrics.hide' : 'lyrics.show')} title={$t(lyricsShown ? 'lyrics.hide' : 'lyrics.show')}><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                  <!-- Залитый пузырь с вырезанными кавычками — значок текста Apple Music. -->
                   <mask id="np-lyrics-quotes"><rect width="24" height="24" fill="#fff" /><g fill="#000" stroke="#000" stroke-width="1.3" stroke-linecap="round"><circle cx="9" cy="9.6" r="1.6" stroke="none" /><circle cx="15" cy="9.6" r="1.6" stroke="none" /><path d="M10.5 9.8c0 1.9-1 3.1-2.6 3.7M16.5 9.8c0 1.9-1 3.1-2.6 3.7" fill="none" /></g></mask>
                   <path d="M6 3h12a3.5 3.5 0 0 1 3.5 3.5v8A3.5 3.5 0 0 1 18 18h-5.6l-4.6 3.5a.7.7 0 0 1-1.1-.56V18H6a3.5 3.5 0 0 1-3.5-3.5v-8A3.5 3.5 0 0 1 6 3z" fill="currentColor" mask="url(#np-lyrics-quotes)" />
                 </svg></button>
@@ -396,7 +347,7 @@
     display: flex;
     flex-direction: column;
     padding: 16px 24px max(24px, env(safe-area-inset-bottom));
-    overflow-x: hidden; /* соседние обложки при свайпе (.peek) уходят за край */
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -427,14 +378,12 @@
     border-radius: 8px;
     --art-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   }
-  /* Тянется пальцем (swipe.js) вместе с соседними обложками и тенью. */
   .art-slide {
     position: relative;
     height: 100%;
     border-radius: inherit;
     box-shadow: var(--art-shadow);
   }
-  /* Соседние обложки — по бокам, видны только во время свайпа. */
   .peek {
     position: absolute;
     top: 0;
@@ -454,7 +403,6 @@
   .art-slide:global(.swiping) .peek {
     opacity: 1;
   }
-  /* Кнопка поверх маленькой обложки — только на телефоне. */
   .art-back {
     display: none;
     position: absolute;
@@ -499,10 +447,9 @@
     height: 40px;
     flex-shrink: 0;
   }
-  /* «…» — в полупрозрачном круге, как в Apple Music. */
   .more {
     position: relative;
-    isolation: isolate; /* круг (::before) — под значком, а не под фоном плеера */
+    isolation: isolate;
     flex-shrink: 0;
     width: 40px;
     height: 40px;
@@ -521,7 +468,6 @@
       background: rgba(255, 255, 255, 0.24);
     }
   }
-  /* Таймер сна включён — точка на «…», он там. */
   .more.sleeping::after {
     content: '';
     position: absolute;
@@ -539,15 +485,11 @@
     gap: 4px;
     min-width: 0;
   }
-  /* Название в одну строку; не влезло — бегущая строка (lib/marquee.js),
-     строго в границах колонки. */
   .title {
     display: block;
     overflow: hidden;
     white-space: nowrap;
-    padding-bottom: 0.08em; /* под хвосты букв и подчёркивание */
-    /* Точки Ё и кратка Й у Onest выше строки в 1.1 — без запаса сверху
-       overflow их срезает; отрицательный margin оставляет вёрстку прежней. */
+    padding-bottom: 0.08em;
     padding-top: 0.08em;
     margin-top: -0.08em;
     font-size: clamp(24px, 3vw, 40px);
@@ -562,7 +504,6 @@
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--marquee-fade), #000 calc(100% - 16px), transparent);
     mask-image: linear-gradient(90deg, transparent 0, #000 var(--marquee-fade), #000 calc(100% - 16px), transparent);
   }
-  /* Исполнитель почти с название ростом, но тусклее — как в Apple Music. */
   .artist {
     overflow: hidden;
     white-space: nowrap;
@@ -573,7 +514,7 @@
   }
   @media (hover: hover) {
     a.title:hover > span {
-      text-decoration: underline; /* у inline-block подчёркивание родителя не видно */
+      text-decoration: underline;
     }
   }
   .times {
@@ -582,8 +523,6 @@
     font-size: 12px;
     margin-top: 4px;
   }
-  /* Кнопки — на одной сетке с рядом ниже: текст и очередь стоят ровно под
-     «назад» и «вперёд». */
   .controls,
   .extras {
     display: grid;
@@ -634,15 +573,11 @@
   .queue-btn {
     grid-column: 7;
   }
-  /* Текст или очередь включены — кнопка «залита», значок вырезан в ней,
-     как в Apple Music. */
   .extras .icon-btn.on {
     background: rgba(255, 255, 255, 0.82);
     color: var(--player-dark);
   }
 
-  /* С текстом или очередью, как в Apple Music: слева обложка и управление,
-     справа текст (очередь) на всю высоту. */
   .body.with-side {
     display: grid;
     grid-template-columns: auto minmax(0, 680px);
@@ -653,7 +588,6 @@
     row-gap: 24px;
     min-height: 0;
   }
-  /* Под обложкой — название: длинная тень темнила бы его полосой. */
   .with-side .art {
     --art-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     width: min(42vh, 30vw);
@@ -668,15 +602,12 @@
     grid-row: 2;
     align-self: start;
   }
-  /* Колонка с управлением тут уже — и название с исполнителем меньше. */
   .with-side .title {
     font-size: clamp(22px, 2.2vw, 30px);
   }
   .with-side .artist {
     font-size: clamp(17px, 1.5vw, 22px);
   }
-  /* С очередью «перемешивать» и «повтор» — в её «таблетках»; здесь их
-     место пустует, чтобы остальные кнопки не сдвигались. */
   .queue-mode .controls .dup {
     visibility: hidden;
   }
@@ -687,16 +618,9 @@
     min-width: 0;
   }
 
-  /* Телефон — раскладка Apple Music: сверху «ручка» шторки, обложка почти
-     во всю ширину, под ней название с лайком и «…», полоса, кнопки и ряд
-     «текст / очередь»; свободное место — вокруг кнопок. Низ — до самого
-     края экрана, под полосой жестов (viewport-fit=cover в index.html). */
   @media (max-width: 900px) {
     .now-playing {
       padding: max(4px, env(safe-area-inset-top)) 24px calc(12px + env(safe-area-inset-bottom));
-      /* Без полосы прокрутки, как в приложениях: раскладка рассчитана на
-         экран, а если на каком-то телефоне не влезет на пару пикселей —
-         пусть докручивается без полосы сбоку. */
       scrollbar-width: none;
     }
     .now-playing::-webkit-scrollbar {
@@ -727,17 +651,10 @@
       padding: 0;
       min-height: 0;
     }
-    /* Размеры верхней части — переменными: с текстом (очередью) кнопки
-       стоят ровно там же, где без него, и место под обложку и название
-       там оставлено пустым (.body.with-side::before). */
     .body {
       --art-top: clamp(8px, 4svh, 40px);
       --title-top: clamp(16px, 5svh, 52px);
       --title-h: 58px;
-      /* Обложка — сколько остаётся по высоте после остального (≈430 px
-         с отступами), но не шире колонки. svh — видимая высота: во
-         вкладке браузера адресная строка её отъедает, и с vh плеер
-         вылезал за экран с полосой прокрутки. */
       --art-w: min(100vw - 48px, 520px, calc(100svh - 430px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     }
     @supports not (height: 1svh) {
@@ -750,7 +667,7 @@
     .art {
       width: var(--art-w);
       margin-top: var(--art-top);
-      --art-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); /* короткая: под ней название */
+      --art-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     }
     .panel {
       flex: 1;
@@ -760,7 +677,7 @@
     .title-row {
       height: var(--title-h);
       margin-top: var(--title-top);
-      margin-right: -8px; /* «…» — по правому краю обложки, а не круга вокруг */
+      margin-right: -8px;
     }
     .title {
       font-size: 24px;
@@ -783,16 +700,9 @@
       margin-bottom: clamp(0px, 2vh, 20px);
     }
 
-    /* С текстом (очередью): сверху маленькая обложка с названием, лайком и
-       «…», под ними текст, а полоса и кнопки — на тех же местах, что без
-       текста: над ними пустое место размером с обложку и название. */
-    /* overflow-y: clip — спрятанные кнопки уезжают вниз (translateY), и
-       без обрезки этот сдвиг давал плееру лишнюю высоту: появлялась полоса
-       прокрутки и его можно было листать. По горизонтали не режем — там
-       поля строк текста. */
     .body.with-side {
       position: relative;
-      display: flex; /* не сетка, как на компьютере */
+      display: flex;
       justify-content: flex-start;
       gap: 0;
       overflow-x: visible;
@@ -814,8 +724,6 @@
       border-radius: 6px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
     }
-    /* Маленькая обложка — окошко: соседние при свайпе въезжают внутри
-       него, вплотную, а не поверх названия справа. */
     .with-side .art {
       overflow: hidden;
     }
@@ -853,11 +761,6 @@
     .with-side .meta {
       gap: 2px;
     }
-    /* Текст — от шапки до самого низа, полоса с кнопками лежит поверх
-       него; под ней текст растворяется (--lyrics-cut — высота полосы,
-       LyricsView). Полоса спряталась — растворение уходит вниз, и текст
-       виден целиком. Шире на поля строк (8 px): текст начинается ровно над
-       обложкой. */
     .with-side .side-col {
       position: absolute;
       top: 84px;
@@ -872,7 +775,6 @@
       --lyrics-cut: var(--dock-h);
       transition: --lyrics-cut 0.45s ease;
     }
-    /* Очередь — между шапкой и кнопками, не под ними. */
     .with-side .queue-col {
       bottom: var(--dock-h);
       padding-top: 6px;

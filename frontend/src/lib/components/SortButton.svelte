@@ -1,9 +1,4 @@
 <script>
-  // Кнопка сортировки списка («Дата добавления ˅»): меню вариантов, как у
-  // Spotify; повторный выбор того же варианта меняет направление.
-  //   options — [{ key, label, desc? }] (desc — направление по умолчанию;
-  //   без направления — key 'custom');
-  //   value — { key, desc }; on:change — новое значение.
   import { createEventDispatcher } from 'svelte';
   import { openMenu } from '../stores/contextMenu.js';
   import { t } from '../i18n.js';
@@ -14,7 +9,7 @@
 
   export let options = [];
   export let value = { key: '', desc: false };
-  export let directional = true; // false — у вариантов нет направления (медиатека)
+  export let directional = true;
 
   const dispatch = createEventDispatcher();
   $: current = options.find((o) => o.key === value.key) || options[0];
@@ -56,8 +51,6 @@
   .icon {
     display: none;
   }
-  /* На телефоне подпись («Дата добавления») не влезает в строку кнопок —
-     значок, как в Spotify; что выбрано — видно в меню. */
   @media (max-width: 768px) {
     .label,
     .chevron {

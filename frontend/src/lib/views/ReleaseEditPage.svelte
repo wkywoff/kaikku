@@ -1,8 +1,4 @@
 <script>
-  // Правка релиза — одна страница для всех (/album/<id>/edit; старые
-  // ссылки /upload/<id> ведут сюда же): свой релиз (k…) правят автор и
-  // админ (OwnReleaseEditor), релиз Deezer — админ (DeezerReleaseEditor).
-  // Каркас и блоки у обоих общие (components/release/).
   import { navStore, paths, link } from '../stores/nav.js';
   import { canEdit } from '../stores/me.js';
   import { t } from '../i18n.js';

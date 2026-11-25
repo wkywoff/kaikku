@@ -1,26 +1,13 @@
 <script context="module">
   import { LRU } from '../lru.js';
-  const cache = new LRU(30); // deezer id -> Promise<lyrics | null>
+  const cache = new LRU(30);
 
-  /** Текст трека нашли заново (админ, окно правки) — при следующем показе
-   * загрузить с сервера. */
   export function forgetLyrics(id) {
     cache.delete(id);
   }
 </script>
 
 <script>
-  // Текст песни в стиле Apple Music / Beautiful Lyrics. Сервер отдаёт строки
-  // с таймингом по словам, по строкам или без времени — что нашлось у
-  // lrc.red, Deezer или LRCLIB (internal/lyrics).
-  //   - текущая строка яркая; слова и слоги заливаются в такт, спетые чуть
-  //     приподнимаются; подпевки — мельче под строкой;
-  //   - в проигрыше дольше 3 с — три «дышащие» точки;
-  //   - текст сам прокручивается к текущей строке; если листают руками —
-  //     ждёт 3 с; нажатие на строку перематывает к ней.
-  // Позиция трека — player.position() на каждом кадре (стор плеера
-  // обновляется только 4 раза в секунду), а заливка меняется прямо в DOM
-  // только у текущей строки — без перерисовки Svelte.
   import { onMount, tick } from 'svelte';
   import { api } from '../api.js';
   import { player, isPlaying } from '../stores/player.js';
@@ -28,18 +15,17 @@
 
   export let deezerId = null;
 
-  let state = 'loading'; // loading | ready | none | error
+  let state = 'loading';
   let lyrics = null;
   let box;
-  let active = -1; // индекс текущей строки
-  let gap = -1; // индекс строки, перед которой сейчас проигрыш с точками
+  let active = -1;
+  let gap = -1;
 
   const SOURCES = { lrcred: 'lrc.red', deezer: 'Deezer', lrclib: 'LRCLIB' };
-  // lrc.red просит ссылку на себя рядом со своим текстом.
   const SOURCE_LINKS = { lrcred: 'https://lrc.red' };
-  const LEAD = 0.12; // с; строка загорается чуть раньше голоса, как в Apple Music
-  const GAP_MIN = 3; // с; короче — без точек
-  const ACTIVE_AT = 0.22; // доля высоты сверху, где стоит текущая строка, как в Apple Music
+  const LEAD = 0.12;
+  const GAP_MIN = 3;
+  const ACTIVE_AT = 0.22;
 
   $: load(deezerId);
   async function load(id) {
@@ -50,8 +36,6 @@
       state = 'none';
       return;
     }
-    // Источник текста бывает перегружен — пара повторов с паузой, а не
-    // сразу «не удалось».
     for (let attempt = 0; ; attempt++) {
       try {
         const l = await fetchLyrics(id);
@@ -91,17 +75,14 @@
 
   $: synced = lyrics && lyrics.sync !== 'none';
   $: lines = lyrics?.lines || [];
-  // «Текст: {source}» — по краям от названия источника (оно может быть ссылкой).
   $: credit = $t('lyrics.source', { source: '\n' }).split('\n');
 
-  // Проигрыш перед строкой i: от конца прошлой (или начала трека) до её начала.
   function gapBefore(i) {
     if (!synced) return false;
     const prevEnd = i === 0 ? 0 : lines[i - 1].e;
     return lines[i].s - prevEnd >= GAP_MIN;
   }
 
-  // --- автопрокрутка ---
   let userScrollAt = 0;
   const onUserScroll = () => (userScrollAt = performance.now());
 
@@ -109,9 +90,6 @@
     if (!box || active < 0 || performance.now() - userScrollAt < 3000) return;
     const el = box.querySelector(`[data-line="${gap >= 0 ? `gap-${gap}` : active}"]`);
     if (!el) return;
-    // Проигрыш перед строкой только что кончился: точки над ней ещё
-    // сворачиваются (0.4 с) и строка поднимется на их место. Считать от
-    // него — иначе после сворачивания строку утягивало выше нужного.
     const dots = gap < 0 && box.querySelector(`[data-line="gap-${active}"]`);
     const top = (dots ? dots.offsetTop : el.offsetTop) - box.clientHeight * ACTIVE_AT;
     box.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
@@ -124,11 +102,9 @@
     if (!$isPlaying) player.toggle();
   }
 
-  // --- кадр: какая строка, заливка слов ---
-  let lit = null; // элемент строки, у слов которой стоит --p
+  let lit = null;
 
   function findActive(time) {
-    // Последняя начавшаяся строка (двоичный поиск по началу).
     let lo = 0;
     let hi = lines.length - 1;
     let found = -1;
@@ -162,7 +138,6 @@
     const time = player.position() + LEAD;
     let a = findActive(time);
     let g = -1;
-    // Проигрыш: прошлая строка кончилась, следующая не началась.
     const next = a + 1;
     if (next < lines.length && gapBefore(next)) {
       const prevEnd = a < 0 ? 0 : lines[a].e;
@@ -173,7 +148,6 @@
       gap = g;
       scrollToActive();
     }
-    // Точки проигрыша заполняются по ходу паузы.
     if (g >= 0) {
       const dots = box.querySelector(`[data-line="gap-${g}"]`);
       const start = g === 0 ? 0 : lines[g - 1].e;
@@ -194,8 +168,6 @@
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    // Другой размер (поворот телефона, окно) — строки переносятся иначе,
-    // текущая уезжает: вернуть её на место.
     const ro = new ResizeObserver(() => scrollToActive(false));
     ro.observe(box);
     return () => {
@@ -204,7 +176,6 @@
     };
   });
 
-  // Новый текст — сразу к текущему месту, без плавной прокрутки.
   $: if (state === 'ready') tick().then(() => scrollToActive(false));
 </script>
 
@@ -260,17 +231,12 @@
 </div>
 
 <style>
-  /* relative — чтобы offsetTop строк считался от самого текста (см.
-     scrollToActive), а не от плеера: иначе строка вставала выше нужного
-     на высоту всего, что над текстом. */
   .lyrics {
     position: relative;
     height: 100%;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    /* Низ растворяется; --lyrics-cut — сколько снизу закрыто кнопками
-       плеера (NowPlaying, телефон), там текста не видно. */
     -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 12%, #000 calc(82% - var(--lyrics-cut)), transparent calc(100% - var(--lyrics-cut)));
     mask-image: linear-gradient(180deg, transparent 0, #000 12%, #000 calc(82% - var(--lyrics-cut)), transparent calc(100% - var(--lyrics-cut)));
   }
@@ -289,8 +255,6 @@
     font-size: 18px;
     text-align: center;
   }
-  /* Справа запас 4%: текущая строка увеличивается на 3% от левого края и
-     иначе уходила бы последним словом за край колонки. */
   .line {
     --p: 0;
     margin: 0 4% 22px 0;
@@ -325,8 +289,6 @@
     color: #fff;
     transform: scale(1.03);
   }
-  /* Строка с таймингом по словам: слова заливаются сами (--p ставит JS у
-     текущей строки), а цвет строки не нужен. */
   .line.words.active {
     color: transparent;
   }
@@ -361,9 +323,6 @@
   .stanza {
     height: 18px;
   }
-  /* Проигрыш: три точки «дышат» и по очереди загораются (--p — доля паузы). */
-  /* Ширина — по точкам, а не на всю колонку: «дыхание» масштабирует от
-     левого края, и крайняя точка не уходит за край. На паузе замирает. */
   .interlude {
     --p: 0;
     display: flex;
@@ -428,14 +387,10 @@
     color: inherit;
     text-decoration: underline;
   }
-  /* На компьютере дальние строки чуть размыты, как в Apple Music; на
-     телефоне без размытия — дорого для видеокарты при прокрутке. */
   @media (hover: hover) and (pointer: fine) {
     .line {
       filter: blur(calc(var(--d) * 0.5px));
     }
-    /* Подсветка под курсором — только с мышью: после касания на телефоне
-       «наведение» залипает, и строка оставалась подсвеченной. */
     .line.clickable:hover {
       background: rgba(255, 255, 255, 0.06);
     }

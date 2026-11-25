@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Плеер на iPhone (directAudio): без Web Audio, один элемент <audio>, без
-// предзагрузки и кроссфейда. Отдельный файл — node --test запускает его
-// отдельным процессом, и player.js видит здесь «айфон».
-
 class FakeAudio {
   constructor() {
     FakeAudio.instances.push(this);
@@ -72,7 +68,7 @@ global.fetch = async (url) => ({ headers: new Headers(), ok: true, status: 200, 
 
 const { player, directAudio } = await import('../src/lib/stores/player.js');
 const { settings } = await import('../src/lib/stores/settings.js');
-settings.set('crossfade', true); // включён в настройках — на iPhone всё равно без него
+settings.set('crossfade', true);
 
 test('on iPhone the player plays straight from <audio>: no Web Audio, no preload, one element', async () => {
   assert.equal(directAudio, true);
@@ -82,7 +78,7 @@ test('on iPhone the player plays straight from <audio>: no Web Audio, no preload
   assert.ok(el.src.includes('a1'));
 
   el.duration = 200;
-  el.currentTime = 196; // раньше здесь грузился следующий трек и начинался кроссфейд
+  el.currentTime = 196;
   el.dispatch('timeupdate');
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(other.src, '', 'следующий трек заранее не грузится');

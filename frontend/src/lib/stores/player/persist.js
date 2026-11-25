@@ -1,6 +1,3 @@
-// Что плеер хранит в localStorage: громкость, режимы (перемешивание,
-// повтор) и очередь.
-
 const VOLUME_STORAGE_KEY = 'kaikku_volume';
 const MODES_STORAGE_KEY = 'kaikku_modes';
 const QUEUE_STORAGE_KEY = 'kaikku_queue';
@@ -19,16 +16,6 @@ export function saveModes({ shuffle, repeat }) {
   localStorage.setItem(MODES_STORAGE_KEY, JSON.stringify({ shuffle, repeat }));
 }
 
-// Очередь переживает перезагрузку страницы: треки, какой играл и с какого
-// места (как Spotify, трек ждёт на паузе). source — одноразовая ссылка, её
-// не сохраняем.
-//
-// Сама очередь пишется, только когда меняется (saveQueue): у большого
-// плейлиста это сотни килобайт JSON. Какой трек играет и с какого места —
-// отдельным маленьким ключом (saveQueuePosition), его плеер обновляет раз
-// в несколько секунд. rev связывает их: позиция годится только для той
-// очереди, с которой записана. В самой очереди index и time тоже есть —
-// на момент её записи.
 let rev = null;
 
 export function loadSavedQueue() {
@@ -45,7 +32,6 @@ export function loadSavedQueue() {
   }
 }
 
-// s — состояние плеера; unshuffled — порядок без перемешивания (или null).
 export function saveQueue(s, unshuffled) {
   try {
     if (s.queue.length === 0) {
@@ -67,17 +53,14 @@ export function saveQueue(s, unshuffled) {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify({ queue, index: s.index, time: s.currentTime, order, rev }));
     saveQueuePosition(s);
   } catch {
-    /* переполнено или приватный режим — после перезагрузки очередь просто пустая */
   }
 }
 
-// Только какой трек и с какого места; очередь к этому времени уже записана.
 export function saveQueuePosition(s) {
   if (!rev) return;
   try {
     localStorage.setItem(QUEUE_POSITION_KEY, JSON.stringify({ rev, index: s.index, time: s.currentTime }));
   } catch {
-    /* см. saveQueue */
   }
 }
 

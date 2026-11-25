@@ -1,7 +1,4 @@
 <script>
-  // Плашка над страницей: «Нет сети» (играет то, что уже загружено) и
-  // «Вышла новая версия» с кнопкой «Обновить». Сама страница не
-  // перезагружается: музыка бы оборвалась.
   import { online, updateReady } from '../stores/network.js';
   import { t } from '../i18n.js';
   import WifiOff from '@lucide/svelte/icons/wifi-off';

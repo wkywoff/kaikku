@@ -1,9 +1,4 @@
 <script>
-  // Импорт плейлиста: ссылка Spotify (первые 100 треков — больше
-  // встраиваемый плеер Spotify не отдаёт), CSV-выгрузка (Exportify и т.п.)
-  // или список «Исполнитель — Трек». Треки ищутся в каталоге пачками
-  // (internal/api/import.go), затем треки одного исполнителя сводятся на
-  // один релиз (import_albums.go), найденное становится новым плейлистом.
   import { modal } from '../modal.js';
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
@@ -16,18 +11,16 @@
   import FileUp from '@lucide/svelte/icons/file-up';
 
   const dispatch = createEventDispatcher();
-  const BATCH = 20; // треков на запрос (сервер: maxImportMatch)
-  // Треков на одно добавление в плейлист: сервер берёт каждый у Deezer
-  // (40 запросов за 5 с на всех), 50 укладываются в несколько секунд.
+  const BATCH = 20;
   const ADD_CHUNK = 50;
 
-  let step = 'input'; // input | matching | settling | done
+  let step = 'input';
   let text = '';
   let error = '';
   let busy = false;
-  let source = null; // { title, spotify, truncated }
-  let tracks = []; // что ищем
-  let matches = []; // найденное (Deezer-трек или null) по порядку tracks
+  let source = null;
+  let tracks = [];
+  let matches = [];
   let done = 0;
   let title = '';
   let cancelled = false;
@@ -102,8 +95,6 @@
     if (!cancelled) step = 'done';
   }
 
-  // Песни одного альбома — с одного релиза, а не вперемешку с делюкса,
-  // сингла и сборника. Не вышло — оставляем как нашлось.
   async function settleAlbums(list) {
     try {
       const settled = (await api.importAlbums(list)).matches;
@@ -113,7 +104,6 @@
     }
   }
 
-  // Deezer бывает занят (общий лимит запросов) — пачку пробуем ещё пару раз.
   async function matchBatch(batch) {
     for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
       try {
@@ -125,9 +115,6 @@
     return batch.map(() => null);
   }
 
-  // Плейлист уже заведён и сколько в него добавлено: если добавление
-  // оборвалось, повторное «Создать» продолжает с того же места, а не
-  // заводит второй такой же плейлист.
   let created = null;
   let added = 0;
 
@@ -224,7 +211,7 @@
   }
   .dialog {
     width: min(560px, 100%);
-    max-height: 100%; /* по видимой высоте окна (в отступах подложки), а не 100vh — во вкладке браузера адресная строка её отъедает */
+    max-height: 100%;
     overflow-y: auto;
     display: flex;
     flex-direction: column;

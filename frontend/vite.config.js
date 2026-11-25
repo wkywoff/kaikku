@@ -3,16 +3,9 @@ import { defineConfig } from 'vite'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
-// Дев-прокси на бэкенд: /api и /media (обложки + защищённые треки) идут на
-// сам Go-процесс/nginx как в проде, чтобы не городить CORS для локальной
-// разработки. VITE_BACKEND_TARGET переопределяем при необходимости.
 const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://localhost:8080'
-// /media в проде отдаёт nginx, не Go; для локального стенда можно указать
-// отдельный сервер файлов.
 const mediaTarget = process.env.VITE_MEDIA_TARGET || backendTarget
 
-// Сервис-воркер (src/sw.js) кладётся в корень сборки как /sw.js, с id
-// сборки в имени кеша (хеш имён всех файлов бандла — они сами с хешами).
 function serviceWorker() {
   return {
     name: 'kaikku-sw',
@@ -25,11 +18,6 @@ function serviceWorker() {
   }
 }
 
-// Шрифты, которые нужны сразу: текст интерфейса (Onest, кириллица и
-// латиница) и заголовки (Unbounded 700, кириллица). Без предзагрузки браузер
-// узнаёт о них, только когда JS нарисует текст, — и показывает его сначала
-// запасным шрифтом, а потом перерисовывает. Остальные наборы символов
-// грузятся по unicode-range, когда встретятся.
 const PRELOAD_FONTS = [/onest-cyrillic-wght-normal-.*\.woff2$/, /onest-latin-wght-normal-.*\.woff2$/, /unbounded-cyrillic-700-normal-.*\.woff2$/];
 
 function preloadFonts() {

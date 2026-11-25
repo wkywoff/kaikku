@@ -12,7 +12,7 @@ test('recordTypeFor: by count and length, like Spotify', () => {
   assert.equal(recordTypeFor(tracks(4)), 'ep');
   assert.equal(recordTypeFor(tracks(6)), 'ep');
   assert.equal(recordTypeFor(tracks(7)), 'album');
-  assert.equal(recordTypeFor(tracks(2, 16 * min)), 'album'); // полчаса и больше — альбом
+  assert.equal(recordTypeFor(tracks(2, 16 * min)), 'album');
   assert.equal(recordTypeFor(tracks(5, 7 * min)), 'album');
 });
 
@@ -22,10 +22,9 @@ test('missingForPublish names every gap, and files still uploading', () => {
     rows: [{ id: 'k2', title: 'Song' }],
   };
   assert.deepEqual(missingForPublish(full), []);
-  assert.deepEqual(missingForPublish({ ...full, title: ' ', artists: [] }), ['title', 'artists']); // обложка не обязательна
+  assert.deepEqual(missingForPublish({ ...full, title: ' ', artists: [] }), ['title', 'artists']);
   assert.deepEqual(missingForPublish({ ...full, rows: [] }), ['tracks']);
   assert.deepEqual(missingForPublish({ ...full, rows: [{ id: 'k2', title: '' }, { id: null, title: 'x.flac' }] }), ['track_titles', 'uploading']);
-  // трек, добавленный с другого релиза, здесь не называют
   assert.deepEqual(missingForPublish({ ...full, rows: [{ id: '12345', title: '', other: true }] }), []);
 });
 

@@ -1,17 +1,11 @@
-// Системный плеер (Media Session): экран блокировки телефона, кнопки на
-// наушниках и клавиатуре, виджет в KDE/GNOME. Где его нет — ничего не делает.
-
 import { artworkFor } from '../../imageproxy.js';
 
 const supported = () => 'mediaSession' in navigator;
 
-// Кнопка на экране блокировки (iOS, Android) — по тому, что на самом деле:
-// без этого после паузы в приложении она так и показывала «пауза».
 export function setPlaybackState(value) {
   if (supported()) navigator.mediaSession.playbackState = value;
 }
 
-/** Показать трек; controls — { play, pause, prev, next, seek(секунды) }. */
 export function showTrack(track, controls) {
   if (!supported()) return;
   navigator.mediaSession.metadata = new MediaMetadata({
@@ -27,7 +21,6 @@ export function showTrack(track, controls) {
   navigator.mediaSession.setActionHandler('seekto', (d) => controls.seek(d.seekTime));
 }
 
-/** Позиция и длина трека по играющему элементу. */
 export function updatePositionState(el) {
   if (!supported() || !navigator.mediaSession.setPositionState) return;
   if (!Number.isFinite(el.duration) || el.duration <= 0) return;
@@ -38,11 +31,9 @@ export function updatePositionState(el) {
       playbackRate: 1,
     });
   } catch {
-    /* некоторые браузеры кидают на граничных значениях — не критично */
   }
 }
 
-/** Ничего не играет (выход из аккаунта). */
 export function clearTrack() {
   if (supported()) navigator.mediaSession.metadata = null;
   setPlaybackState('none');

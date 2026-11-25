@@ -1,8 +1,4 @@
 <script>
-  // Раздел «О релизе» на странице правки (EditShell): название, исполнители
-  // (ArtistPicker — строками, порядок перетаскиванием), тип и дата. Одинаков
-  // у своего релиза и релиза Deezer. invalid — коды того, чего не хватает
-  // для публикации (lib/uploads.js), их поля подсвечиваются.
   import { createEventDispatcher } from 'svelte';
   import { t } from '../../i18n.js';
   import { RECORD_TYPES } from '../../uploads.js';
@@ -13,8 +9,8 @@
   export let artistQuery = '';
   export let recordType = 'album';
   export let releaseDate = '';
-  export let required = false; // своему релизу для публикации нужно всё: звёздочки
-  export let typeAuto = false; // тип подбирается по трекам, пока его не выбрали
+  export let required = false;
+  export let typeAuto = false;
   export let invalid = [];
 
   const dispatch = createEventDispatcher();
@@ -70,7 +66,6 @@
     background: var(--text);
     color: var(--bg);
   }
-  /* «Мини-альбом» длинный: четыре типа должны влезть в одну строку */
   @media (max-width: 720px) {
     .segmented button {
       padding: 6px 10px;

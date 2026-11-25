@@ -1,8 +1,6 @@
 import { writable } from 'svelte/store';
 
-// Короткое уведомление внизу экрана («Добавлено в Любимые треки»), как в
-// Spotify. Новое заменяет старое; само пропадает через 3 с (или через ms).
-export const toasts = writable(null); // { id, text, kind: 'info' | 'error' }
+export const toasts = writable(null);
 
 let seq = 0;
 let timer = null;

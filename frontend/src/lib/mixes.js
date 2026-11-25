@@ -1,11 +1,5 @@
-// Миксы (сервер: internal/api/mixes.go) — подборки, которые собираются
-// сами: «На повторе», «Давно не звучало» и жанровые по тегам Last.fm.
-// Здесь — их названия, подписи и цвет (у микса нет своей картинки).
-
-// Сокращения, которые пишутся заглавными.
 const UPPER = new Set(['edm', 'idm', 'ebm', 'dnb', 'r&b', 'uk', 'usa', 'ost']);
 
-/** «russian hip-hop» → «Russian Hip-Hop», «r&b» → «R&B». */
 export function tagTitle(tag) {
   return String(tag || '')
     .split(/([\s-]+)/)
@@ -13,7 +7,6 @@ export function tagTitle(tag) {
     .join('');
 }
 
-/** Тег в адресе, как на сервере (mixes.go, tagSlug): «russian hip-hop» → russian-hip-hop, «r&b» → r-b. */
 export function tagSlug(tag) {
   return String(tag || '')
     .toLowerCase()
@@ -21,36 +14,31 @@ export function tagSlug(tag) {
     .replace(/^-+|-+$/g, '');
 }
 
-/** Название микса; t — функция перевода ($t). */
 export function mixTitle(mix, t) {
   if (mix.kind === 'on_repeat') return t('mix.onRepeat');
   if (mix.kind === 'forgotten') return t('mix.forgotten');
   return t('mix.tag', { tag: tagTitle(mix.tag) });
 }
 
-/** Подпись карточки: главные исполнители «и не только». */
 export function mixSubtitle(mix, t) {
   const names = mix.artists || [];
   return names.length ? t('mix.artists', { names: names.join(', ') }) : t('mix.kind');
 }
 
-/** Описание в шапке страницы микса. */
 export function mixDescription(mix, t) {
   if (mix.kind === 'on_repeat') return t('mix.onRepeatText');
   if (mix.kind === 'forgotten') return t('mix.forgottenText');
   return t('mix.tagText', { tag: tagTitle(mix.tag), names: (mix.artists || []).join(', ') });
 }
 
-/** Оттенок микса (0–359) — свой у каждого, один и тот же всегда. */
 export function mixHue(id) {
   let h = 0;
   for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  if (id === 'on-repeat') return 340; // как у Spotify: «На повторе» — розовый
+  if (id === 'on-repeat') return 340;
   if (id === 'forgotten') return 200;
   return h % 360;
 }
 
-/** Цвет микса для фона страницы: { r, g, b }. */
 export function mixColor(id) {
   const h = mixHue(id) / 360;
   const s = 0.55;

@@ -1,32 +1,3 @@
-// Маршруты приложения. Адрес в строке браузера — источник истины для того,
-// какой экран открыт, поэтому «назад»/«вперёд» браузера, кнопки мыши и
-// жесты работают как на обычном сайте, а на любую страницу можно дать ссылку.
-//
-//   /                          → главная
-//   /library                   → медиатека: любимые, плейлисты, альбомы, исполнители
-//   /search?q=…                → поиск: треки, артисты, альбомы (Deezer)
-//   /settings                  → настройки
-//   /lastfm?token=…            → настройки: Last.fm вернул после «Разрешить доступ»
-//   /collection/tracks         → любимые треки
-//   /playlist/<uuid>           → плейлист
-//   /mix/<id>                  → микс: on-repeat, forgotten, tag-<жанр> (internal/api/mixes.go)
-//   /genre/<slug>              → жанр (теги Last.fm, internal/api/genres.go)
-//   /artist/<deezer id>        → страница артиста (?disc=album|ep|single — сразу с фильтром дискографии)
-//   /artist/<id>/discography/<all|album|ep|single> → вся дискография (как у Spotify)
-//   /album/<deezer id>         → страница альбома (?track=<deezer id> — с выделенным треком: ссылка «Поделиться»)
-//   /album/<id>/edit           → правка релиза: свой (k…) — автор и админ, Deezer — админ
-//   /upload                    → свои релизы (/upload/<id> — старый адрес правки своего)
-//   /admin/missing             → «Не нашлось» (админ): треки, которые не скачались
-//
-// ID артистов, альбомов и треков — Deezer (число) или свои, загруженные (k…).
-//   /wrapped, /wrapped/<год>   → итоги года
-//   /wrapped/<год>/albums      → все альбомы, прослушанные за год
-//   /user/<ник>                → профиль: подписка, публичные плейлисты
-//
-// Старые адреса /discover/… продолжают открываться.
-//
-// route: { view: 'home'|'library'|'search'|'settings'|'liked'|'playlist'|'mix'|'genre'|'artist'|'discography'|'album'|'wrapped'|'wrappedAlbums'|'uploads'|'releaseEdit'|'missing'|'user', id?, q?, filter?, track?, year? }
-
 export function parseRoute(pathname, search = '') {
   const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const q = new URLSearchParams(search).get('q') || '';
@@ -35,7 +6,7 @@ export function parseRoute(pathname, search = '') {
   if (a === 'search') return { view: 'search', q };
   if (a === 'library' && !b) return { view: 'library' };
   if (a === 'settings') return { view: 'settings' };
-  if (a === 'lastfm') return { view: 'settings', lastfm: true }; // возврат с Last.fm (?token=…), см. SettingsPage
+  if (a === 'lastfm') return { view: 'settings', lastfm: true };
   if (a === 'admin' && b === 'missing') return { view: 'missing' };
   if (a === 'upload') return b ? { view: 'releaseEdit', id: b } : { view: 'uploads' };
   if (a === 'wrapped') {
@@ -83,7 +54,6 @@ export const paths = {
   artist: (deezerId, disc = '') => `/artist/${enc(deezerId)}${disc ? `?disc=${enc(disc)}` : ''}`,
   discography: (deezerId, filter = 'all') => `/artist/${enc(deezerId)}/discography/${enc(filter)}`,
   album: (deezerId) => `/album/${enc(deezerId)}`,
-  // albumHref — уже готовый адрес альбома (row.album.href).
   albumTrack: (albumHref, trackId) => `${albumHref}?track=${enc(trackId)}`,
   uploads: () => '/upload',
   missing: () => '/admin/missing',

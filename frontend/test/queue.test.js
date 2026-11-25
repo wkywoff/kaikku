@@ -77,10 +77,10 @@ test('"play next" goes after what was already put next', () => {
 test('removeEntry keeps the current track current', () => {
   const list = tracks('a', 'b', 'c');
   const q = (index) => ({ queue: list, index, unshuffled: [list[2], list[1], list[0]] });
-  assert.equal(removeEntry(q(2), 0).index, 1); // убрали до текущего
-  assert.equal(removeEntry(q(0), 2).index, 0); // после
-  assert.equal(removeEntry(q(1), 1).index, 1); // сам текущий — играет следующий
-  assert.equal(removeEntry(q(2), 2).index, 1); // текущий был последним
+  assert.equal(removeEntry(q(2), 0).index, 1);
+  assert.equal(removeEntry(q(0), 2).index, 0);
+  assert.equal(removeEntry(q(1), 1).index, 1);
+  assert.equal(removeEntry(q(2), 2).index, 1);
   assert.equal(ids(removeEntry(q(0), 1).unshuffled), 'ca');
   assert.deepEqual(removeEntry({ queue: [list[0]], index: 0, unshuffled: null }, 0), { queue: [], index: -1, unshuffled: null });
 });

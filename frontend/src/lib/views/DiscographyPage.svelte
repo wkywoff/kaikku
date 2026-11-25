@@ -12,11 +12,6 @@
 </script>
 
 <script>
-  // Вся дискография артиста, как у Spotify (/artist/<id>/discography/all):
-  // фильтр «Все / Альбомы / Мини-альбомы / Синглы» (он же в адресе), сортировка по
-  // дате или названию (запоминается на этом устройстве), сетка обложек.
-  // Треклисты не грузим заранее — только по Play (library.js → playAlbum),
-  // чтобы не дёргать Deezer десятками запросов на одну страницу.
   import { api } from '../api.js';
   import { artistPages as cache } from '../artistCache.js';
   import { isPlaying as playerPlaying } from '../stores/player.js';
@@ -66,7 +61,6 @@
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
     } catch {
-      /* не запомнится — не страшно */
     }
   }
 
@@ -101,14 +95,12 @@
         label: $t('disc.byDate'),
         checked: prefs.sort === 'date',
         icon: prefs.sort === 'date' ? arrow : null,
-        // Повторный выбор меняет направление: новые первыми ↔ старые первыми.
         onClick: () => savePrefs({ ...prefs, sort: 'date', desc: prefs.sort === 'date' ? !prefs.desc : true }),
       },
       { label: $t('disc.byName'), checked: prefs.sort === 'name', onClick: () => savePrefs({ ...prefs, sort: 'name' }) },
     ]);
   }
 
-  // Какой альбом сейчас играет (если включён отсюда или с его страницы).
   $: playingCtx = $playerPlaying ? $playingContext : null;
 
   function onPlay(albumId) {
@@ -169,9 +161,6 @@
     padding-top: 20px;
     padding-bottom: 16px;
     background: var(--bg);
-    /* Содержимое — в колонке страницы (App.svelte), а фон полосы — во всю
-       ширину: тень без размытия продолжает его в стороны, clip-path
-       оставляет её только по высоте полосы. */
     box-shadow: 0 0 0 100vmax var(--bg);
     clip-path: inset(0 -100vmax);
   }

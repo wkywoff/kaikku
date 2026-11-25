@@ -27,7 +27,7 @@ test('renewing writes the fresh token', () => {
 
 test('a stale tab does not bring back a token after logout elsewhere', () => {
   auth.login(token('a'));
-  data.delete('kaikku_token'); // другая вкладка вышла, событие ещё не дошло
+  data.delete('kaikku_token');
   auth.renew(token('a'), 'fresh');
   assert.equal(data.get('kaikku_token'), undefined);
 });

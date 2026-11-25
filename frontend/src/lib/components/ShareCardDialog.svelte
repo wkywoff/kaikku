@@ -1,7 +1,4 @@
 <script>
-  // «Поделиться итогами»: картинка с топами года (lib/shareCard.js) — её
-  // можно скачать, а на телефоне отправить через системное «Поделиться».
-  // Картинка собирается здесь, в браузере, и на сервер не попадает.
   import { modal } from '../modal.js';
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
@@ -14,7 +11,7 @@
   import Share2 from '@lucide/svelte/icons/share-2';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
-  export let data; // ответ /api/me/wrapped
+  export let data;
 
   const dispatch = createEventDispatcher();
   const close = () => dispatch('close');
@@ -22,7 +19,6 @@
   let url = '';
   let error = '';
 
-  // Язык сменили при открытом окне — карточка собирается заново.
   $: build(data, $lang, $me?.username);
   let seq = 0;
   async function build(data, lang, username) {
@@ -40,7 +36,6 @@
   }
   onDestroy(() => url && URL.revokeObjectURL(url));
 
-  // Системное «Поделиться» с файлом есть на телефонах; на компьютере — только «Скачать».
   $: canShare = !!file && typeof navigator !== 'undefined' && !!navigator.canShare?.({ files: [file] });
 
   function download() {
@@ -54,7 +49,7 @@
     try {
       await navigator.share({ files: [file] });
     } catch (e) {
-      if (e?.name !== 'AbortError') download(); // не вышло — хотя бы сохранить
+      if (e?.name !== 'AbortError') download();
     }
   }
 
@@ -107,7 +102,7 @@
   }
   .dialog {
     width: min(400px, 100%);
-    max-height: 100%; /* по видимой высоте окна, как у остальных окон */
+    max-height: 100%;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -125,7 +120,6 @@
   h2 {
     font-size: 20px;
   }
-  /* Картинка 9:16 — по высоте окна: кнопки под ней всегда видны. */
   .preview {
     flex: 1 1 auto;
     min-height: 0;
@@ -133,7 +127,6 @@
     align-items: center;
     justify-content: center;
     aspect-ratio: 9 / 16;
-    /* …и по ширине: на узком телефоне — в поля окна (100vw − отступы подложки и окна). */
     height: min(560px, 100dvh - 190px, (100vw - 80px) * 16 / 9);
     flex: 0 0 auto;
     align-self: center;

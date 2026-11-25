@@ -1,27 +1,16 @@
 import { writable, derived } from 'svelte/store';
 
-// Настройки на этом устройстве (localStorage): язык, переход между треками,
-// выравнивание громкости, вид треклистов, автовоспроизведение.
-
 const STORAGE_KEY = 'kaikku_settings';
 
 export const DEFAULT_SETTINGS = {
   lang: typeof navigator !== 'undefined' && navigator.language?.startsWith('ru') ? 'ru' : 'en',
-  // Выключено по умолчанию: треки идут встык, без наложения (gapless).
   crossfade: false,
-  crossfadeSeconds: 4, // 1–12
-  // Выключено по умолчанию: треки звучат с той громкостью, что в оригинале.
+  crossfadeSeconds: 4,
   normalize: false,
-  trackView: 'list', // 'list' | 'compact'
-  // Цвет обложки на странице альбома/артиста: 'full' — вся страница (как в
-  // Apple Music), 'header' — только шапка, уходящая в серый (как в Spotify).
+  trackView: 'list',
   pageTint: 'full',
-  // Цвета обложки в полноэкранном плеере медленно переливаются.
   animatedBg: true,
-  // Цвет обложки в нижнем плеере: 'full' — весь плеер, 'plate' — только
-  // плашка с названием слева (по умолчанию, привычный вид), 'off' — без цвета.
   playerTint: 'plate',
-  // Когда очередь кончилась — продолжать похожими треками (радио артиста).
   autoplay: false,
 };
 
@@ -52,14 +41,12 @@ function createSettings() {
   const store = writable(load());
   return {
     subscribe: store.subscribe,
-    /** set('lang', 'en') */
     set(key, value) {
       store.update((s) => {
         const next = sanitize({ ...s, [key]: value });
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         } catch {
-          /* приватный режим и т.п. — настройка просто не переживёт перезагрузку */
         }
         return next;
       });

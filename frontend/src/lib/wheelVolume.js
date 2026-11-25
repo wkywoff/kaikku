@@ -1,11 +1,8 @@
 import { get } from 'svelte/store';
 import { player } from './stores/player.js';
 
-// Колёсико мыши над громкостью: щелчок колеса — 5 %, мелкие шаги тачпада —
-// пропорционально. Svelte-action: <div use:wheelVolume>. Слушатель не
-// пассивный — иначе страница под плеером прокручивалась бы вместе с ним.
-const NOTCH_PX = 40; // меньше — это тачпад, а не щелчок колеса
-const PX_PER_NOTCH = 100; // браузер может прислать несколько щелчков одним событием
+const NOTCH_PX = 40;
+const PX_PER_NOTCH = 100;
 const STEP = 0.05;
 
 export function wheelStep(e) {
@@ -13,7 +10,7 @@ export function wheelStep(e) {
   if (!px) return 0;
   const abs = Math.abs(px);
   const step = abs >= NOTCH_PX ? Math.min(5, Math.max(1, Math.round(abs / PX_PER_NOTCH))) * STEP : (abs / NOTCH_PX) * STEP;
-  return px < 0 ? step : -step; // от себя — громче
+  return px < 0 ? step : -step;
 }
 
 export function wheelVolume(node) {

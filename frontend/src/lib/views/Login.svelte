@@ -3,20 +3,17 @@
   import { auth } from '../stores/auth.js';
   import { t } from '../i18n.js';
 
-  // Ссылка-приглашение вида /?invite=<код> сразу открывает регистрацию,
-  // ссылка /?reset=<код> (её даёт админ) — форму нового пароля.
   const params = new URLSearchParams(location.search);
   const inviteFromUrl = params.get('invite') || '';
   const resetFromUrl = params.get('reset') || '';
 
-  let mode = resetFromUrl ? 'reset' : inviteFromUrl ? 'register' : 'login'; // 'login' | 'register' | 'reset'
+  let mode = resetFromUrl ? 'reset' : inviteFromUrl ? 'register' : 'login';
   let username = '';
   let password = '';
   let password2 = '';
   let invite = inviteFromUrl;
   let busy = false;
   let error = '';
-  // Пустая база: первый зарегистрированный — админ, приглашение не нужно.
   let firstUser = false;
   if (!resetFromUrl) {
     api
@@ -28,12 +25,8 @@
       .catch(() => {});
   }
 
-  // Те же правила, что на сервере (internal/api/handlers_auth.go): имя —
-  // 3–32 буквы, цифры, «_», «-», «.»; пароль — 8–256 символов.
   const USERNAME = /^[\p{L}\p{Nd}_.-]{3,32}$/u;
 
-  // Пауза после неудачных входов растёт до 15 минут (internal/api/loginguard.go);
-  // сколько ждать, говорит сервер.
   const waitText = (s) => (s < 60 ? $t('login.seconds', { n: s }) : $t('login.minutes', { n: Math.ceil(s / 60) }));
 
   function errorText(e) {
@@ -54,7 +47,7 @@
     try {
       const { token } =
         mode === 'login' ? await api.login(username, password) : await api.register(username, password, invite.trim());
-      if (inviteFromUrl) history.replaceState(null, '', location.pathname); // код одноразовый — убрать из адреса
+      if (inviteFromUrl) history.replaceState(null, '', location.pathname);
       auth.login(token);
     } catch (e) {
       error = errorText(e);
@@ -75,7 +68,7 @@
     busy = true;
     try {
       const { token } = await api.resetPassword(resetFromUrl, password);
-      history.replaceState(null, '', location.pathname); // ссылка одноразовая — убрать из адреса
+      history.replaceState(null, '', location.pathname);
       auth.login(token);
     } catch (e) {
       error = errorText(e);

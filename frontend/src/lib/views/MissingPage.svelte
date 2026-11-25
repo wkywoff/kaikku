@@ -1,12 +1,4 @@
 <script>
-  // «Не нашлось» (админ, /admin/missing): треки, которые не удалось скачать
-  // — чаще всего на YouTube не нашлось подходящего видео. По каждому: дать
-  // ссылку на видео (сервер скачает с него, без поиска), загрузить свой
-  // файл или повторить поиск. Воркер и сам повторяет такие раз в сутки, до
-  // трёх попыток (internal/ingest/housekeep.go); исчерпавшие сюда не
-  // попадают — им ссылку или файл дают в правке трека (EditDialog).
-  // Если YouTube не пускает сам сервер (blocked), сверху — что с этим делать:
-  // прокси или куки YouTube (их загружают здесь же).
   import { api } from '../api.js';
   import { t } from '../i18n.js';
   import { lang } from '../stores/settings.js';
@@ -26,24 +18,23 @@
 
   pageTint().none();
 
-  const MAX_AUDIO = 200 * 1024 * 1024; // как на сервере (handlers_admin.go)
+  const MAX_AUDIO = 200 * 1024 * 1024;
   const COOKIES_HELP = 'https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies';
 
   let tracks = null;
-  let blocked = false; // YouTube не пускает сервер
-  let proxied = false; // YouTube уже идёт через YTDLP_PROXY
-  let cookies = null; // { updated_at, count, signed_in, expires } — загруженные куки YouTube
-  let cookiesBusy = ''; // 'upload' | 'remove'
+  let blocked = false;
+  let proxied = false;
+  let cookies = null;
+  let cookiesBusy = '';
   let error = '';
-  let links = {}; // job_id → введённая ссылка
-  let busy = {}; // job_id → 'video' | 'upload' | 'retry'
-  let progress = {}; // job_id → доля загрузки файла
-  let done = {}; // job_id → 'queued' | 'added': уже не «не нашлось»
+  let links = {};
+  let busy = {};
+  let progress = {};
+  let done = {};
 
   async function load() {
     try {
       ({ tracks, blocked, proxy: proxied, cookies } = await api.missing());
-      // Ссылка, которую уже давали, — в поле: видно, что с ней не вышло.
       for (const m of tracks) if (m.manual_video_id) links[m.job_id] = `https://youtu.be/${m.manual_video_id}`;
     } catch (e) {
       error = e.message;
@@ -77,10 +68,6 @@
 
   const COOKIE_ERRORS = { json: 'missing.cookiesJson', format: 'missing.cookiesFormat', no_youtube: 'missing.cookiesNoYouTube' };
 
-  // Сервер сохраняет куки и сразу спрашивает YouTube: пускает ли сервер
-  // (check) и отдаёт ли с ними песню, которой нужен вход (signin); requeued
-  // — сколько песен снова в очереди (они уходят со страницы). Загружать
-  // можно и заранее, пока YouTube пускает.
   async function uploadCookies(e) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';

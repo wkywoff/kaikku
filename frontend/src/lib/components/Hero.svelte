@@ -1,7 +1,4 @@
 <script>
-  // Шапка страницы альбома/артиста: большая картинка, тип («Альбом»,
-  // «Исполнитель»), огромное название и строка метаданных (слот meta).
-  // Фон — динамический цвет страницы (App.svelte), здесь только вёрстка.
   import { sized } from '../imageproxy.js';
   import { createEventDispatcher, onMount } from 'svelte';
   import Disc3 from '@lucide/svelte/icons/disc-3';
@@ -14,23 +11,18 @@
   export let round = false;
   export let kind = '';
   export let title = '';
-  export let zoomLabel = ''; // если задан — картинка кликабельна (событие zoom)
-  export let hidden = false; // релиз скрыт админом — значок справа от названия
+  export let zoomLabel = '';
+  export let hidden = false;
 
   const dispatch = createEventDispatcher();
 
-  // Кегль названия — по реальной ширине (lib/fitTitle.js): самый крупный,
-  // при котором оно встаёт в одну строку. Меряется невидимая копия названия
-  // (.probe, кегль PROBE_PX) в линейке шириной с колонку (.ruler): ни та, ни
-  // другая не зависят от кегля самого h1, поэтому наблюдатель не зацикливается.
-  // Он же ловит смену названия, ширины окна и догрузку шрифта.
-  const PROBE_PX = 100; // как font-size у .probe
-  const MARK_EM = 0.9; // значок скрытого релиза: 0.6em + отступ 0.3em
+  const PROBE_PX = 100;
+  const MARK_EM = 0.9;
 
   let ruler;
   let probe;
   let heading;
-  let fontSize = 0; // px; 0 — ещё не мерили, действует размер из стилей
+  let fontSize = 0;
 
   function fit(mark = hidden) {
     if (!ruler) return;
@@ -92,8 +84,6 @@
     height: 232px;
     flex-shrink: 0;
     border-radius: 6px;
-    /* Короткая лёгкая тень, как у Apple Music: широкая тёмная (40 px) ложилась
-       ореолом вокруг обложки, и на её спаде были видны ступеньки тонов. */
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
   }
   .art.round {
@@ -132,7 +122,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    /* Вся оставшаяся ширина шапки: по ней подбирается кегль названия. */
     flex: 1;
     min-width: 0;
   }
@@ -141,7 +130,6 @@
     font-weight: 500;
   }
   h1 {
-    /* Границы кегля; сам размер ставит fit() в пределах этих двух. */
     --fit-min: 36px;
     --fit-max: 80px;
     font-size: var(--fit-min);
@@ -149,16 +137,12 @@
     margin: 4px 0 10px;
     overflow-wrap: anywhere;
   }
-  /* Начертание у названия и его мерной копии одно. Межбуквенное в em
-     наследуется уже в пикселях, поэтому задано обоим, а не только h1. */
   h1,
   .probe {
     font-family: var(--font-display);
     font-weight: 800;
     letter-spacing: -0.03em;
   }
-  /* Линейка: ширина колонки, высоты нет, вне потока (не элемент флекса —
-     не добавляет gap). Копия названия внутри обрезана, страницу не ширит. */
   .ruler {
     position: absolute;
     left: 0;
@@ -176,7 +160,6 @@
     font-size: 100px;
     white-space: nowrap;
   }
-  /* Значок скрытого релиза — по высоте строки названия. */
   .hidden-mark {
     display: inline-flex;
     vertical-align: middle;

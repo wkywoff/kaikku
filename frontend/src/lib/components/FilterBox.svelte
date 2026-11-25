@@ -1,6 +1,4 @@
 <script>
-  // Поиск внутри списка, как в Spotify: лупа, по нажатию — поле ввода.
-  // Esc очищает и сворачивает; пустое поле сворачивается, когда уходит фокус.
   import { tick } from 'svelte';
   import { t } from '../i18n.js';
   import Search from '@lucide/svelte/icons/search';

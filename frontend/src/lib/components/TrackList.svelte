@@ -1,18 +1,4 @@
 <script>
-  // Список треков в стиле Spotify. Два вида (настройка «Вид треклистов»):
-  //   list    — обложка, название, исполнители под названием;
-  //   compact — одна строка: # | название | исполнители | длительность.
-  // Номер при наведении превращается в Play, у играющего — эквалайзер.
-  // Справа — «в любимые» (плюс; галочка, если уже там) и «…» с меню; то же
-  // меню — по правому клику на строке. Как в Spotify: на компьютере клик
-  // выделяет строку, двойной клик (или Play вместо номера, или Enter)
-  // играет трек; на телефоне — одно касание. Нескачанное играет потоком и
-  // скачивается в фоне (lib/library.js).
-  //
-  // reorderable — свой плейлист: строки перетаскиваются (мышью — за любое
-  // место строки, на сенсорном экране — за ручку справа), событие reorder
-  // { from, to } — новые индексы. highlight — Deezer ID трека, который
-  // выделить и показать (ссылка «Поделиться» на трек).
   import { isLocalId } from '../links.js';
   import { sized } from '../imageproxy.js';
   import { longpress } from '../longpress.js';
@@ -35,38 +21,33 @@
   import { canEdit } from '../stores/me.js';
 
   export let rows = [];
-  const restored = fromHistory(); // открыли «назад»/«вперёд»: обложки уже в кеше (MediaCard)
-  export let showCover = false; // только для вида list
+  const restored = fromHistory();
+  export let showCover = false;
   export let showAlbum = false;
-  export let numbered = true; // false — без номеров (поиск)
+  export let numbered = true;
   export let header = true;
-  export let view = null; // null — из настроек
-  export let playlist = null; // { id, mine } — список и есть этот плейлист (меню «убрать из плейлиста»)
-  export let context = null; // откуда играет, для истории: { kind, id } (lib/library.js → playRows)
+  export let view = null;
+  export let playlist = null;
+  export let context = null;
   export let reorderable = false;
-  export let ownEditable = false; // свои треки списка может править зритель (автор релиза)
+  export let ownEditable = false;
   export let highlight = null;
-  export let playSimilar = false; // поиск: после трека — похожие, а не следующая строка
-  export let showAddedBy = false; // совместный плейлист: «добавил X» под исполнителями
-  export let queue = null; // показана часть списка (топ артиста: первые 5) — в очередь идёт весь
+  export let playSimilar = false;
+  export let showAddedBy = false;
+  export let queue = null;
 
   $: mode = view || $settings.trackView;
   $: compact = mode === 'compact';
 
-  // Заголовки «Диск N» — только если в списке больше одного диска.
   $: multiDisc = new Set(rows.map((r) => r.discNo || 1)).size > 1;
 
-  // changed — страница перезагружает данные (после правки админа);
-  // remove — убрать строку из плейлиста (страница плейлиста).
   const dispatch = createEventDispatcher();
-  let editingTrack = null; // Deezer ID трека, который правит админ
+  let editingTrack = null;
 
   $: current = $nowPlaying;
-  let selected = null; // выделенная строка (компьютер)
+  let selected = null;
   let listEl;
 
-  // Трек скрытого релиза (админ убрал релиз): вне режима админа — серый и не
-  // играет, как недоступные треки у Spotify.
   const unavailable = (row) => row.hidden && !$canEdit;
 
   function play(i) {
@@ -77,12 +58,8 @@
     else playRows(rows, i, context);
   }
 
-  // Клик по ссылке или кнопке внутри строки — их собственное действие, не
-  // строки. Путь события, а не e.target.closest: кнопка лайка успевает
-  // поменять иконку до того, как клик дойдёт до строки, и старая иконка к
-  // этому моменту уже не в документе.
   const fromControl = (e) => e.composedPath().some((el) => el instanceof Element && el.matches('a, button, .grip'));
-  const tapToPlay = () => matchMedia('(hover: none)').matches; // сенсорный экран — играть с одного касания
+  const tapToPlay = () => matchMedia('(hover: none)').matches;
 
   function onRowClick(e, i) {
     if (justDragged) {
@@ -105,12 +82,10 @@
     }
   }
 
-  // Клик мимо списка снимает выделение.
   function onWindowPointer(e) {
     if (selected !== null && listEl && !listEl.contains(e.target)) selected = null;
   }
 
-  // --- выделить трек по ссылке ---
   let highlighted = null;
   $: if (highlight && highlight !== highlighted && rows.length) showRow(highlight);
   async function showRow(id) {
@@ -122,13 +97,11 @@
     listEl?.querySelectorAll('.row')[i]?.scrollIntoView({ block: 'center' });
   }
 
-  // --- перетаскивание (свой плейлист) ---
-  // drag: { from, to, y, active } — to: «щель» перед строкой to (0…rows.length).
   let drag = null;
-  let justDragged = false; // клик после перетаскивания — не выделение строки
+  let justDragged = false;
   let scrollFrame = 0;
   const DRAG_THRESHOLD = 6;
-  const EDGE = 64; // у края экрана список сам прокручивается
+  const EDGE = 64;
 
   function onPointerDown(e, i) {
     if (!reorderable || e.button !== 0) return;
@@ -180,7 +153,7 @@
     const { from, to, active } = drag;
     stopDrag();
     if (!active) return;
-    justDragged = e.pointerType === 'mouse'; // мышь после отпускания ещё «кликнет» по строке
+    justDragged = e.pointerType === 'mouse';
     const target = to > from ? to - 1 : to;
     if (target !== from) {
       selected = target;
@@ -203,7 +176,6 @@
       trackMenuItems(row, {
         playlist,
         onRemove: () => dispatch('remove', row),
-        // Трек Deezer правит админ; свой (загрузка, k…) — и автор релиза (ownEditable).
         onEdit: row.deezerId && ($canEdit || (ownEditable && isLocalId(row.deezerId))) ? () => (editingTrack = row.deezerId) : null,
       }),
       trackMenuHeader(row),
@@ -251,7 +223,6 @@
       on:pointerdown={(e) => onPointerDown(e, i)}
     >
       <span class="c-num">
-        <!-- Номер; при наведении — Play (играет с одного клика). -->
         <button class="num-btn" tabindex="-1" aria-label={playing && $playerPlaying ? $t('player.pause') : $t('player.play')} on:click={() => play(i)}>
           {#if playing && $playerPlaying}
             <span class="eq" aria-label={$t('tracks.playing')}><i></i><i></i><i></i></span>
@@ -328,7 +299,7 @@
 <style>
   .added-by {
     display: block;
-    width: fit-content; /* ссылка на профиль — только по тексту, не по всей строке */
+    width: fit-content;
     max-width: 100%;
     font-size: 12px;
     color: var(--text-faint);
@@ -342,7 +313,6 @@
       text-decoration: underline;
     }
   }
-  /* # | название | (исполнители) | (альбом) | в любимые | длительность | … */
   .tracklist {
     --cols: 40px minmax(0, 1fr) 32px 48px 32px;
   }
@@ -356,7 +326,7 @@
     --cols: 40px minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 32px 48px 32px;
   }
   .compact .artists {
-    display: none; /* в компактном виде исполнители — своей колонкой */
+    display: none;
   }
   .head,
   .row {
@@ -373,8 +343,6 @@
     color: var(--text-dim);
     font-size: 14px;
   }
-  /* Подписи столбцов — одним размером и цветом: правила столбцов ниже
-     (исполнитель, альбом) — для строк, а не для шапки. */
   .head > span {
     font-size: inherit;
     color: inherit;
@@ -391,7 +359,7 @@
     cursor: default;
     user-select: none;
     -webkit-user-select: none;
-    -webkit-touch-callout: none; /* долгое нажатие — наше меню, не системное */
+    -webkit-touch-callout: none;
   }
   .compact .row {
     min-height: 32px;
@@ -407,7 +375,6 @@
   .row.selected {
     background: rgba(255, 255, 255, 0.16);
   }
-  /* Перетаскивание: поднятая строка бледнеет, место вставки — линия. */
   .dragging,
   .dragging .row {
     cursor: grabbing;
@@ -421,7 +388,6 @@
   .row.drop-after {
     box-shadow: inset 0 -2px 0 var(--accent);
   }
-  /* Ручка — только на сенсорных экранах (мышью тянут за строку). */
   .grip {
     display: none;
   }
@@ -447,9 +413,6 @@
     display: none;
     color: var(--text);
   }
-  /* Номер → ▶ при наведении — только с мышью. Safari на iPhone, если
-     «наведение» что-то прячет или показывает, первый тап отдаёт ему, и
-     трек включался только со второго. */
   @media (hover: hover) {
     .row:hover .n {
       display: none;
@@ -491,8 +454,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* Название — на пиксель крупнее остального текста: при 15 px оно выглядело
-     мелким рядом с тем же списком в Spotify. Вес обычный: 450 уже жирнит. */
   .title {
     font-size: 16px;
     min-width: 0;
@@ -558,7 +519,6 @@
     width: 28px;
     height: 28px;
   }
-  /* «В любимые» и «…» — при наведении; галочка лайка видна всегда. */
   .like,
   .more {
     opacity: 0;
@@ -608,10 +568,6 @@
   }
 
   @media (max-width: 768px) {
-    /* Название забирает всю ширину: «в любимые» — только у лайкнутых
-       (у остальных он всё равно не виден), длительности нет, как в Apple
-       Music; не влезло — многоточие, а не вторая строка (строки скакали бы
-       по высоте). Номер — только в треклисте альбома (там нет обложек). */
     .tracklist,
     .tracklist.with-album,
     .tracklist.compact,
@@ -634,20 +590,14 @@
       padding: 0 8px;
       gap: 8px;
     }
-    /* «В любимые» не у лайкнутых — нулевой ширины, но в сетке: убранный
-       совсем, он отдал бы свою колонку «…», а справа осталась бы пустая. */
     .c-like:not(.liked) {
       width: 0;
       overflow: hidden;
     }
-    /* Номер и эквалайзер — по центру колонки, на одной оси: прижатые к
-       левому краю «9», «10» и эквалайзер были разной ширины и стояли
-       вразнобой. */
     .num-btn {
       width: 100%;
     }
 
-    /* на телефоне исполнители всегда под названием, даже в компактном виде */
     .compact .artists {
       display: block;
     }
@@ -655,16 +605,12 @@
       min-height: 48px;
     }
   }
-  /* На телефоне исполнитель под названием — не ссылка: палец, метивший в
-     строку, попадал в маленькое имя и уводил на страницу артиста вместо
-     того, чтобы включить трек. К артисту — через «…». */
   @media (max-width: 768px), (hover: none) {
     .artists :global(.artist-link),
     .c-artist :global(.artist-link) {
       pointer-events: none;
     }
   }
-  /* На сенсорных экранах наведения нет: «…» видно всегда, плюс — только у лайкнутых. */
   @media (hover: none) {
     .more {
       opacity: 1;
@@ -681,7 +627,7 @@
       justify-content: center;
       height: 40px;
       color: var(--text-dim);
-      touch-action: none; /* тянуть, а не прокручивать страницу */
+      touch-action: none;
     }
   }
 </style>

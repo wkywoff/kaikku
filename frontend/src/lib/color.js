@@ -1,30 +1,10 @@
 import { sized } from './imageproxy.js';
 import { LRU } from './lru.js';
 
-// Динамические цвета из обложек — как у Spotify/Apple Music: шапка страницы
-// альбома/артиста и плеер окрашиваются в цвет картинки.
-//
-// Картинка уменьшается до 32×32 на canvas. Цветные пиксели раскладываются
-// по секторам цветового круга (24 по 15°), вес пикселя — его насыщенность
-// (хрома): так голубые ветки на бледном фоне дают голубой, а не серый, хотя
-// фона больше. Побеждает окно из трёх соседних секторов с наибольшим весом
-// (оттенок, разбитый на два сектора, не проигрывает), цвет — средний по
-// нему с теми же весами. Если цветных пикселей почти нет — обложка
-// серая/чёрно-белая, и палитра тоже серая.
-// Картинки Deezer идут через наш /api/img, свои обложки — /media: всё с
-// того же origin, так что canvas читается без проблем.
-
 const SECTORS = 24;
-const MIN_CHROMA = 0.05; // ниже — считаем пиксель серым
-// Сколько «цветного веса» (сумма хромы в лучшем окне на пиксель) нужно,
-// чтобы обложка считалась цветной. Подобрано на реальных обложках: у
-// бледно-голубой акварели ~0.049, у тёмной цветной обложки ~0.015, у
-// чёрно-серебряной Discovery ~0.007.
+const MIN_CHROMA = 0.05;
 const COLOURFUL_SHARE = 0.012;
 
-// Пиксели по секторам цветового круга. w — сумма хромы (по ней выбирается
-// оттенок), r/g/b — суммы с весом хрома², q — сумма хрома²: средний цвет
-// тянется к самым ярким пикселям. all — простая сумма по всем пикселям.
 function sectorize(data) {
   const sectors = Array.from({ length: SECTORS }, () => ({ w: 0, q: 0, r: 0, g: 0, b: 0 }));
   const all = { r: 0, g: 0, b: 0, n: 0 };
@@ -54,7 +34,6 @@ function sectorize(data) {
   return { sectors, all };
 }
 
-// Окно из трёх соседних секторов с наибольшим весом: { i, w }.
 function bestWindow(sectors) {
   let best = -1;
   let bestW = 0;
@@ -68,7 +47,6 @@ function bestWindow(sectors) {
   return { i: best, w: bestW };
 }
 
-// Средний цвет окна вокруг сектора i.
 function windowColour(sectors, i) {
   const acc = { q: 0, r: 0, g: 0, b: 0 };
   for (const d of [-1, 0, 1]) {
@@ -81,28 +59,17 @@ function windowColour(sectors, i) {
   return { r: Math.round(acc.r / acc.q), g: Math.round(acc.g / acc.q), b: Math.round(acc.b / acc.q) };
 }
 
-/** @param {ArrayLike<number>} data RGBA, как ImageData.data */
 export function pickColor(data) {
   const { sectors, all } = sectorize(data);
   if (!all.n) return null;
   const { i: best, w: bestW } = bestWindow(sectors);
   if (best < 0 || bestW < COLOURFUL_SHARE * all.n) {
-    // Серая обложка: средняя яркость без оттенка.
     const v = Math.round((all.r + all.g + all.b) / (3 * all.n));
     return { r: v, g: v, b: v };
   }
   return windowColour(sectors, best);
 }
 
-/**
- * Основные цвета обложки для переливающегося фона полноэкранного плеера:
- * пиксели делятся на k групп похожих цветов (k-means), возвращаются
- * средние цвета групп с их долей n (0…1), крупные первыми. В отличие от
- * pickColor, тут и серые, и тёмные области: у тёмной обложки с фиолетовыми
- * прядями — тёмно-фиолетовый, тёмно-коричневый, серый, а не один серый.
- * Группы ищутся по цвету с оттенком, усиленным в CHROMA_GAIN раз: иначе
- * тёмные пиксели разного оттенка сливаются в одну группу по яркости.
- */
 const CHROMA_GAIN = 4;
 
 export function clusterColours(data, k = 6) {
@@ -116,8 +83,6 @@ export function clusterColours(data, k = 6) {
     px.push(c.map((v) => m + CHROMA_GAIN * (v - m)));
   }
   if (!px.length) return [];
-  // Начальные центры — пиксели на равных шагах по яркости: детерминированно
-  // и сразу от тёмных до светлых.
   const byLum = [...px].sort((x, y) => x[0] + x[1] + x[2] - (y[0] + y[1] + y[2]));
   let centres = Array.from({ length: k }, (_, i) => [...byLum[Math.floor(((i + 0.5) * byLum.length) / k)]]);
   const owner = new Array(px.length).fill(0);
@@ -141,7 +106,6 @@ export function clusterColours(data, k = 6) {
     }
     centres = sums.map((t, c) => (t[3] ? [t[0] / t[3], t[1] / t[3], t[2] / t[3], t[3]] : [...centres[c].slice(0, 3), 0]));
   }
-  // Цвет группы — среднее настоящих пикселей, без усиления.
   const sums = centres.map(() => [0, 0, 0, 0]);
   for (let j = 0; j < orig.length; j++) {
     const t = sums[owner[j]];
@@ -173,7 +137,6 @@ export function rgbToHsl({ r, g, b }) {
   return { h: h * 60, s, l };
 }
 
-/** 'hsl(250 20% 31%)' (как пишет hsl() ниже) → { r, g, b }; не разобрали — серый. */
 export function hslToRgb(str) {
   const m = /hsl\((\d+(?:\.\d+)?) (\d+(?:\.\d+)?)% (\d+(?:\.\d+)?)%\)/.exec(str || '');
   if (!m) return { r: 40, g: 40, b: 40 };
@@ -203,30 +166,10 @@ export const DEFAULT_PALETTE = {
   mesh: ['hsl(0 0% 24%)', 'hsl(0 0% 14%)', 'hsl(0 0% 32%)', 'hsl(0 0% 18%)'],
 };
 
-/**
- * Палитра из цвета обложки:
- *  base   — плашка трека в плеере;
- *  dark   — фон плеера/полноэкранного режима;
- *  accent — кнопка Play, полоса прогресса, галочки; всегда светлый, чтобы
- *           читался на тёмном фоне. У серых обложек — почти белый;
- *  header — шапка страницы, как у Spotify: насыщенный, как page, но
- *           светлее — настолько, насколько позволяет белый текст
- *           (headerTone; к низу шапки затемняется и уходит в фон —
- *           App.svelte, .tint);
- *  page   — вся страница, как у Apple Music: ровный глубокий цвет, темнее
- *           и насыщеннее обложки (белый текст читается); у серых обложек —
- *           почти чёрный. Оттенок тот же, что у шапки и плеера;
- *  mesh   — 4 цвета переливающегося фона полноэкранного плеера: главный
- *           цвет и другие цвета обложки, в том числе тёмные и серые
- *           (clusters — clusterColours, meshFrom).
- */
 export function paletteFrom(rgb, clusters = []) {
   if (!rgb) return DEFAULT_PALETTE;
   let { h, s, l } = rgbToHsl(rgb);
   const grey = s < 0.12;
-  // Тёмная блёклая обложка (тёмно-синий фон, фиолетовые пряди) ярких
-  // цветов не даёт, но она и не серая: как у Apple Music, берём её
-  // преобладающий тёмный оттенок — приглушённо, без подкрашивания.
   const tint = grey ? dominantTint(clusters) : null;
   if (tint) {
     ({ h, s } = tint);
@@ -241,8 +184,6 @@ export function paletteFrom(rgb, clusters = []) {
     };
   }
   return {
-    // Заметно насыщеннее самих пикселей обложки — у бледной акварели всё
-    // равно выходит внятный синий, а не серо-голубой.
     base: hsl(h, grey ? 0 : clamp(s, 0.42, 0.62), 0.3),
     dark: hsl(h, grey ? 0 : clamp(s, 0.3, 0.5), 0.15),
     accent: grey ? hsl(0, 0, 0.91) : hsl(h, clamp(s, 0.55, 0.85), 0.66),
@@ -253,15 +194,6 @@ export function paletteFrom(rgb, clusters = []) {
   };
 }
 
-// Шапка: та же насыщенность, что у page, — иначе цвет блёклый и не
-// попадает в обложку (красная обложка давала кирпичный). Светлота — самая
-// большая (до 40%), при которой яркость цвета (WCAG) не выше 0.1: белый
-// текст читается (контраст ≥ 7). Красный и синий выходят яркими (красный —
-// почти как у Spotify, #b30505), жёлтый и зелёный — тёмными (оливковый,
-// тёмно-зелёный): при 40% они слепят и текст на них не читается.
-// И не светлее цвета самой обложки больше чем на 10 пунктов (но не ниже
-// 22%, чтобы шапка была светлее page): у тёмной обложки с бордовыми
-// пятнами (светлота 14%) иначе выходил ярко-красный, которого на ней нет.
 const MAX_HEADER_LUMINANCE = 0.1;
 const linear = (c) => {
   c /= 255;
@@ -276,31 +208,18 @@ function headerTone(h, s, coverL) {
 }
 
 const chroma = (c) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
-// Тёмные цвета блёклые по природе: тёмно-фиолетовый — это rgb(40,35,55).
 const tinted = (c) => chroma(c) >= 0.02 && rgbToHsl(c).s >= 0.15;
 
-// Оттенок самой крупной группы цветов обложки, если она не серая и
-// занимает хотя бы пятую часть картинки.
 function dominantTint(clusters) {
   const c = clusters.find((x) => x.n >= 0.2);
   return c && tinted(c) ? rgbToHsl(c) : null;
 }
 
-// Пятна фона: не темнее 13% (иначе на чёрном почти не видно движения) и
-// не светлее 42% — белый текст поверх должен читаться.
 const MESH_MIN_L = 0.13;
 const MESH_MAX_L = 0.42;
 
-/**
- * 4 цвета фона полноэкранного плеера. Первый — цвет плеера (у цветной
- * обложки), дальше — группы цветов обложки (clusterColours): чем группа
- * больше и цветнее, тем раньше; почти одинаковые пропускаются. Цвет
- * насыщается и зажимается по яркости. Не хватило — варианты уже взятых.
- */
 function meshFrom(main, clusters) {
   const picked = [];
-  // Яркость — от яркости цвета на обложке: тёмная обложка даёт тёмный фон,
-  // как у Apple Music, а не вытянутый до средне-серого.
   const norm = (c) => {
     const x = rgbToHsl(c);
     const col = tinted(c);
@@ -316,13 +235,11 @@ function meshFrom(main, clusters) {
   const ranked = [...clusters].sort((a, b) => score(b) - score(a));
   for (const c of ranked) {
     if (picked.length >= 4) break;
-    // Пара точек не красит фон; яркое пятно (радуга на чёрном) — красит.
     if (c.n < 0.03 && !(c.n >= 0.008 && chroma(c) >= 0.25)) continue;
     const x = norm(c);
     if (!picked.some((y) => similar(x, y))) picked.push(x);
   }
   if (!picked.length) picked.push({ h: 0, s: 0, l: 0.24 });
-  // Мало разных цветов: тот же цвет светлее/темнее и соседние оттенки.
   const variants = [
     [0, 0.12],
     [0, -0.12],
@@ -338,8 +255,6 @@ function meshFrom(main, clusters) {
     }
   }
   while (picked.length < 4) picked.push(picked[picked.length % 2]);
-  // Пятна почти одной яркости (тёмная обложка) сливаются, и движения не
-  // видно: разводим их по яркости вокруг среднего.
   const ls = picked.slice(0, 4).map((c) => c.l);
   if (Math.max(...ls) - Math.min(...ls) < 0.16) {
     const mid = clamp(ls.reduce((a, b) => a + b, 0) / ls.length, MESH_MIN_L + 0.08, MESH_MAX_L - 0.1);
@@ -350,11 +265,8 @@ function meshFrom(main, clusters) {
 
 const cache = new LRU(200, { pages: false });
 
-/** Палитра для картинки по URL; кешируется, при ошибке — DEFAULT_PALETTE. */
 export function paletteForImage(url) {
   if (!url) return Promise.resolve(DEFAULT_PALETTE);
-  // Цвет всегда считается по одной и той же картинке 300×300 (её же
-  // показывает шапка альбома): плеер грузит 64×64, а цвет должен совпадать.
   url = sized(url, 300);
   if (!cache.has(url)) cache.set(url, loadPalette(url));
   return cache.get(url);
@@ -380,7 +292,6 @@ async function loadPalette(url) {
   }
 }
 
-/** Применить палитру как CSS-переменные с префиксом (--page-*, --player-*). */
 export function paletteVars(prefix, p) {
   return (
     `--${prefix}-base: ${p.base}; --${prefix}-dark: ${p.dark}; --${prefix}-accent: ${p.accent}; --${prefix}-accent-text: ${p.accentText};` +

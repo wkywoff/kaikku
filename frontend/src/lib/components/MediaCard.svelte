@@ -1,8 +1,4 @@
 <script>
-  // Карточка альбома/артиста для сеток: обложка, название, подпись. Если
-  // передан onPlay — при наведении появляется кнопка Play (как у Spotify).
-  // menu — пункты её меню (lib/cardMenu.js): правый клик или долгое нажатие
-  // пальцем. Отдельной кнопки «…» на карточке нет: при наведении — только Play.
   import { sized, srcsetOf, CARD_SIZES } from '../imageproxy.js';
   import { link, fromHistory } from '../stores/nav.js';
   import PlayButton from './PlayButton.svelte';
@@ -21,15 +17,13 @@
   export let round = false;
   export let onPlay = null;
   export let playing = false;
-  export let hidden = false; // релиз скрыт админом: приглушён, со значком
-  export let eager = false; // виден сразу (первый ряд главной): грузить не лениво
-  export let first = false; // главная картинка экрана (LCP): раньше остальных
-  export let menu = null; // () => пункты меню
+  export let hidden = false;
+  export let eager = false;
+  export let first = false;
+  export let menu = null;
 
   const showMenu = (e) => menu && openMenu(e, menu(), { title, subtitle, image, round });
 
-  // Страницу открыли «назад»/«вперёд»: картинки уже в кеше — сразу, без
-  // отложенной загрузки (Safari рисовал их сначала пустыми).
   const restored = fromHistory();
 </script>
 
@@ -38,8 +32,6 @@
     {#if $$slots.art}
       <slot name="art" />
     {:else if image}
-      <!-- loading, sizes и srcset — раньше src: иначе браузер может начать
-           грузить src сразу, мимо отложенной загрузки и выбора размера. -->
       <img
         loading={eager || restored ? 'eager' : 'lazy'}
         fetchpriority={first ? 'high' : 'auto'}
@@ -81,7 +73,7 @@
     color: #fff;
   }
   .card {
-    -webkit-touch-callout: none; /* долгое нажатие — наше меню, не системное */
+    -webkit-touch-callout: none;
     display: block;
     padding: 12px;
     border-radius: var(--radius);
@@ -159,7 +151,6 @@
       opacity: 1;
       transform: none;
     }
-    /* Название микса на полосе обложки (Artwork) — не под кнопкой Play. */
     .art:has(.play) :global(.mix .band) {
       padding-right: 58px;
     }

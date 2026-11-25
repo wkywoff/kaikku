@@ -1,10 +1,8 @@
 import { writable } from 'svelte/store';
 
-// Как отсортированы списки — запоминается на этом устройстве, отдельно для
-// медиатеки, «Любимых» и плейлистов (один выбор на все плейлисты, как в Spotify).
 const KEY = 'kaikku_sort';
 const DEFAULTS = {
-  library: 'recent', // recent | added | alpha
+  library: 'recent',
   liked: { key: 'added', desc: true },
   playlist: { key: 'custom', desc: false },
 };
@@ -28,6 +26,5 @@ sortPrefs.subscribe((v) => {
   try {
     localStorage.setItem(KEY, JSON.stringify(v));
   } catch {
-    /* не запомнится — не страшно */
   }
 });

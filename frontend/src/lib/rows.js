@@ -1,8 +1,5 @@
 import { paths } from './route.js';
 
-// Строка списка треков (см. TrackList) из трека Deezer, как его отдаёт API:
-// все исполнители (contributors, если есть) — отдельными ссылками.
-
 export function artistsOf(t) {
   if (t.contributors?.length) {
     return t.contributors.map((c) => ({ id: c.id || null, name: c.name, href: c.id ? paths.artist(c.id) : null, picture: c.picture_url || null }));
@@ -10,7 +7,6 @@ export function artistsOf(t) {
   return [{ id: t.artist_id || null, name: t.artist, href: t.artist_id ? paths.artist(t.artist_id) : null }];
 }
 
-/** Строка для своих списков (любимые, плейлист): номер — позиция в списке, а не в альбоме, без «Диск N». */
 export function rowFromCollectionTrack(t) {
   return {
     ...rowFromDeezerTrack(t),
@@ -18,11 +14,10 @@ export function rowFromCollectionTrack(t) {
     discNo: null,
     itemId: t.item_id || null,
     addedAt: t.added_at || null,
-    addedBy: t.added_by?.username || null, // совместный плейлист — кто добавил
+    addedBy: t.added_by?.username || null,
   };
 }
 
-/** album — {id, title, cover_url}, если трек из треклиста альбома (там нет своих полей альбома). */
 export function rowFromDeezerTrack(t, album = null) {
   const albumId = album?.id || t.album_id;
   return {
@@ -30,17 +25,15 @@ export function rowFromDeezerTrack(t, album = null) {
     title: t.title,
     artists: artistsOf(t),
     durationMs: t.duration_ms,
-    trackNo: t.track_no || null, // в топе артиста и поиске Deezer номера не отдаёт (0)
+    trackNo: t.track_no || null,
     discNo: t.disc_no || null,
     explicit: t.explicit,
     coverUrl: album?.cover_url || t.cover_url,
     album: { title: album?.title || t.album, href: albumId ? paths.album(albumId) : null },
-    hidden: !!t.hidden, // релиз скрыт админом: вне режима админа — серый, не играет
+    hidden: !!t.hidden,
   };
 }
 
-// Поиск внутри своего списка (плейлист, любимые): по названию, исполнителям
-// и альбому, без учёта регистра, ё/е и диакритики («beyonce» найдёт «Beyoncé»).
 export function normalizeText(s) {
   return String(s || '')
     .toLowerCase()

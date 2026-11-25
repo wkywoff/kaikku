@@ -1,19 +1,8 @@
-// Бегущая строка для текста, который не влезает в одну строку (название в
-// полноэкранном плеере), как в Apple Music и Spotify: текст стоит, потом
-// плавно уезжает влево до конца, замирает и возвращается. Влезает — стоит
-// на месте. Узел — блок в одну строку, внутри — первый элемент, который
-// двигается. Края затухают (класс marquee-on, стили — у компонента): правый
-// — пока есть продолжение, левый (--marquee-fade, app.css) — только в
-// движении, чтобы в покое первая буква была целой. Доезжает строка так,
-// что последняя буква не попадает в затухание справа.
-//
-//   <a class="title" use:marquee={title}><span>{title}</span></a>
-
-const PAUSE = 2000; // мс на каждом конце
-const SPEED = 40; // px/с
-const FADE_RIGHT = 16; // px — как в стилях компонента
-const FADE_LEFT = 12; // px
-const RAMP = 250; // мс — левое затухание появляется и уходит
+const PAUSE = 2000;
+const SPEED = 40;
+const FADE_RIGHT = 16;
+const FADE_LEFT = 12;
+const RAMP = 250;
 
 export function marquee(node) {
   let anims = [];
@@ -65,14 +54,13 @@ export function marquee(node) {
     );
   }
 
-  // Ширина меняется (окно, текст открыли/закрыли) — пересчитать раз за кадр.
   const schedule = () => frame || (frame = requestAnimationFrame(update));
   const ro = new ResizeObserver(schedule);
   ro.observe(node);
   schedule();
 
   return {
-    update: schedule, // параметр — сам текст: сменился трек — заново
+    update: schedule,
     destroy() {
       ro.disconnect();
       cancelAnimationFrame(frame);

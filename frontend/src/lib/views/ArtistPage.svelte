@@ -5,13 +5,6 @@
 </script>
 
 <script>
-  // Страница артиста (каталог Deezer): шапка с фото, подписка и радио,
-  // популярные треки (топ 5), дискография («Все релизы» по дате или
-  // Альбомы / Мини-альбомы / Синглы), описание (ArtistAbout) и похожие исполнители.
-  // Обложки — одной строкой (сколько помещается по ширине); «Показать все»
-  // у дискографии открывает её отдельной страницей (DiscographyPage), как
-  // у Spotify. Свой артист (загрузка, k…) — та же страница из базы, без
-  // похожих.
   import { api } from '../api.js';
   import { artistPages as cache } from '../artistCache.js';
   import { player, isPlaying as playerPlaying, shuffleOn } from '../stores/player.js';
@@ -47,12 +40,12 @@
   let albums = [];
   let loading = true;
   let error = '';
-  let category = $navStore.disc || 'all'; // 'all' | 'album' | 'ep' | 'single'; ?disc= — из «Показать все» на странице альбома
+  let category = $navStore.disc || 'all';
   let related = [];
   let relatedExpanded = false;
   let gridWidth = 0;
   let editing = false;
-  let editable = false; // свой артист (загрузка): правит тот, кто его завёл
+  let editable = false;
 
   function reload() {
     cache.delete($navStore.id);
@@ -62,7 +55,6 @@
   $: load($navStore.id);
   $: loadRelated($navStore.id);
 
-  // Похожие — отдельным запросом: страница не ждёт их, чтобы показаться.
   async function loadRelated(id) {
     relatedExpanded = false;
     related = relatedCache.get(id) || [];
@@ -71,7 +63,6 @@
       relatedCache.set(id, artists);
       if (id === $navStore.id) related = artists || [];
     } catch {
-      /* без похожих страница всё равно полная */
     }
   }
 
@@ -103,9 +94,7 @@
     artist = data.artist;
     editable = !!data.editable;
     albums = data.albums;
-    setRouteTitle(`artist:${$navStore.id}`, artist.name); // вкладка: «rexv2 | kaikku»
-    // Номер — место в «Популярном», а не номер трека на его альбоме (у
-    // слушаемого здесь он есть, у топа Deezer — нет); без «Диск N».
+    setRouteTitle(`artist:${$navStore.id}`, artist.name);
     top = (data.top || []).map((tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null }));
     tint.from(artist.picture_url);
     refresh(top.map((r) => r.deezerId));
@@ -119,13 +108,11 @@
     single: albums.filter((a) => recordCategory(a.record_type) === 'single').sort(byDate),
   };
   $: shown = groups[category] || [];
-  // Сколько карточек в одной строке сетки (min 176 px; на телефоне — 2).
   $: perRow = gridWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(gridWidth / 176)));
   $: visible = shown.slice(0, perRow);
   $: relatedVisible = relatedExpanded ? related : related.slice(0, perRow);
   $: following = !!artist && $followedIds.has(artist.id);
 
-  // Меню артиста — у «…», по правому клику и долгому нажатию на шапке.
   function artistMenu(e) {
     openMenu(e, artistMenuItems(artist), { title: artist.name, image: artist.picture_url, round: true });
   }
@@ -140,7 +127,6 @@
 
   $: playingHere = !!artist && isContext($playingContext, 'artist', artist.id);
 
-  // Play на карточках релизов и похожих артистов.
   $: playingCtx = $playerPlaying ? $playingContext : null;
   const playCard = (start) => start().catch((e) => toast(e.message, 'error'));
 
@@ -154,7 +140,6 @@
 {#if error}
   <p class="error-text page-pad">{error}</p>
 {:else if artist}
-  <!-- Правый клик или долгое нажатие по шапке — ссылка на артиста. -->
   <div class="page-pad" role="group" on:contextmenu={artistMenu} use:longpress={artistMenu}>
     <Hero image={artist.picture_url} round kind={$t('artist.kind')} title={artist.name}>
       <svelte:fragment slot="meta">{fansLabel(artist.fans, $lang)}</svelte:fragment>
@@ -189,8 +174,6 @@
   {/if}
 
   {#if top.length}
-    <!-- Популярное — по прослушиваниям здесь за месяц (сервер): пять, по
-         кнопке — до десяти. -->
     <section class="page-pad">
       <div class="section-head">
         <h2>{$t('artist.popular')}</h2>
@@ -287,13 +270,6 @@
     padding: 0 16px;
     font-weight: 700;
   }
-  /* На телефоне кнопки в строку не влезали («Вы подписаны», радио, «…», у
-     админа ещё карандаш): строка вылезала за экран, а потом подпись кнопки
-     обрезалась на полуслове. Расстояние между кнопками здесь — ширина самих
-     кнопок-иконок (значок по центру) и поля, а не gap: при нехватке места
-     сначала сжимаются иконки, и только когда теснее некуда, подписка
-     сокращается многоточием. Пока места хватает, всё стоит так же, как
-     при gap 12px. */
   @media (max-width: 768px) {
     .actions {
       gap: 0;
@@ -301,9 +277,6 @@
     .actions > :global(.play-button) {
       margin-right: 6px;
     }
-    /* flex-shrink в миллион раз больше, чем у подписки: её доля сжатия
-       меньше точности вёрстки (1/64 px). При 1000 она теряла сотые доли
-       пикселя, и текст, который влезал, всё равно получал многоточие. */
     .actions > .icon-btn {
       flex: 0 1000000 48px;
       min-width: 30px;
@@ -320,7 +293,6 @@
       padding: 0 12px;
       font-size: 13px;
     }
-    /* Многоточие — у текста внутри: сама кнопка — flex, у неё его не бывает. */
     .follow .label {
       overflow: hidden;
       text-overflow: ellipsis;

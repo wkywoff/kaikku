@@ -1,15 +1,8 @@
-// Свайп влево/вправо по мини-плееру и обложке в полноэкранном плеере —
-// следующий/предыдущий трек, как в Spotify на телефоне.
+export const AXIS_LOCK = 8;
+export const EDGE = 24;
+const SHARE = 0.3;
+const FLICK = 0.5;
 
-export const AXIS_LOCK = 8; // px: до этого сдвига направление ещё не решено
-export const EDGE = 24; // px от левого края: там жест iPhone «назад», не наш
-const SHARE = 0.3; // доля ширины, после которой отпускание переключает трек
-const FLICK = 0.5; // px/мс: быстрый короткий взмах переключает и раньше
-
-/**
- * Что сделать, когда палец отпустили: 'next' (повели влево), 'prev'
- * (вправо) или null — вернуть на место.
- */
 export function decideSwipe({ dx, dt, width }) {
   const far = Math.abs(dx) > width * SHARE;
   const flick = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, dt) > FLICK;
@@ -17,19 +10,8 @@ export function decideSwipe({ dx, dt, width }) {
   return dx < 0 ? 'next' : 'prev';
 }
 
-/**
- * Svelte-действие: use:swipeTrack={{ onNext, onPrev, canNext, canPrev, slide }}.
- * Элемент едет за пальцем (раз за кадр), отпустили далеко или резко —
- * уезжает и вызывает обработчик, иначе возвращается. Вертикальное движение
- * не трогает (там прокрутка или свайп вниз, закрывающий плеер). Клик,
- * которым кончается свайп, не считается — иначе мини-плеер ещё и раскрывался бы.
- *   canNext/canPrev: false — туда некуда: элемент тянется туго и возвращается;
- *   slide: N — рядом лежат соседние обложки через N px (класс swiping на
- *   время жеста их показывает): элемент доезжает до соседней целиком, и она
- *   встаёт на место, как в Spotify; без slide — уезжает и гаснет.
- */
 export function swipeTrack(node, handlers) {
-  let start = null; // { x, y, t, axis }
+  let start = null;
   let dx = 0;
   let frame = 0;
   let swallowClick = false;
@@ -45,7 +27,6 @@ export function swipeTrack(node, handlers) {
     if (animate) setTimeout(() => node.classList.remove('swiping'), 200);
     else node.classList.remove('swiping');
   };
-  // Туда, где нет трека, — туго, в четверть хода пальца.
   const blocked = (d) => (d < 0 && handlers.canNext === false) || (d > 0 && handlers.canPrev === false);
   const onStart = (e) => {
     if (e.touches.length !== 1) return;
@@ -72,7 +53,6 @@ export function swipeTrack(node, handlers) {
     }
     e.preventDefault();
     dx = t.clientX - start.x;
-    // Со slide дальше соседней обложки не тянется: за ней пусто.
     if (handlers.slide !== undefined) {
       const max = (node.offsetWidth || 0) + handlers.slide;
       dx = Math.max(-max, Math.min(max, dx));
@@ -96,8 +76,6 @@ export function swipeTrack(node, handlers) {
     frame = 0;
     const run = () => (action === 'next' ? handlers.onNext : handlers.onPrev)?.();
     if (handlers.slide !== undefined) {
-      // Соседняя обложка доезжает на место; потом трек переключается, и на
-      // месте элемента — та же картинка: прыжок назад без анимации не виден.
       const shift = (node.offsetWidth || 0) + handlers.slide;
       node.style.transition = 'transform 0.22s ease-out';
       node.style.transform = `translate3d(${action === 'next' ? -shift : shift}px, 0, 0)`;

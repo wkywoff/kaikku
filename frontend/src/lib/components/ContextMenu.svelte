@@ -1,10 +1,4 @@
 <script>
-  // Контекстное меню (правый клик по треку или кнопка «…»), как в Spotify.
-  // Одно на всё приложение — App.svelte; что показать, задаёт
-  // stores/contextMenu.js → openMenu. На телефоне (menu.sheet) это шторка
-  // снизу — MenuSheet; здесь — всплывающее меню для компьютера. Пункт с
-  // submenu раскрывает вложенное меню сбоку (наведением или кликом). Меню не
-  // вылезает за края экрана; закрывается по Esc, клику мимо и смене окна.
   import { tick } from 'svelte';
   import { contextMenu, closeMenu } from '../stores/contextMenu.js';
   import { navigateAfterPaint } from '../stores/nav.js';
@@ -16,10 +10,10 @@
 
   let menuEl;
   let subEl;
-  let pos = null; // { x, y }
+  let pos = null;
   let openSub = -1;
   let subPos = null;
-  let anchor = null; // элемент пункта, у которого открыто подменю
+  let anchor = null;
 
   $: menu = $contextMenu;
   $: place(menu);
@@ -60,8 +54,6 @@
     if (e.key === 'Escape' && menu) closeMenu();
   }
 
-  // Закрываем, только если окно поменяло ширину: на телефоне высота
-  // меняется сама, когда браузер прячет адресную строку при прокрутке.
   let lastWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
   function onResize() {
     if (window.innerWidth !== lastWidth) closeMenu();
@@ -138,7 +130,7 @@
     min-width: 220px;
     max-width: min(340px, calc(100vw - 16px));
     max-height: calc(100vh - 16px);
-    max-height: calc(100dvh - 16px); /* видимая высота: без адресной строки браузера на телефоне */
+    max-height: calc(100dvh - 16px);
     overflow-y: auto;
     padding: 4px;
     border-radius: 6px;
@@ -192,7 +184,6 @@
     width: 16px;
     flex-shrink: 0;
   }
-  /* Фото исполнителя вместо значка; строка при этом не выше остальных. */
   .pic {
     width: 24px;
     height: 24px;

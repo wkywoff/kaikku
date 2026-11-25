@@ -1,35 +1,19 @@
-// Учёт прослушивания одного трека: запись в историю, сколько он реально
-// играл и скроббл в Last.fm. Плеер зовёт tick на каждый timeupdate, а
-// newPlay — когда началось новое прослушивание (другой трек, повтор).
-
-// Прослушивание записывается в историю, когда трек проиграл столько секунд
-// (короткий — половину), как у Spotify.
 const PLAY_REPORT_SECONDS = 30;
-// Сколько трек реально играл (минуты в итогах года): шаг позиции длиннее
-// LISTEN_STEP_MAX_SECONDS — перемотка, не в счёт. Кроме паузы, смены трека и
-// ухода со страницы, время отправляется каждые LISTEN_FLUSH_SECONDS —
-// телефон может выгрузить вкладку в фоне молча.
 const LISTEN_STEP_MAX_SECONDS = 5;
 const LISTEN_FLUSH_SECONDS = 60;
 const SCROBBLE_MIN_SECONDS = 30;
 const SCROBBLE_MAX_SECONDS = 240;
 
-/**
- * hooks() — хуки плеера (onPlayed, onListened, onScrobble; см. player.js),
- * entry() — текущий элемент очереди.
- */
 export function createListenTracker(hooks, entry) {
-  let playReported = false; // за текущее проигрывание трека уже записали
-  let listen = null; // текущее прослушивание: { sec, lastPos, sent, reported }
-  let scrobbled = false; // и отправили в Last.fm
+  let playReported = false;
+  let listen = null;
+  let scrobbled = false;
 
   function currentListen() {
     if (!listen) listen = { sec: 0, lastPos: null, sent: 0, reported: false };
     return listen;
   }
 
-  // Время игры копится по шагам позиции между timeupdate: перемотка
-  // (большой шаг или назад) и пауза не в счёт.
   function trackListen(el) {
     const l = currentListen();
     if (el.paused) {
@@ -42,7 +26,6 @@ export function createListenTracker(hooks, entry) {
     if (l.sec - l.sent >= LISTEN_FLUSH_SECONDS) flush();
   }
 
-  // Правило Last.fm: трек длиннее 30 с, дослушан до половины или до 4 минут.
   function maybeScrobble(el) {
     if (scrobbled || !hooks().onScrobble) return;
     const d = el.duration;
@@ -64,14 +47,12 @@ export function createListenTracker(hooks, entry) {
     hooks().onPlayed(e, play);
   }
 
-  /** timeupdate играющего элемента. */
   function tick(el) {
     trackListen(el);
     maybeScrobble(el);
     maybeReportPlay(el);
   }
 
-  /** Отправить накопленное время (пауза, уход со страницы). */
   function flush() {
     const l = listen;
     if (!l?.reported || !hooks().onListened || l.sec - l.sent < 1) return;
@@ -79,16 +60,11 @@ export function createListenTracker(hooks, entry) {
     hooks().onListened(l, Math.round(l.sec * 1000));
   }
 
-  /** Пауза: время до следующего timeupdate не в счёт. */
   function paused() {
     if (listen) listen.lastPos = null;
     flush();
   }
 
-  /**
-   * Прежнее прослушивание закончилось (другой трек, повтор): отправить его
-   * время и начать считать заново.
-   */
   function newPlay() {
     flush();
     listen = null;

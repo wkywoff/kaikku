@@ -1,7 +1,4 @@
 <script>
-  // Верхняя панель (компьютер; на телефоне вместо неё нижняя — BottomNav):
-  // логотип, «Главная» и «Медиатека» по бокам поля поиска — так поиск ровно
-  // по центру экрана, как у Spotify, — справа меню аккаунта.
   import { onMount } from 'svelte';
   import { navStore, paths, link } from '../stores/nav.js';
   import House from '@lucide/svelte/icons/house';
@@ -13,7 +10,6 @@
   let searchField;
 
   onMount(() => {
-    // «/» или Ctrl/Cmd+K — к поиску, как в Spotify и браузерах.
     const onGlobalKey = (e) => {
       const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
       if ((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey))) {
@@ -51,8 +47,6 @@
 </header>
 
 <style>
-  /* Колонки: логотип | Главная | поиск | Медиатека | аккаунт. Крайние — 1fr,
-     кнопки по бокам поиска одинаковые, поэтому поиск ровно по центру. */
   .topbar {
     height: var(--topbar-h);
     display: grid;
@@ -71,7 +65,6 @@
     justify-self: start;
     margin-right: 8px;
   }
-  /* Логотип — Unbounded (main.js), как в макетах названия. */
   .brand-name {
     font-family: var(--font-display);
     font-weight: 800;

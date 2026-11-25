@@ -1,8 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
-  <!-- kaikku («эхо» по-фински): K, ветки которой — звуковые волны. Этот файл —
-       иконка вкладки и логотип в интерфейсе: по одной волне на ветку, чтобы
-       читалось и в 16 px. Иконки приложения (с двумя волнами) — brand/*.svg,
-       PNG из них: см. frontend/README.md. -->
   <path d="M30 0 H70 C88 0 100 12 100 30 V70 C100 88 88 100 70 100 H30 C12 100 0 88 0 70 V30 C0 12 12 0 30 0 Z" fill="#FF4D2E" />
   <g fill="none" stroke="#141414" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
     <path d="M30 22 V78" />

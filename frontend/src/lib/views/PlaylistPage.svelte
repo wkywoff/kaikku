@@ -1,8 +1,4 @@
 <script>
-  // Плейлист: своя обложка или мозаика обложек, автор, треки. Владелец
-  // меняет данные (название, описание, обложка, публичный), перетаскивает
-  // треки и убирает их через меню «…»; добавляют треки из любого списка:
-  // «…» → «Добавить в плейлист». Лупа — поиск внутри плейлиста.
   import { api } from '../api.js';
   import { player, isPlaying as playerPlaying, shuffleOn } from '../stores/player.js';
   import { navStore, navigate, paths, link } from '../stores/nav.js';
@@ -43,7 +39,6 @@
   let filter = '';
   $: sort = $sortPrefs.playlist;
   $: shown = sortRows(filterRows(rows, filter), sort.key, sort.desc, $lang);
-  // Перетаскивать — только в своём порядке, как в Spotify.
   $: customOrder = sort.key === 'custom';
   $: sortOptions = [
     { key: 'custom', label: $t('sort.custom') },
@@ -75,7 +70,6 @@
     }
   }
 
-  // Вкладка: «Название – плейлист от автора | kaikku».
   $: if (playlist) setRouteTitle(`playlist:${$navStore.id}`, $t('title.playlist', { title: playlist.title, owner: playlist.owner.username }));
 
   $: playingHere = !!playlist && isContext($playingContext, 'playlist', playlist.id);
@@ -86,8 +80,6 @@
     if (rows.length) playRows(rows, null, { kind: 'playlist', id: playlist.id, title: playlist.title });
   }
 
-  // Перетащили трек: сразу на новом месте, на сервер — «встать перед
-  // следующим» (или в конец). Не вышло — перечитываем плейлист.
   async function onReorder({ from, to }) {
     const next = [...rows];
     const [moved] = next.splice(from, 1);
@@ -115,7 +107,6 @@
       });
     }
     if (playlist.is_public) items.push(shareItem(paths.playlist(playlist.id), playlist.title));
-    // Соавтор может выйти сам — плейлист пропадёт из его медиатеки.
     if (!playlist.mine && playlist.can_edit) items.push({ separator: true }, { label: $t('playlist.leave'), icon: LogOut, danger: true, onClick: leave });
     if (items.length) openMenu(e, items, { title: playlist.title, subtitle: playlist.owner.username, image: playlist.covers[0] || null });
   }
@@ -146,7 +137,7 @@
   function onSaved(e) {
     editing = false;
     playlist = { ...playlist, ...e.detail };
-    tint.from(playlist.covers[0] || null); // обложка могла смениться
+    tint.from(playlist.covers[0] || null);
     refreshPlaylists();
   }
 

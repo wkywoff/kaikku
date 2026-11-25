@@ -38,7 +38,7 @@ test('every path builder round-trips through parseRoute', () => {
 test('old /discover links still open the right page', () => {
   assert.deepEqual(parseRoute('/discover/artist/27'), { view: 'artist', id: '27' });
   assert.deepEqual(parseRoute('/discover/album/9'), { view: 'album', id: '9' });
-  assert.deepEqual(parseRoute('/upload/k3'), { view: 'releaseEdit', id: 'k3' }); // прежний адрес правки своего релиза
+  assert.deepEqual(parseRoute('/upload/k3'), { view: 'releaseEdit', id: 'k3' });
   assert.deepEqual(parseRoute('/discover', '?q=x'), { view: 'search', q: 'x' });
 });
 

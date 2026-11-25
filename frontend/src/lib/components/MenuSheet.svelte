@@ -1,8 +1,4 @@
 <script>
-  // Меню на телефоне — шторка снизу, как в Spotify: сверху — о чём меню
-  // (обложка, название), ниже крупные строки под палец. Подменю открывается
-  // на месте списка, со строкой «назад». Закрывается нажатием мимо, свайпом
-  // вниз, жестом «назад» (stores/contextMenu.js) и Esc (ContextMenu).
   import { onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
   import { cubicOut, quadIn } from 'svelte/easing';
@@ -18,28 +14,23 @@
   import Check from '@lucide/svelte/icons/check';
   import UserRound from '@lucide/svelte/icons/user-round';
 
-  export let menu; // { items, header } — см. stores/contextMenu.js
+  export let menu;
 
-  // Пока шторка уезжает, меню в хранилище уже нет — рисуем последнее.
   let shown = menu;
-  let sub = null; // пункт, чьё подменю открыто
+  let sub = null;
   $: if (menu && menu !== shown) {
     shown = menu;
     sub = null;
   }
   $: header = shown.header;
   $: list = sub ? sub.submenu : shown.items;
-  // Значки — одной колонкой: строкам без значка оставляем под него место,
-  // если в этом списке значки вообще есть.
   $: hasIcons = list.some((item) => item.icon || item.image !== undefined);
 
   let root;
   let backdrop;
   let listEl;
-  let dragY = 0; // на сколько шторку стянули вниз пальцем
+  let dragY = 0;
 
-  // Переход — когда шторка уехала: айфон снимает страницу для свайпа
-  // «назад» в момент перехода, и шторка осталась бы на снимке.
   let href = null;
   function leave() {
     if (!href) return;
@@ -60,10 +51,6 @@
     else item.onClick?.();
   }
 
-  // Меню открыли долгим нажатием — палец ещё на экране, а шторка уже под
-  // ним. Его отпускание — не нажатие: ни пункт под пальцем, ни закрытие.
-  // Считаются только нажатия, начатые на самой шторке (и Enter с клавиатуры:
-  // у такого click detail = 0).
   let pressed = false;
   function onClickCapture(e) {
     if (pressed || e.detail === 0) return;
@@ -80,12 +67,7 @@
     const h = node.offsetHeight;
     return { duration: 280, easing: cubicOut, css: (_t, u) => `transform: translate3d(0, ${u * h}px, 0)` };
   };
-  // Свайп от края экрана на iPhone мы забираем себе (edgeBack). Если
-  // системный «назад» всё же сработал, он сам увёл страницу со шторкой вбок:
-  // анимация закрытия после него показала бы шторку ещё раз — убираем сразу
-  // (как полноэкранный плеер).
   const gone = () => closedByBack() && appleTouch;
-  // Уезжает с того места, где её отпустили (dragY).
   const drop = (node) => {
     if (gone()) return { duration: 0 };
     const h = node.offsetHeight;
@@ -166,14 +148,14 @@
     position: absolute;
     inset: 0 0 calc(-1 * var(--bottom-overhang));
     background: rgba(0, 0, 0, 0.6);
-    touch-action: none; /* страница под шторкой не листается */
+    touch-action: none;
   }
   .sheet {
     position: relative;
     width: 100%;
     max-width: 560px;
     max-height: 85vh;
-    max-height: 85dvh; /* видимая высота: без адресной строки браузера */
+    max-height: 85dvh;
     display: flex;
     flex-direction: column;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
@@ -294,7 +276,6 @@
     width: 22px;
     flex-shrink: 0;
   }
-  /* Фото исполнителя вместо значка; без фото — кружок с человечком. */
   .pic {
     width: 36px;
     height: 36px;

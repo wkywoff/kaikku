@@ -1,6 +1,4 @@
 <script>
-  // Обложка во весь экран (как в Spotify по клику на артворк альбома).
-  // Закрывается кнопкой, Esc или кликом мимо картинки.
   import { modal } from '../modal.js';
   import { sized } from '../imageproxy.js';
   import { onMount, createEventDispatcher } from 'svelte';
@@ -42,13 +40,11 @@
   }
   img {
     width: min(640px, 86vw, calc(100vh - 140px));
-    width: min(640px, 86vw, calc(100dvh - 140px)); /* видимая высота, без адресной строки */
+    width: min(640px, 86vw, calc(100dvh - 140px));
     aspect-ratio: 1;
     object-fit: cover;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
   }
-  /* На телефоне мини-плеер и нижняя панель видны поверх (lib/modal.js) —
-     обложка по центру места над ними, а не всего экрана. */
   @media (max-width: 768px) {
     .backdrop {
       --below: calc(var(--tabbar-h) + 68px + env(safe-area-inset-bottom));

@@ -1,9 +1,4 @@
 <script>
-  // Данные плейлиста (владелец): обложка, название, описание, публичный
-  // или нет, соавторы (из друзей), удаление. Публичный видят и слушают все пользователи
-  // сервиса. Без своей обложки — мозаика из обложек треков. Соавторы
-  // меняются сразу, без «Сохранить»: они добавляют, убирают и
-  // переставляют треки, название и обложку меняет только владелец.
   import { modal } from '../modal.js';
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { fade, scale } from 'svelte/transition';
@@ -16,7 +11,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
-  export let playlist; // { id, title, description, is_public, covers, custom_cover, collaborators }
+  export let playlist;
 
   const dispatch = createEventDispatcher();
   let title = playlist.title;
@@ -25,8 +20,6 @@
   let busy = false;
   let error = '';
 
-  // Соавторы — из друзей (подписаны друг на друга, UserPage); уже позванные
-  // остаются в списке, даже если дружба кончилась, — чтобы их можно было убрать.
   let users = [];
   let loadedPeople = false;
   let collab = new Set((playlist.collaborators || []).map((u) => u.id));
@@ -60,7 +53,6 @@
     }
   }
 
-  // Обложка: newImage — выбранная (Blob), removeCover — убрать свою.
   let newImage = null;
   let newImageUrl = null;
   let removeCover = false;
@@ -239,7 +231,7 @@
   }
   .dialog {
     width: min(560px, 100%);
-    max-height: 100%; /* по видимой высоте окна (в отступах подложки), а не 100vh — во вкладке браузера адресная строка её отъедает */
+    max-height: 100%;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
