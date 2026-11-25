@@ -217,6 +217,11 @@
     color: var(--text-dim);
   }
   .user .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 500;
   }
   .backdrop {
