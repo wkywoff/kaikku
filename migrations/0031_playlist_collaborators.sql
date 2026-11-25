@@ -1,7 +1,3 @@
--- Совместные плейлисты (internal/api/playlist_collab.go): владелец зовёт
--- соавторов — они добавляют, убирают и переставляют треки; название,
--- обложку и удаление плейлиста меняет только владелец. added_by — кто
--- добавил трек (у прежних — владелец плейлиста).
 CREATE TABLE playlist_collaborators (
     playlist_id UUID NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

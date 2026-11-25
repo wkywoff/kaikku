@@ -1,7 +1,3 @@
--- Last.fm: привязка аккаунта и очередь скробблов.
---
--- lastfm_links — ключ сессии Last.fm (бессрочный, пока человек не уберёт
--- доступ на last.fm) и что отправлять: скробблы и ♥ из «Любимых».
 CREATE TABLE lastfm_links (
     user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     username    TEXT NOT NULL,
@@ -11,9 +7,6 @@ CREATE TABLE lastfm_links (
     linked_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- lastfm_queue — скробблы, которые ещё не дошли: API отправляет их сразу,
--- а если Last.fm недоступен — повторяет позже (next_try). Last.fm не берёт
--- скробблы старше двух недель — такие выбрасываются.
 CREATE TABLE lastfm_queue (
     id        BIGSERIAL PRIMARY KEY,
     user_id   UUID NOT NULL REFERENCES lastfm_links(user_id) ON DELETE CASCADE,

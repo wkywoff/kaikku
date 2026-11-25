@@ -1,6 +1,3 @@
--- Кеш ответов Deezer, который переживает перезапуск (internal/deezer/pgstore.go):
--- треки, альбомы, треклисты, страницы артистов. Устаревшее удаляет
--- уборка воркера (ingest.Housekeep).
 CREATE TABLE deezer_cache (
     key        TEXT PRIMARY KEY,
     data       JSONB NOT NULL,

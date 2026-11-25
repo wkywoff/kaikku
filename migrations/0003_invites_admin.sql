@@ -1,6 +1,3 @@
--- Регистрация только по приглашению; первый (самый ранний) пользователь —
--- админ: он создаёт приглашения и может править/удалять каталог.
-
 ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT false;
 UPDATE users SET is_admin = true
  WHERE id = (SELECT id FROM users ORDER BY created_at LIMIT 1);

@@ -1,5 +1,3 @@
--- Подписки между людьми (internal/api/profiles.go): взаимная подписка —
--- «друзья», только их владелец зовёт в соавторы плейлиста.
 CREATE TABLE user_follows (
     follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     followee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -1,6 +1,3 @@
--- Требует PostgreSQL 13+ (gen_random_uuid() встроена в ядро с 13-й версии,
--- отдельного pgcrypto не нужно).
-
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE users (
@@ -31,7 +28,7 @@ CREATE INDEX idx_albums_artist ON albums (artist_id);
 CREATE TABLE tracks (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     album_id      UUID REFERENCES albums(id) ON DELETE CASCADE,
-    artist_id     UUID REFERENCES artists(id), -- per-track исполнитель (сборники/фиты); NULL -> UI берёт album.artist_id
+    artist_id     UUID REFERENCES artists(id),
     title         TEXT NOT NULL,
     duration_ms   INTEGER NOT NULL,
     track_no      INTEGER,
@@ -54,7 +51,7 @@ CREATE INDEX idx_playlists_user ON playlists (user_id);
 CREATE TABLE playlist_tracks (
     playlist_id UUID REFERENCES playlists(id) ON DELETE CASCADE,
     track_id    UUID REFERENCES tracks(id) ON DELETE CASCADE,
-    position    DOUBLE PRECISION NOT NULL, -- дробные позиции: вставка без reindex всего плейлиста
+    position    DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (playlist_id, track_id)
 );
 
@@ -73,30 +70,24 @@ CREATE TABLE play_history (
 );
 CREATE INDEX idx_play_history_user ON play_history (user_id, played_at DESC);
 
--- ingest_jobs — очередь "найти на YouTube и скачать". source_ref — дедуп ДО
--- обращения к Deezer/yt-dlp; метаданные резолвятся из Deezer в момент
--- постановки в очередь и используются воркером напрямую.
 CREATE TABLE ingest_jobs (
     id                BIGSERIAL PRIMARY KEY,
     requested_by      UUID REFERENCES users(id),
-    source_ref        TEXT NOT NULL UNIQUE,             -- напр. 'deezer:3135556'
+    source_ref        TEXT NOT NULL UNIQUE,
     title             TEXT NOT NULL,
     artist_name       TEXT NOT NULL,
-    album_artist_name TEXT NOT NULL,                    -- отдельно от artist_name — важно для сборников/фитов
+    album_artist_name TEXT NOT NULL,
     album_title       TEXT NOT NULL,
     track_no          INTEGER,
-    duration_ms       INTEGER NOT NULL,                 -- эталонная длительность для матчинга с YouTube
-    cover_url         TEXT,                              -- обложка из Deezer — скачивается воркером
-    status            TEXT NOT NULL DEFAULT 'pending',   -- pending/processing/done/failed
+    duration_ms       INTEGER NOT NULL,
+    cover_url         TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending',
     error             TEXT,
     result_track_id   UUID REFERENCES tracks(id),
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- search_vector — конфиг 'simple' (без стемминга/стоп-слов), см. design doc §7:
--- мультиязычный каталог + короткие тайтлы-омонимы стоп-слов делают
--- языкоспецифичные конфиги контрпродуктивными здесь.
 CREATE OR REPLACE FUNCTION tracks_search_vector_update() RETURNS trigger AS $$
 BEGIN
     NEW.search_vector := to_tsvector('simple', NEW.title);
