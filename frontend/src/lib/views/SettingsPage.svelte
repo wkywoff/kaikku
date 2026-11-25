@@ -11,6 +11,8 @@
   import { me as meStore } from '../stores/me.js';
   import { directAudio } from '../stores/player.js';
   import { navigate, paths } from '../stores/nav.js';
+  import Switch from '../components/Switch.svelte';
+  import Segmented from '../components/Segmented.svelte';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import Copy from '@lucide/svelte/icons/copy';
 
@@ -140,11 +142,7 @@
       <div class="label">
         <span>{$t('settings.languageHint')}</span>
       </div>
-      <div class="segmented" role="radiogroup" aria-label={$t('settings.language')}>
-        {#each languages as [code, name]}
-          <button role="radio" aria-checked={$settings.lang === code} class:active={$settings.lang === code} on:click={() => settings.set('lang', code)}>{name}</button>
-        {/each}
-      </div>
+      <Segmented options={languages} value={$settings.lang} label={$t('settings.language')} on:change={(e) => settings.set('lang', e.detail)} />
     </div>
   </section>
 
@@ -156,9 +154,7 @@
         <span>{$t('settings.crossfade')}</span>
         <small>{$t('settings.crossfadeHint')}</small>
       </div>
-      <button class="switch" role="switch" aria-checked={$settings.crossfade && !directAudio} aria-label={$t('settings.crossfade')} disabled={directAudio} on:click={() => settings.set('crossfade', !$settings.crossfade)}>
-        <span class="knob"></span>
-      </button>
+      <Switch checked={$settings.crossfade && !directAudio} label={$t('settings.crossfade')} disabled={directAudio} on:click={() => settings.set('crossfade', !$settings.crossfade)} />
     </div>
     <div class="row" class:disabled={!$settings.crossfade || directAudio}>
       <div class="label"><span>{$t('settings.crossfadeSeconds')}</span></div>
@@ -181,18 +177,14 @@
         <span>{$t('settings.normalize')}</span>
         <small>{$t('settings.normalizeHint')}</small>
       </div>
-      <button class="switch" role="switch" aria-checked={$settings.normalize && !directAudio} aria-label={$t('settings.normalize')} disabled={directAudio} on:click={() => settings.set('normalize', !$settings.normalize)}>
-        <span class="knob"></span>
-      </button>
+      <Switch checked={$settings.normalize && !directAudio} label={$t('settings.normalize')} disabled={directAudio} on:click={() => settings.set('normalize', !$settings.normalize)} />
     </div>
     <div class="row">
       <div class="label">
         <span>{$t('settings.autoplay')}</span>
         <small>{$t('settings.autoplayHint')}</small>
       </div>
-      <button class="switch" role="switch" aria-checked={$settings.autoplay} aria-label={$t('settings.autoplay')} on:click={() => settings.set('autoplay', !$settings.autoplay)}>
-        <span class="knob"></span>
-      </button>
+      <Switch checked={$settings.autoplay} label={$t('settings.autoplay')} on:click={() => settings.set('autoplay', !$settings.autoplay)} />
     </div>
   </section>
 
@@ -200,42 +192,28 @@
     <h2>{$t('settings.display')}</h2>
     <div class="row">
       <div class="label"><span>{$t('settings.trackView')}</span></div>
-      <div class="segmented" role="radiogroup" aria-label={$t('settings.trackView')}>
-        {#each ['compact', 'list'] as view}
-          <button role="radio" aria-checked={$settings.trackView === view} class:active={$settings.trackView === view} on:click={() => settings.set('trackView', view)}>{$t(`view.${view}`)}</button>
-        {/each}
-      </div>
+      <Segmented options={['compact', 'list'].map((v) => [v, $t(`view.${v}`)])} value={$settings.trackView} label={$t('settings.trackView')} on:change={(e) => settings.set('trackView', e.detail)} />
     </div>
     <div class="row">
       <div class="label">
         <span>{$t('settings.pageTint')}</span>
         <small>{$t('settings.pageTintHint')}</small>
       </div>
-      <div class="segmented" role="radiogroup" aria-label={$t('settings.pageTint')}>
-        {#each ['full', 'header'] as mode}
-          <button role="radio" aria-checked={$settings.pageTint === mode} class:active={$settings.pageTint === mode} on:click={() => settings.set('pageTint', mode)}>{$t(`settings.pageTint.${mode}`)}</button>
-        {/each}
-      </div>
+      <Segmented options={['full', 'header'].map((v) => [v, $t(`settings.pageTint.${v}`)])} value={$settings.pageTint} label={$t('settings.pageTint')} on:change={(e) => settings.set('pageTint', e.detail)} />
     </div>
     <div class="row">
       <div class="label">
         <span>{$t('settings.animatedBg')}</span>
         <small>{$t('settings.animatedBgHint')}</small>
       </div>
-      <button class="switch" role="switch" aria-checked={$settings.animatedBg} aria-label={$t('settings.animatedBg')} on:click={() => settings.set('animatedBg', !$settings.animatedBg)}>
-        <span class="knob"></span>
-      </button>
+      <Switch checked={$settings.animatedBg} label={$t('settings.animatedBg')} on:click={() => settings.set('animatedBg', !$settings.animatedBg)} />
     </div>
     <div class="row">
       <div class="label">
         <span>{$t('settings.playerTint')}</span>
         <small>{$t('settings.playerTintHint')}</small>
       </div>
-      <div class="segmented" role="radiogroup" aria-label={$t('settings.playerTint')}>
-        {#each ['full', 'plate', 'off'] as mode}
-          <button role="radio" aria-checked={$settings.playerTint === mode} class:active={$settings.playerTint === mode} on:click={() => settings.set('playerTint', mode)}>{$t(`settings.playerTint.${mode}`)}</button>
-        {/each}
-      </div>
+      <Segmented options={['full', 'plate', 'off'].map((v) => [v, $t(`settings.playerTint.${v}`)])} value={$settings.playerTint} label={$t('settings.playerTint')} on:change={(e) => settings.set('playerTint', e.detail)} />
     </div>
   </section>
 
@@ -255,18 +233,14 @@
             <span>{$t('lastfm.scrobble')}</span>
             <small>{$t('lastfm.scrobbleHint')}</small>
           </div>
-          <button class="switch" role="switch" aria-checked={lastfm.scrobble} aria-label={$t('lastfm.scrobble')} disabled={lastfmBusy} on:click={() => setLastfm({ scrobble: !lastfm.scrobble })}>
-            <span class="knob"></span>
-          </button>
+          <Switch checked={lastfm.scrobble} label={$t('lastfm.scrobble')} disabled={lastfmBusy} on:click={() => setLastfm({ scrobble: !lastfm.scrobble })} />
         </div>
         <div class="row">
           <div class="label">
             <span>{$t('lastfm.love')}</span>
             <small>{$t('lastfm.loveHint')}</small>
           </div>
-          <button class="switch" role="switch" aria-checked={lastfm.love} aria-label={$t('lastfm.love')} disabled={lastfmBusy} on:click={() => setLastfm({ love: !lastfm.love })}>
-            <span class="knob"></span>
-          </button>
+          <Switch checked={lastfm.love} label={$t('lastfm.love')} disabled={lastfmBusy} on:click={() => setLastfm({ love: !lastfm.love })} />
         </div>
       {:else}
         <div class="row">
@@ -473,49 +447,6 @@
   .label small {
     font-size: 13px;
     color: var(--text-dim);
-  }
-  .switch {
-    flex-shrink: 0;
-    width: 40px;
-    height: 24px;
-    border-radius: 999px;
-    background: #727272;
-    position: relative;
-    transition: background-color 0.15s;
-  }
-  .switch[aria-checked='true'] {
-    background: var(--player-accent, var(--accent));
-  }
-  .knob {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #000;
-    transition: transform 0.15s;
-  }
-  .switch[aria-checked='true'] .knob {
-    transform: translateX(16px);
-  }
-  .segmented {
-    flex-shrink: 0;
-    display: flex;
-    gap: 4px;
-    padding: 4px;
-    border-radius: 999px;
-    background: var(--bg-card);
-  }
-  .segmented button {
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-  .segmented button.active {
-    background: var(--text);
-    color: var(--bg);
   }
   .range {
     display: flex;

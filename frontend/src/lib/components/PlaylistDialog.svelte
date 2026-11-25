@@ -6,6 +6,7 @@
   import { t } from '../i18n.js';
   import { toSquareJpeg } from '../image.js';
   import Artwork from './Artwork.svelte';
+  import Switch from './Switch.svelte';
   import X from '@lucide/svelte/icons/x';
   import ImagePlus from '@lucide/svelte/icons/image-plus';
   import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -158,9 +159,7 @@
         <span>{$t('playlist.public')}</span>
         <small>{$t('playlist.publicHint')}</small>
       </div>
-      <button type="button" class="switch" role="switch" aria-checked={isPublic} aria-label={$t('playlist.public')} on:click={() => (isPublic = !isPublic)}>
-        <span class="knob"></span>
-      </button>
+      <Switch checked={isPublic} label={$t('playlist.public')} on:click={() => (isPublic = !isPublic)} />
     </div>
 
     {#if loadedPeople}
@@ -172,17 +171,7 @@
         {#each users as u (u.id)}
           <div class="row user">
             <span class="name">{u.username}</span>
-            <button
-              type="button"
-              class="switch"
-              role="switch"
-              aria-checked={collab.has(u.id)}
-              aria-label={$t('playlist.collaborator', { name: u.username })}
-              disabled={!!collabBusy}
-              on:click={() => toggleCollaborator(u)}
-            >
-              <span class="knob"></span>
-            </button>
+            <Switch checked={collab.has(u.id)} label={$t('playlist.collaborator', { name: u.username })} disabled={!!collabBusy} on:click={() => toggleCollaborator(u)} />
           </div>
         {/each}
       </div>
@@ -375,31 +364,6 @@
   .label small {
     font-size: 13px;
     color: var(--text-dim);
-  }
-  .switch {
-    position: relative;
-    width: 40px;
-    height: 24px;
-    flex-shrink: 0;
-    border-radius: 999px;
-    background: #535353;
-    transition: background 0.15s;
-  }
-  .switch[aria-checked='true'] {
-    background: var(--ok);
-  }
-  .knob {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #fff;
-    transition: transform 0.15s;
-  }
-  .switch[aria-checked='true'] .knob {
-    transform: translateX(16px);
   }
   .footer {
     display: flex;

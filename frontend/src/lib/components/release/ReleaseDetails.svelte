@@ -3,6 +3,7 @@
   import { t } from '../../i18n.js';
   import { RECORD_TYPES } from '../../uploads.js';
   import ArtistPicker from '../upload/ArtistPicker.svelte';
+  import Segmented from '../Segmented.svelte';
 
   export let title = '';
   export let artists = [];
@@ -30,13 +31,13 @@
   </div>
   <div class="row2">
     <div class="field">
-      <span class="label" id="release-type">{$t('upload.type')}{#if required}{' '}<b class="req">*</b>{/if}</span>
-      <div class="segmented" role="radiogroup" aria-labelledby="release-type">
-        {#each RECORD_TYPES as type}
-          <button type="button" role="radio" aria-checked={recordType === type} class:active={recordType === type}
-            on:click={() => ((recordType = type), dispatch('type'))}>{$t(`type.${type}`)}</button>
-        {/each}
-      </div>
+      <span class="label">{$t('upload.type')}{#if required}{' '}<b class="req">*</b>{/if}</span>
+      <Segmented
+        options={RECORD_TYPES.map((type) => [type, $t(`type.${type}`)])}
+        value={recordType}
+        label={$t('upload.type')}
+        on:change={(e) => ((recordType = e.detail), dispatch('type'))}
+      />
       {#if typeAuto}<small>{$t('upload.typeAuto')}</small>{/if}
     </div>
     <label class="field">
@@ -45,31 +46,3 @@
     </label>
   </div>
 </section>
-
-<style>
-  .segmented {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.25);
-    width: fit-content;
-  }
-  .segmented button {
-    padding: 7px 14px;
-    border-radius: 999px;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-  .segmented button.active {
-    background: var(--text);
-    color: var(--bg);
-  }
-  @media (max-width: 720px) {
-    .segmented button {
-      padding: 6px 10px;
-      font-size: 13px;
-    }
-  }
-</style>
