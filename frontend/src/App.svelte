@@ -14,6 +14,7 @@
   import { loadCollection } from './lib/stores/collection.js';
   import { closeMenu } from './lib/stores/contextMenu.js';
   import ContextMenu from './lib/components/ContextMenu.svelte';
+  import AccountDialogs from './lib/components/AccountDialogs.svelte';
   import Toast from './lib/components/Toast.svelte';
   import StatusBanner from './lib/components/StatusBanner.svelte';
   import { lang, settings } from './lib/stores/settings.js';
@@ -255,6 +256,7 @@
   {/if}
 
   <ContextMenu />
+  <AccountDialogs />
   <Toast />
 
   {#if fullView && hasTrack && loaded.nowPlaying}
