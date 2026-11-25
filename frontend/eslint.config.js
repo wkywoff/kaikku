@@ -13,6 +13,7 @@ export default [
   { files: ['test/**', '*.config.js'], languageOptions: { globals: globals.node } },
   {
     rules: {
+      'no-empty': ['error', { allowEmptyCatch: true }],
       // `_` и `({ source, ...rest }) => rest` — нарочно отброшенные значения.
       'no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_', ignoreRestSiblings: true }],
       // Ключ меняет то, как Svelte переиспользует строки списка, а в очереди
