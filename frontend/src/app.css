@@ -10,7 +10,18 @@
   --text-dim: #b3b3b3;
   --text-faint: #7a7a7a;
   --danger: #f15e6c;
+  --danger-fill: #c9283a;
+  --info-fill: #3d91f4;
+  --warn: #ffb95c;
   --ok: #1ed760;
+
+  --surface: #282828;
+  --raised: #2e2e2e;
+  --raised-hover: #3a3a3a;
+  --field: #3e3e3e;
+  --field-focus: #333333;
+  --field-line: #6a6a6a;
+  --switch-off: #535353;
 
   --accent: #e8e8e8;
   --accent-text: #121212;
@@ -19,6 +30,8 @@
   --font-display: 'Unbounded', 'Onest Variable', system-ui, sans-serif;
 
   --radius: 8px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
   --topbar-h: 64px;
   --player-h: 88px;
   --tabbar-h: 56px;
@@ -211,6 +224,111 @@ input {
   .pill.outline:hover:not(:disabled) {
     border-color: var(--text);
   }
+}
+
+.pill.primary {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 700;
+}
+@media (hover: hover) {
+  .pill.primary:hover:not(:disabled) {
+    background: var(--accent);
+  }
+}
+.pill.lg {
+  height: 40px;
+  padding: 0 20px;
+  font-weight: 700;
+}
+label.pill {
+  cursor: pointer;
+}
+label.pill.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-btn.big {
+  width: 44px;
+  height: 44px;
+}
+
+.text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+@media (hover: hover) {
+  .text-btn:hover:not(:disabled) {
+    color: var(--text);
+    text-decoration: underline;
+  }
+  .text-btn.danger:hover:not(:disabled) {
+    color: var(--danger);
+    text-decoration: none;
+  }
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-press);
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.chip.live {
+  background: rgba(30, 215, 96, 0.15);
+  color: var(--ok);
+}
+.chip.warn {
+  background: rgba(255, 170, 60, 0.14);
+  color: var(--warn);
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  color-scheme: dark;
+}
+textarea.input {
+  height: auto;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--field-line);
+  background: var(--field-focus);
+}
+.input.invalid {
+  border-color: var(--danger);
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+.sections > * {
+  min-width: 0;
 }
 
 .spin {
