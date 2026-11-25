@@ -8,6 +8,7 @@ import {
   releasesCount,
   longDuration,
   year,
+  dayMonth,
   shortDate,
   compactNumber,
   fansLabel,
@@ -45,7 +46,11 @@ test('year ignores Deezer placeholder dates', () => {
   assert.equal(year(undefined), '');
 });
 
-test('date a song was added', () => {
+test('release day without the year, date a song was added', () => {
+  assert.equal(dayMonth('2026-10-30'), '30 октября');
+  assert.equal(dayMonth('2026-10-30', 'en'), 'October 30');
+  assert.equal(dayMonth('0000-00-00'), '');
+  assert.equal(dayMonth(undefined), '');
   assert.match(shortDate('2026-08-14T12:00:00Z'), /^14 авг\. 2026/);
   assert.equal(shortDate('2026-08-14T12:00:00Z', 'en'), 'Aug 14, 2026');
   assert.equal(shortDate(null), '');

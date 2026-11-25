@@ -20,8 +20,8 @@
   import { openMenu } from '../stores/contextMenu.js';
   import { longpress } from '../longpress.js';
   import { rowFromDeezerTrack } from '../rows.js';
-  import { fansLabel, recordCategory, recordTypeLabel, releasesCount, tracksCount, year } from '../format.js';
-  import { countLiked } from '../artistHighlights.js';
+  import { dayMonth, fansLabel, recordCategory, recordTypeLabel, releasesCount, tracksCount, year } from '../format.js';
+  import { countLiked, latestRelease } from '../artistHighlights.js';
   import Hero from '../components/Hero.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import TrackList from '../components/TrackList.svelte';
@@ -36,6 +36,7 @@
   import Shuffle from '@lucide/svelte/icons/shuffle';
 
   const BESIDE_POPULAR_MIN = 1000;
+  const SIDE_BY_SIDE_MIN = 1500;
   const NOTHING_LIKED = { tracks: [], albums: [] };
 
   let artist = null;
@@ -120,9 +121,11 @@
   $: perRow = gridWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(gridWidth / 176)));
   $: visible = shown.slice(0, perRow);
   $: relatedVisible = relatedExpanded ? related : related.slice(0, perRow);
+  $: latest = latestRelease(albums);
   $: likedSongs = $collectionLoaded ? countLiked($likedIds, liked.tracks, top.map((r) => r.deezerId)) : liked.tracks.length;
   $: likedReleases = $collectionLoaded ? countLiked($savedAlbumIds, liked.albums, albums.map((a) => a.id)) : liked.albums.length;
   $: likedLabel = [likedSongs && tracksCount(likedSongs, $lang), likedReleases && releasesCount(likedReleases, $lang)].filter(Boolean).join(' • ');
+  $: latestLabel = latest ? [recordTypeLabel(latest.record_type, $lang), dayMonth(latest.release_date, $lang)].join(' • ') : '';
   $: following = !!artist && $followedIds.has(artist.id);
 
   function artistMenu(e) {
@@ -185,19 +188,31 @@
     {/await}
   {/if}
 
-  {#if top.length || likedLabel}
+  {#if top.length || latest || likedLabel}
     <div class="page-pad">
-      <div class="lead" class:beside={top.length && leadWidth >= BESIDE_POPULAR_MIN} bind:clientWidth={leadWidth}>
-        {#if likedLabel}
+      <div class="lead" class:beside={top.length && leadWidth >= BESIDE_POPULAR_MIN} class:side-by-side={top.length && leadWidth >= SIDE_BY_SIDE_MIN} bind:clientWidth={leadWidth}>
+        {#if latest || likedLabel}
           <div class="highlights">
-            <ArtistHighlight
-              href={paths.artistLiked(artist.id)}
-              label={$t('artist.youLiked')}
-              title={likedLabel}
-              subtitle={$t('artist.likedBy', { name: artist.name })}
-              image={artist.picture_url}
-              liked
-            />
+            {#if likedLabel}
+              <ArtistHighlight
+                href={paths.artistLiked(artist.id)}
+                label={$t('artist.youLiked')}
+                title={likedLabel}
+                subtitle={$t('artist.likedBy', { name: artist.name })}
+                image={artist.picture_url}
+                liked
+              />
+            {/if}
+            {#if latest}
+              <ArtistHighlight
+                href={paths.album(latest.id)}
+                label={$t('artist.latestRelease')}
+                title={latest.title}
+                subtitle={latestLabel}
+                image={latest.cover_url}
+                menu={() => albumMenuItems(latest)}
+              />
+            {/if}
           </div>
         {/if}
         {#if top.length}
@@ -352,6 +367,12 @@
     flex-shrink: 0;
     grid-template-columns: 300px;
     gap: 40px;
+  }
+  .side-by-side .highlights {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 300px;
+    gap: 24px;
   }
   h2 {
     font-size: 24px;

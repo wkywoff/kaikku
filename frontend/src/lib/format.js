@@ -71,6 +71,11 @@ export function longDate(date, lang = 'ru') {
   return d.toLocaleDateString(locale(lang), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+export function dayMonth(date, lang = 'ru') {
+  if (!year(date)) return '';
+  return new Date(`${date}T00:00:00`).toLocaleDateString(locale(lang), { day: 'numeric', month: 'long' });
+}
+
 export function shortDate(time, lang = 'ru') {
   if (!time) return '';
   return new Date(time).toLocaleDateString(locale(lang), { day: 'numeric', month: 'short', year: 'numeric' });
