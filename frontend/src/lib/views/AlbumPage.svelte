@@ -203,7 +203,7 @@
 
   {#if album.draft}
     <div class="draft-note page-pad">
-      <span>{$t('upload.draftNote')}</span>
+      <span class="chip">{$t('upload.draftNote')}</span>
       {#if album.editable}<a href={paths.releaseEdit(album.deezerId)} use:link>{$t('upload.continue')}</a>{/if}
     </div>
   {/if}
@@ -298,12 +298,6 @@
     margin-top: 16px;
     font-size: 14px;
     color: var(--text-dim);
-  }
-  .draft-note span {
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: var(--bg-press);
-    color: var(--text);
   }
   .draft-note a {
     font-weight: 700;

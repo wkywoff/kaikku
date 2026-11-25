@@ -11,7 +11,7 @@
   <div class="banner update" role="status">
     <RefreshCw size={16} />
     <span>{$t('status.update')}</span>
-    <button class="pill" on:click={() => location.reload()}>{$t('status.reload')}</button>
+    <button class="pill primary" on:click={() => location.reload()}>{$t('status.reload')}</button>
   </div>
 {/if}
 
@@ -31,21 +31,10 @@
     color: var(--text-dim);
   }
   .update {
-    background: #3d91f4;
+    background: var(--info-fill);
     color: #fff;
   }
   .update span {
     flex: 1;
-  }
-  .update .pill {
-    height: 28px;
-    background: #fff;
-    color: #121212;
-    font-weight: 700;
-  }
-  @media (hover: hover) {
-    .update .pill:hover {
-      background: #fff;
-    }
   }
 </style>

@@ -68,7 +68,7 @@
     width: 100%;
     aspect-ratio: 1;
     border-radius: 8px;
-    border: 2px dashed #4a4a4a;
+    border: 2px dashed var(--line);
     overflow: hidden;
     transition: border-color 0.15s;
   }
@@ -130,7 +130,7 @@
       opacity: 0.35;
     }
     .cover:not(.filled):hover {
-      border-color: #6a6a6a;
+      border-color: var(--field-line);
     }
   }
   .cover-busy {

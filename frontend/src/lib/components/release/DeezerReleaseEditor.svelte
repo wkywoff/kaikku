@@ -229,9 +229,9 @@
 
 <EditShell backHref={paths.album(id)} backLabel={$t('edit.backToRelease')} title={title.trim() || item?.title || ''} legend={$t('edit.deezerLegend')} {loading} {error}>
   <svelte:fragment slot="chips">
-    <span class="state">Deezer</span>
-    {#if item?.edited || item?.cover_custom}<span class="state">{$t('edit.editedChip')}</span>{/if}
-    {#if hidden}<span class="state warn"><EyeOff size={14} /> {$t('edit.hiddenChip')}</span>{/if}
+    <span class="chip">Deezer</span>
+    {#if item?.edited || item?.cover_custom}<span class="chip">{$t('edit.editedChip')}</span>{/if}
+    {#if hidden}<span class="chip warn"><EyeOff size={14} /> {$t('edit.hiddenChip')}</span>{/if}
   </svelte:fragment>
 
   <svelte:fragment slot="side">
@@ -265,7 +265,7 @@
     <p class="status">{$t(dirty ? 'upload.unsaved' : 'edit.allSaved')}</p>
     <div class="buttons">
       <button type="button" class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.more')} on:click={moreMenu}><Ellipsis size={22} /></button>
-      <button type="button" class="pill primary" disabled={!dirty || saving} on:click={save}>
+      <button type="button" class="pill primary lg" disabled={!dirty || saving} on:click={save}>
         {#if saving}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.save')}
       </button>
     </div>

@@ -1,7 +1,7 @@
 <script>
   import { link } from '../../stores/nav.js';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-  import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+  import Skeleton from '../Skeleton.svelte';
 
   export let backHref;
   export let backLabel;
@@ -17,7 +17,7 @@
   {#if error}
     <p class="error-text">{error}</p>
   {:else if loading}
-    <div class="loading"><LoaderCircle class="spin" size={24} /></div>
+    <Skeleton kind="rows" />
   {:else}
     <header class="head">
       <div class="head-text">
@@ -29,7 +29,7 @@
 
     <div class="layout">
       <aside class="side"><slot name="side" /></aside>
-      <div class="sections"><slot /></div>
+      <div class="cards"><slot /></div>
     </div>
   {/if}
 </div>
@@ -59,10 +59,6 @@
     .back:hover {
       color: var(--text);
     }
-  }
-  .loading {
-    padding: 48px 0;
-    color: var(--text-dim);
   }
   .head {
     display: flex;
@@ -94,26 +90,6 @@
     flex-shrink: 0;
     padding-top: 6px;
   }
-  .chips :global(.state) {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    border-radius: 999px;
-    background: var(--bg-press);
-    font-size: 13px;
-    color: var(--text-dim);
-    white-space: nowrap;
-  }
-  .chips :global(.state.live) {
-    background: rgba(30, 215, 96, 0.15);
-    color: var(--ok);
-  }
-  .chips :global(.state.warn) {
-    background: rgba(255, 170, 60, 0.14);
-    color: #ffb95c;
-  }
-
   .layout {
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
@@ -127,7 +103,7 @@
     flex-direction: column;
     gap: 10px;
   }
-  .sections {
+  .cards {
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -143,7 +119,7 @@
     flex-direction: column;
     gap: 22px;
     padding: 24px;
-    border-radius: 12px;
+    border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.035);
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
@@ -190,25 +166,8 @@
     gap: 20px;
     align-items: start;
   }
-  .release-edit :global(.field input[type='text']),
-  .release-edit :global(.field input[type='date']) {
-    height: 42px;
-    padding: 0 12px;
-    border-radius: 6px;
-    border: 1px solid transparent;
-    background: #3a3a3a;
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-    color-scheme: dark;
-  }
-  .release-edit :global(.field input:focus) {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
-  }
-  .release-edit :global(.field input.invalid) {
-    border-color: var(--danger);
+  .release-edit :global(.field input.input) {
+    width: 100%;
   }
   .release-edit :global(.link-row) {
     display: flex;
@@ -218,15 +177,6 @@
     flex: 1;
     min-width: 0;
   }
-  .release-edit :global(.link-row .pill) {
-    height: 42px;
-    padding: 0 18px;
-    font-weight: 700;
-  }
-  .release-edit :global(.pill:disabled) {
-    opacity: 0.5;
-  }
-
   .savebar {
     position: sticky;
     bottom: 0;
@@ -273,25 +223,6 @@
     gap: 8px;
     flex-shrink: 0;
   }
-  .savebar-in :global(.buttons .pill) {
-    height: 40px;
-    padding: 0 20px;
-    font-weight: 700;
-  }
-  .savebar-in :global(.pill.primary) {
-    background: var(--text);
-    color: var(--bg);
-  }
-  @media (hover: hover) {
-    .savebar-in :global(.pill.primary:hover:not(:disabled)) {
-      background: var(--text);
-      transform: scale(1.04);
-    }
-  }
-  .savebar-in :global(.pill:disabled) {
-    opacity: 0.5;
-  }
-
   @media (max-width: 768px) {
     .savebar {
       bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
@@ -343,7 +274,7 @@
       padding-top: 0;
     }
     h1 {
-      font-size: 24px;
+      font-size: 26px;
     }
     .release-edit :global(.card) {
       padding: 16px;

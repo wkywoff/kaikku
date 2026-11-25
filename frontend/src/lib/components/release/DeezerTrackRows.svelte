@@ -178,9 +178,9 @@
         <div class="replace field">
           <div class="link-row">
             <!-- svelte-ignore a11y_autofocus -->
-            <input type="text" bind:value={link} placeholder={$t('edit.trackLink')} aria-label={$t('edit.replaceTrack')} autofocus
+            <input class="input" type="text" bind:value={link} placeholder={$t('edit.trackLink')} aria-label={$t('edit.replaceTrack')} autofocus
               on:keydown={(e) => (e.key === 'Enter' && (e.preventDefault(), replace())) || (e.key === 'Escape' && (replacing = -1))} />
-            <button type="button" class="pill outline" disabled={!link.trim() || !!busy} on:click={replace}>
+            <button type="button" class="pill outline lg" disabled={!link.trim() || !!busy} on:click={replace}>
               {#if busy === 'replace'}<LoaderCircle class="spin" size={16} />{/if}{$t('edit.replace')}
             </button>
             <button type="button" class="icon-btn" title={$t('album.close')} aria-label={$t('album.close')} on:click={() => (replacing = -1)}><X size={18} /></button>
@@ -195,9 +195,9 @@
 <div class="field add">
   <label class="label sub" for="add-track"><Link2 size={16} /> {$t('edit.addTrack')}</label>
   <div class="link-row">
-    <input id="add-track" type="text" bind:value={addLink} placeholder={$t('edit.trackLink')}
+    <input class="input" id="add-track" type="text" bind:value={addLink} placeholder={$t('edit.trackLink')}
       on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), add())} />
-    <button type="button" class="pill outline" disabled={!addLink.trim() || !!busy} on:click={add}>
+    <button type="button" class="pill outline lg" disabled={!addLink.trim() || !!busy} on:click={add}>
       {#if busy === 'add'}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.add')}
     </button>
   </div>
@@ -214,7 +214,7 @@
   .slot {
     position: relative;
     border-radius: 6px;
-    background: #282828;
+    background: var(--surface);
     transition: transform 0.15s ease;
   }
   .dragging .slot.lifted,
@@ -225,7 +225,7 @@
     z-index: 3;
   }
   .lifted .row {
-    background: #3a3a3a;
+    background: var(--raised-hover);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   }
   .row {
@@ -235,7 +235,7 @@
     min-height: 62px;
     padding: 4px 4px 4px 0;
     border-radius: 6px;
-    background: #2e2e2e;
+    background: var(--raised);
   }
   .handle {
     display: inline-flex;

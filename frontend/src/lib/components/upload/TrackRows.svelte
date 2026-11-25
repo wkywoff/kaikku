@@ -153,7 +153,7 @@
     <strong>{$t('upload.dropAudio')}</strong>
     <span>{$t('upload.audioHint')}</span>
   </div>
-  <button type="button" class="pill outline" on:click={() => fileInput.click()}>{$t('upload.chooseFiles')}</button>
+  <button type="button" class="pill outline lg" on:click={() => fileInput.click()}>{$t('upload.chooseFiles')}</button>
   <input bind:this={fileInput} type="file" accept={AUDIO_ACCEPT} multiple hidden on:change={(e) => (pick(e.currentTarget.files), (e.currentTarget.value = ''))} />
   <input
     bind:this={replaceInput}
@@ -277,7 +277,7 @@
               {#if row.lyrics === undefined}
                 <LoaderCircle class="spin" size={16} />
               {:else}
-                <textarea rows="6" maxlength="60000" bind:value={row.lyrics} on:input={() => dispatch('change')}></textarea>
+                <textarea class="input" rows="6" maxlength="60000" bind:value={row.lyrics} on:input={() => dispatch('change')}></textarea>
               {/if}
             </label>
           </div>
@@ -298,7 +298,7 @@
     align-items: center;
     gap: 16px;
     padding: 20px;
-    border: 2px dashed #4a4a4a;
+    border: 2px dashed var(--line);
     border-radius: 8px;
     color: var(--text-dim);
     transition:
@@ -335,7 +335,7 @@
   .slot {
     position: relative;
     border-radius: 6px;
-    background: #282828;
+    background: var(--surface);
     transition: transform 0.15s ease;
   }
   .slot.sep {
@@ -352,7 +352,7 @@
     z-index: 3;
   }
   .lifted .row {
-    background: #3a3a3a;
+    background: var(--raised-hover);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   }
   .row {
@@ -362,7 +362,7 @@
     min-height: 62px;
     padding: 4px 4px 4px 0;
     border-radius: 6px;
-    background: #2e2e2e;
+    background: var(--raised);
   }
   .row.sep {
     background: transparent;
@@ -370,7 +370,7 @@
     border-radius: 0;
   }
   .lifted .row.sep {
-    background: #3a3a3a;
+    background: var(--raised-hover);
     border-radius: 6px;
   }
   .disc-name,
@@ -448,13 +448,13 @@
   }
   @media (hover: hover) {
     .title:hover {
-      background: #3a3a3a;
+      background: var(--raised-hover);
     }
   }
   .title:focus {
     outline: none;
-    border-color: #6a6a6a;
-    background: #333;
+    border-color: var(--field-line);
+    background: var(--field-focus);
   }
   .title.missing {
     border-color: var(--danger);
@@ -505,7 +505,7 @@
     width: 120px;
     height: 4px;
     border-radius: 2px;
-    background: #4a4a4a;
+    background: var(--line);
     overflow: hidden;
     flex-shrink: 0;
   }
@@ -519,7 +519,7 @@
     width: 26px;
     height: 22px;
     border-radius: 3px;
-    border: 1px solid #5a5a5a;
+    border: 1px solid var(--line);
     color: var(--text-faint);
     font-size: 12px;
     font-weight: 700;
@@ -581,21 +581,6 @@
     flex-direction: column;
     gap: 6px;
     font-size: 14px;
-  }
-  textarea {
-    width: 100%;
-    padding: 8px 10px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font: 14px/1.5 var(--font);
-    resize: vertical;
-  }
-  textarea:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
   }
   @media (max-width: 560px) {
     .drop {

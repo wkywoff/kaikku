@@ -213,7 +213,7 @@
     flex-shrink: 0;
     border-radius: 4px;
     overflow: hidden;
-    background: #3e3e3e;
+    background: var(--field);
     box-shadow: 0 4px 60px rgba(0, 0, 0, 0.5);
   }
   .cover img {

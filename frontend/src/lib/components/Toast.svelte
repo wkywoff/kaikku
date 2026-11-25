@@ -19,7 +19,7 @@
     max-width: min(480px, calc(100vw - 32px));
     padding: 10px 16px;
     border-radius: 6px;
-    background: #3d91f4;
+    background: var(--info-fill);
     color: #fff;
     font-size: 14px;
     font-weight: 500;
@@ -27,7 +27,7 @@
     pointer-events: none;
   }
   .toast.error {
-    background: #c9283a;
+    background: var(--danger-fill);
   }
   @media (max-width: 768px) {
     .toast {

@@ -44,9 +44,9 @@
       </div>
     {:else}
       <div class="link-row">
-        <input type="text" bind:value={link} placeholder={$t('edit.albumLink')} aria-label={$t('edit.versionOf')}
+        <input class="input" type="text" bind:value={link} placeholder={$t('edit.albumLink')} aria-label={$t('edit.versionOf')}
           on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), add())} />
-        <button type="button" class="pill outline" disabled={!link.trim() || busy} on:click={add}>
+        <button type="button" class="pill outline lg" disabled={!link.trim() || busy} on:click={add}>
           {#if busy}<LoaderCircle class="spin" size={16} />{/if}{$t('edit.linkVersion')}
         </button>
       </div>
@@ -64,7 +64,7 @@
     min-height: 56px;
     padding: 6px 6px 6px 8px;
     border-radius: 8px;
-    background: #2e2e2e;
+    background: var(--raised);
   }
   .linked img {
     width: 44px;

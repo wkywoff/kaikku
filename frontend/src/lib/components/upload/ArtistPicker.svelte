@@ -215,6 +215,8 @@
   <div class="field">
     <input
       id={inputId}
+      class="input"
+      class:invalid
       type="text"
       autocomplete="off"
       role="combobox"
@@ -281,7 +283,7 @@
     z-index: 3;
   }
   .lifted .row {
-    background: #3a3a3a;
+    background: var(--raised-hover);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   }
   .row {
@@ -291,7 +293,7 @@
     min-height: 52px;
     padding: 4px 4px 4px 0;
     border-radius: 6px;
-    background: #2e2e2e;
+    background: var(--raised);
   }
   .handle {
     display: inline-flex;
@@ -343,7 +345,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: #444;
+    background: var(--field);
     color: var(--text-dim);
   }
   .ph.create {
@@ -359,24 +361,8 @@
   .field {
     position: relative;
   }
-  input {
-    width: 100%;
-    height: 40px;
-    padding: 0 36px 0 10px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font-size: 15px;
-    font-family: inherit;
-  }
-  input:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
-  }
-  .invalid input {
-    border-color: var(--danger);
+  .field .input {
+    padding-right: 36px;
   }
   .busy {
     position: absolute;
@@ -394,7 +380,7 @@
     padding: 4px;
     list-style: none;
     border-radius: 6px;
-    background: #2f2f2f;
+    background: var(--raised);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
     max-height: 320px;
     overflow-y: auto;
@@ -410,11 +396,11 @@
     text-align: left;
   }
   .options li.active button {
-    background: #3e3e3e;
+    background: var(--field);
   }
   @media (hover: hover) {
     .options button:hover {
-      background: #3e3e3e;
+      background: var(--field);
     }
   }
   .options img {

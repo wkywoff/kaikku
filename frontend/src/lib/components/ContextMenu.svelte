@@ -134,7 +134,7 @@
     overflow-y: auto;
     padding: 4px;
     border-radius: 6px;
-    background: #282828;
+    background: var(--surface);
     box-shadow: 0 16px 24px rgba(0, 0, 0, 0.3), 0 6px 8px rgba(0, 0, 0, 0.2);
   }
   .item {

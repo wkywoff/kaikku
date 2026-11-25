@@ -160,7 +160,7 @@
     flex-direction: column;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
     border-radius: 16px 16px 0 0;
-    background: #282828;
+    background: var(--surface);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
     outline: none;
     will-change: transform;

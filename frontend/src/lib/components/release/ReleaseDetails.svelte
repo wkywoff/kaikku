@@ -22,7 +22,7 @@
   <h2>{$t('upload.details')}</h2>
   <label class="field">
     <span class="label">{$t('upload.releaseTitle')}{#if required}{' '}<b class="req">*</b>{/if}</span>
-    <input type="text" maxlength="300" class:invalid={bad('title')} placeholder={$t('upload.titlePlaceholder')} bind:value={title} on:input={() => dispatch('title')} />
+    <input class="input" type="text" maxlength="300" class:invalid={bad('title')} placeholder={$t('upload.titlePlaceholder')} bind:value={title} on:input={() => dispatch('title')} />
   </label>
   <div class="field">
     <label class="label" for="release-artists">{$t('upload.artists')}{#if required}{' '}<b class="req">*</b>{/if}</label>
@@ -42,7 +42,7 @@
     </div>
     <label class="field">
       <span class="label">{$t('upload.date')}{#if required}{' '}<b class="req">*</b>{/if}</span>
-      <input type="date" class:invalid={bad('release_date')} bind:value={releaseDate} on:input={() => dispatch('date')} />
+      <input class="input" type="date" class:invalid={bad('release_date')} bind:value={releaseDate} on:input={() => dispatch('date')} />
     </label>
   </div>
 </section>

@@ -384,8 +384,8 @@
 
 <EditShell backHref={paths.uploads()} backLabel={$t('upload.title')} title={title.trim() || $t('upload.untitled')} legend={$t('upload.legend')} {loading} {error}>
   <svelte:fragment slot="chips">
-    <span class="state" class:live={!draft}>{$t(draft ? 'upload.draftNote' : 'upload.liveNote')}</span>
-    {#if owner}<span class="state">{$t('upload.by', { name: owner })}</span>{/if}
+    <span class="chip" class:live={!draft}>{$t(draft ? 'upload.draftNote' : 'upload.liveNote')}</span>
+    {#if owner}<span class="chip">{$t('upload.by', { name: owner })}</span>{/if}
   </svelte:fragment>
 
   <svelte:fragment slot="side">
@@ -435,9 +435,9 @@
     <div class="field existing">
       <label class="label sub" for="existing-track"><Link2 size={16} /> {$t('upload.addExisting')}</label>
       <div class="link-row">
-        <input id="existing-track" type="text" bind:value={trackLink} placeholder={$t('edit.trackLink')}
+        <input class="input" id="existing-track" type="text" bind:value={trackLink} placeholder={$t('edit.trackLink')}
           on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), addExisting())} />
-        <button type="button" class="pill outline" disabled={!trackLink.trim() || trackLinkBusy} on:click={addExisting}>
+        <button type="button" class="pill outline lg" disabled={!trackLink.trim() || trackLinkBusy} on:click={addExisting}>
           {#if trackLinkBusy}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.add')}
         </button>
       </div>
@@ -462,11 +462,11 @@
     </p>
     <div class="buttons">
       <button type="button" class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.more')} on:click={moreMenu}><Ellipsis size={22} /></button>
-      <button type="button" class="pill outline" disabled={!dirty || saving} on:click={() => save()}>
+      <button type="button" class="pill outline lg" disabled={!dirty || saving} on:click={() => save()}>
         {#if saving}<LoaderCircle class="spin" size={16} />{/if}{$t('upload.save')}
       </button>
       {#if draft}
-        <button type="button" class="pill primary" disabled={saving} on:click={() => save(true)}>{$t('upload.publish')}</button>
+        <button type="button" class="pill primary lg" disabled={saving} on:click={() => save(true)}>{$t('upload.publish')}</button>
       {/if}
     </div>
   </svelte:fragment>
