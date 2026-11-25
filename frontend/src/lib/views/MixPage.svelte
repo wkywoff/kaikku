@@ -11,6 +11,9 @@
   import { tracksCount, longDuration } from '../format.js';
   import { mixTitle, mixDescription, mixHue, mixColor } from '../mixes.js';
   import Hero from '../components/Hero.svelte';
+  import HeroActions from '../components/HeroActions.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Artwork from '../components/Artwork.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import TrackList from '../components/TrackList.svelte';
@@ -27,7 +30,8 @@
   let error = '';
   let saving = false;
 
-  pageTint().color(mixColor(id));
+  const tint = pageTint();
+  tint.color(mixColor(id));
 
   async function load() {
     try {
@@ -36,8 +40,10 @@
       rows = data.tracks.map(mixRow);
       refresh(rows.map((r) => r.deezerId));
     } catch (e) {
-      if (e.status === 404) missing = true;
-      else error = e.message;
+      if (e.status === 404) {
+        missing = true;
+        tint.none();
+      } else error = e.message;
     } finally {
       loading = false;
     }
@@ -67,10 +73,10 @@
 {#if error}
   <p class="error-text page-pad">{error}</p>
 {:else if missing}
-  <div class="page-pad empty">
-    <h2>{$t('mix.missing')}</h2>
-    <p class="muted">{$t('mix.missingHint')}</p>
-    <a class="pill" href={paths.home()} use:link><House size={16} /> {$t('nav.home')}</a>
+  <div class="page-pad">
+    <EmptyState title={$t('mix.missing')} text={$t('mix.missingHint')}>
+      <a class="pill" href={paths.home()} use:link><House size={16} /> {$t('nav.home')}</a>
+    </EmptyState>
   </div>
 {:else if mix}
   <div class="page-pad">
@@ -85,7 +91,7 @@
   </div>
 
   {#if rows.length}
-    <div class="actions page-pad">
+    <HeroActions>
       <PlayButton size={56} playing={playingHere && $playerPlaying} label={playingHere && $playerPlaying ? $t('player.pause') : $t('player.play')} on:click={onPlay} />
       <button class="icon-btn big" class:on={$shuffleOn} title={$t('player.shuffle')} aria-pressed={$shuffleOn} on:click={() => player.toggleShuffle()}>
         <Shuffle size={28} />
@@ -93,16 +99,13 @@
       <button class="icon-btn" title={saving ? $t('mix.saving') : $t('mix.save')} aria-label={saving ? $t('mix.saving') : $t('mix.save')} aria-busy={saving} disabled={saving} on:click={save}>
         {#if saving}<LoaderCircle size={24} class="spin" />{:else}<ListPlus size={24} />{/if}
       </button>
-    </div>
+    </HeroActions>
     <div class="page-pad">
       <TrackList {rows} showCover showAlbum numbered {context} />
     </div>
   {/if}
 {:else if loading}
-  <div class="page-pad skeleton">
-    <div class="sk-art"></div>
-    <div class="sk-lines"><div></div><div></div></div>
-  </div>
+  <div class="page-pad"><Skeleton kind="hero" /></div>
 {/if}
 
 <style>
@@ -120,56 +123,5 @@
   }
   .muted-meta {
     color: rgba(255, 255, 255, 0.7);
-  }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding-top: 20px;
-    padding-bottom: 24px;
-  }
-  .icon-btn.big {
-    width: 44px;
-    height: 44px;
-  }
-  .empty {
-    padding-top: 48px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .empty h2 {
-    font-size: 22px;
-  }
-  .skeleton {
-    display: flex;
-    align-items: flex-end;
-    gap: 24px;
-    padding-top: 48px;
-  }
-  .sk-art {
-    width: 232px;
-    height: 232px;
-    border-radius: 6px;
-    background: var(--bg-card);
-  }
-  .sk-lines div {
-    height: 48px;
-    width: 360px;
-    max-width: 50vw;
-    border-radius: 8px;
-    background: var(--bg-card);
-    margin-top: 12px;
-  }
-  @media (max-width: 768px) {
-    .skeleton {
-      flex-direction: column;
-      align-items: center;
-    }
-    .sk-art {
-      width: min(62vw, 240px);
-      height: min(62vw, 240px);
-    }
   }
 </style>

@@ -1,5 +1,4 @@
 <script context="module">
-  import { MAX_PER_ROW } from '../layout.js';
   import { LRU } from '../lru.js';
   const relatedCache = new LRU(30);
 </script>
@@ -23,6 +22,10 @@
   import { dayMonth, fansLabel, recordCategory, recordTypeLabel, releasesCount, tracksCount, year } from '../format.js';
   import { countLiked, latestRelease } from '../artistHighlights.js';
   import Hero from '../components/Hero.svelte';
+  import HeroActions from '../components/HeroActions.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import FollowButton from '../components/FollowButton.svelte';
   import TrackList from '../components/TrackList.svelte';
@@ -52,7 +55,7 @@
   let category = $navStore.disc || 'all';
   let related = [];
   let relatedExpanded = false;
-  let gridWidth = 0;
+  let perRow = 2;
   let editing = false;
   let editable = false;
 
@@ -119,7 +122,6 @@
     single: albums.filter((a) => recordCategory(a.record_type) === 'single').sort(byDate),
   };
   $: shown = groups[category] || [];
-  $: perRow = gridWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(gridWidth / 176)));
   $: visible = shown.slice(0, perRow);
   $: relatedVisible = relatedExpanded ? related : related.slice(0, perRow);
   $: latest = latestRelease(albums);
@@ -162,7 +164,7 @@
     </Hero>
   </div>
 
-  <div class="actions page-pad">
+  <HeroActions class="fit">
     <PlayButton size={56} playing={playingHere && $playerPlaying} label={$t('artist.playPopular')} on:click={onPlay} />
     <button class="icon-btn big" class:on={$shuffleOn} title={$t('player.shuffle')} aria-pressed={$shuffleOn} on:click={() => player.toggleShuffle()}>
       <Shuffle size={28} />
@@ -171,15 +173,15 @@
     <button class="icon-btn" title={$t('artist.radio')} aria-label={$t('artist.radio')} on:click={onRadio}>
       <Radio size={24} />
     </button>
-    <button class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title: artist.name })} on:click={artistMenu}>
-      <Ellipsis size={24} />
-    </button>
     {#if isLocalId(artist.id) ? editable : $canEdit}
       <button class="icon-btn" title={$t('edit.artistTitle')} aria-label={$t('edit.artistTitle')} on:click={() => (editing = true)}>
         <Pencil size={22} />
       </button>
     {/if}
-  </div>
+    <button class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title: artist.name })} on:click={artistMenu}>
+      <Ellipsis size={24} />
+    </button>
+  </HeroActions>
 
   {#if editing}
     {#await import('../components/EditDialog.svelte') then m}
@@ -187,8 +189,8 @@
     {/await}
   {/if}
 
-  {#if top.length || latest || likedLabel}
-    <div class="page-pad">
+  <div class="page-pad sections">
+    {#if top.length || latest || likedLabel}
       <div class="lead" class:beside={top.length && leadWidth >= BESIDE_POPULAR_MIN} class:side-by-side={top.length && leadWidth >= SIDE_BY_SIDE_MIN} bind:clientWidth={leadWidth}>
         {#if latest || likedLabel}
           <div class="highlights">
@@ -216,126 +218,106 @@
         {/if}
         {#if top.length}
           <section class="popular">
-            <div class="section-head">
-              <h2>{$t('artist.popular')}</h2>
+            <SectionHead title={$t('artist.popular')}>
               {#if top.length > 5}
-                <button class="show-all" on:click={() => (topExpanded = !topExpanded)}>
-                  {topExpanded ? $t('disc.showLess') : $t('disc.showAll')}
-                </button>
+                <button class="text-btn" on:click={() => (topExpanded = !topExpanded)}>{topExpanded ? $t('disc.showLess') : $t('disc.showAll')}</button>
               {/if}
-            </div>
+            </SectionHead>
             <TrackList rows={topExpanded ? top : top.slice(0, 5)} queue={top} showCover header={false} context={{ kind: 'artist', id: artist.id, title: artist.name }} on:changed={reload} />
           </section>
         {/if}
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if albums.length}
-    <section class="page-pad">
-      <div class="section-head">
-        <h2>{$t('artist.discography')}</h2>
-        {#if shown.length > perRow}
-          <a class="show-all" href={paths.discography(artist.id, category)} use:link>{$t('disc.showAll')}</a>
-        {/if}
-      </div>
-      <div class="chips" role="tablist">
-        {#each ['all', 'album', 'ep', 'single'] as c}
-          {#if c === 'all' || groups[c].length}
-            <button class="pill" class:active={category === c} role="tab" aria-selected={category === c} on:click={() => pickCategory(c)}>
-              {$t(`disc.${c}`)}
-            </button>
+    {#if albums.length}
+      <section>
+        <SectionHead title={$t('artist.discography')}>
+          {#if shown.length > perRow}
+            <a class="text-btn" href={paths.discography(artist.id, category)} use:link>{$t('disc.showAll')}</a>
           {/if}
-        {/each}
-      </div>
-      <div class="grid" bind:clientWidth={gridWidth}>
-        {#each visible as a (a.id)}
-          <MediaCard
-            href={paths.album(a.id)}
-            menu={() => albumMenuItems(a)}
-            image={a.cover_url}
-            hidden={a.hidden}
-            title={a.title}
-            subtitle={[year(a.release_date), recordTypeLabel(a.record_type, $lang)].filter(Boolean).join(' • ')}
-            onPlay={() => playCard(() => playAlbum(a.id))}
-            playing={isContext(playingCtx, 'album', a.id)}
-          />
-        {/each}
-      </div>
-    </section>
-  {/if}
-  <ArtistAbout artistId={artist.id} />
-  {#if related.length}
-    <section class="page-pad">
-      <div class="section-head">
-        <h2>{$t('artist.related')}</h2>
-        {#if related.length > perRow}
-          <button class="show-all" on:click={() => (relatedExpanded = !relatedExpanded)}>
-            {relatedExpanded ? $t('disc.showLess') : $t('disc.showAll')}
-          </button>
-        {/if}
-      </div>
-      <div class="grid">
-        {#each relatedVisible as a (a.id)}
-          <MediaCard
-            href={paths.artist(a.id)}
-            menu={() => artistMenuItems(a)}
-            image={a.picture_url}
-            round
-            title={a.name}
-            subtitle={$t('artist.kind')}
-            onPlay={() => playCard(() => playArtistTop(a.id))}
-            playing={isContext(playingCtx, 'artist', a.id)}
-          />
-        {/each}
-      </div>
-    </section>
-  {/if}
-{:else if loading}
-  <div class="page-pad skeleton">
-    <div class="sk-art"></div>
-    <div class="sk-line"></div>
+        </SectionHead>
+        <div class="chips" role="tablist">
+          {#each ['all', 'album', 'ep', 'single'] as c}
+            {#if c === 'all' || groups[c].length}
+              <button class="pill" class:active={category === c} role="tab" aria-selected={category === c} on:click={() => pickCategory(c)}>
+                {$t(`disc.${c}`)}
+              </button>
+            {/if}
+          {/each}
+        </div>
+        <CardGrid bind:perRow>
+          {#each visible as a (a.id)}
+            <MediaCard
+              href={paths.album(a.id)}
+              menu={() => albumMenuItems(a)}
+              image={a.cover_url}
+              hidden={a.hidden}
+              title={a.title}
+              subtitle={[year(a.release_date), recordTypeLabel(a.record_type, $lang)].filter(Boolean).join(' • ')}
+              onPlay={() => playCard(() => playAlbum(a.id))}
+              playing={isContext(playingCtx, 'album', a.id)}
+            />
+          {/each}
+        </CardGrid>
+      </section>
+    {/if}
+    <ArtistAbout artistId={artist.id} />
+    {#if related.length}
+      <section>
+        <SectionHead title={$t('artist.related')}>
+          {#if related.length > perRow}
+            <button class="text-btn" on:click={() => (relatedExpanded = !relatedExpanded)}>{relatedExpanded ? $t('disc.showLess') : $t('disc.showAll')}</button>
+          {/if}
+        </SectionHead>
+        <CardGrid bind:perRow>
+          {#each relatedVisible as a (a.id)}
+            <MediaCard
+              href={paths.artist(a.id)}
+              menu={() => artistMenuItems(a)}
+              image={a.picture_url}
+              round
+              title={a.name}
+              subtitle={$t('artist.kind')}
+              onPlay={() => playCard(() => playArtistTop(a.id))}
+              playing={isContext(playingCtx, 'artist', a.id)}
+            />
+          {/each}
+        </CardGrid>
+      </section>
+    {/if}
   </div>
+{:else if loading}
+  <div class="page-pad"><Skeleton kind="hero" round /></div>
 {/if}
 
 <style>
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding-top: 20px;
-    padding-bottom: 24px;
-  }
-  .icon-btn.big {
-    width: 44px;
-    height: 44px;
-  }
   @media (max-width: 768px) {
-    .actions {
+    :global(.page-pad.hero-actions.fit) {
       gap: 0;
     }
-    .actions > :global(.play-button) {
+    :global(.page-pad.hero-actions.fit > .play-button) {
       margin-right: 6px;
     }
-    .actions > .icon-btn {
+    :global(.page-pad.hero-actions.fit > .icon-btn) {
       flex: 0 1000000 48px;
       min-width: 30px;
       border-radius: 999px;
     }
-    .actions > .icon-btn.big {
+    :global(.page-pad.hero-actions.fit > .icon-btn.big) {
       flex-basis: 56px;
       min-width: 36px;
     }
-    .actions > :global(.follow) {
+    :global(.page-pad.hero-actions.fit > .follow) {
       flex: 0 1 auto;
       margin: 0 6px;
       padding: 0 12px;
       font-size: 13px;
     }
   }
-  section,
-  .highlights {
-    margin-bottom: 40px;
+  .lead {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
   }
   .highlights {
     display: grid;
@@ -344,13 +326,15 @@
     max-width: 900px;
   }
   .lead.beside {
-    display: flex;
+    flex-direction: row;
     align-items: flex-start;
     gap: 48px;
   }
+  .popular {
+    min-width: 0;
+  }
   .beside .popular {
     flex: 1;
-    min-width: 0;
   }
   .beside .highlights {
     order: 1;
@@ -364,72 +348,15 @@
     grid-auto-columns: 300px;
     gap: 24px;
   }
-  h2 {
-    font-size: 24px;
-    margin-bottom: 16px;
-  }
-  .section-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-  }
-  .show-all {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .show-all:hover {
-      color: var(--text);
-      text-decoration: underline;
-    }
-  }
   .chips {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
     flex-wrap: wrap;
   }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  .skeleton {
-    display: flex;
-    align-items: flex-end;
-    gap: 24px;
-    padding-top: 48px;
-  }
-  .sk-art {
-    width: 232px;
-    height: 232px;
-    border-radius: 50%;
-    background: var(--bg-card);
-  }
-  .sk-line {
-    height: 72px;
-    width: 420px;
-    max-width: 50vw;
-    border-radius: 8px;
-    background: var(--bg-card);
-  }
   @media (max-width: 768px) {
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
     .highlights {
       gap: 16px;
-      margin-bottom: 32px;
-    }
-    h2 {
-      font-size: 20px;
-    }
-    .skeleton {
-      flex-direction: column;
-      align-items: center;
     }
   }
 </style>

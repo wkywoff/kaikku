@@ -10,11 +10,16 @@
   import { tagTitle, mixHue, mixColor } from '../mixes.js';
   import { artistMenuItems } from '../cardMenu.js';
   import Hero from '../components/Hero.svelte';
+  import HeroActions from '../components/HeroActions.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Artwork from '../components/Artwork.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import TrackList from '../components/TrackList.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import Shelf from '../components/Shelf.svelte';
+  import Search from '@lucide/svelte/icons/search';
   import Sparkles from '@lucide/svelte/icons/sparkles';
 
   const slug = $navStore.id;
@@ -22,7 +27,8 @@
   let missing = false;
   let error = '';
 
-  pageTint().color(mixColor(`tag-${slug}`));
+  const tint = pageTint();
+  tint.color(mixColor(`tag-${slug}`));
 
   api
     .genre(slug)
@@ -30,7 +36,12 @@
       page = p;
       refresh([...p.own, ...p.tracks].map((tr) => tr.id));
     })
-    .catch((e) => (e.status === 404 ? (missing = true) : (error = e.message)));
+    .catch((e) => {
+      if (e.status === 404) {
+        missing = true;
+        tint.none();
+      } else error = e.message;
+    });
 
   const asRow = (tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null });
   $: title = page ? tagTitle(page.genre.name) : '';
@@ -46,9 +57,10 @@
 {#if error}
   <p class="error-text page-pad">{error}</p>
 {:else if missing}
-  <div class="page-pad empty">
-    <h2>{$t('genre.missing')}</h2>
-    <a class="pill" href={paths.search()} use:link>{$t('nav.search')}</a>
+  <div class="page-pad">
+    <EmptyState title={$t('genre.missing')}>
+      <a class="pill" href={paths.search()} use:link><Search size={16} /> {$t('nav.search')}</a>
+    </EmptyState>
   </div>
 {:else if page}
   <div class="page-pad">
@@ -60,24 +72,24 @@
     </Hero>
   </div>
 
-  <div class="actions page-pad">
+  <HeroActions>
     {#if all.length}
       <PlayButton size={56} label={$t('player.play')} on:click={play} />
     {/if}
     {#if page.mix_id}
       <a class="pill mix" href={paths.mix(page.mix_id)} use:link><Sparkles size={16} /> <span class="label">{$t('genre.mix', { name: title })}</span></a>
     {/if}
-  </div>
+  </HeroActions>
 
-  {#if own.length}
-    <section class="page-pad">
-      <h2>{$t('genre.yours')}</h2>
-      <TrackList rows={own} showCover showAlbum header={false} />
-    </section>
-  {/if}
+  <div class="page-pad sections">
+    {#if own.length}
+      <section>
+        <SectionHead title={$t('genre.yours')} />
+        <TrackList rows={own} showCover showAlbum header={false} />
+      </section>
+    {/if}
 
-  {#if page.artists.length}
-    <div class="page-pad">
+    {#if page.artists.length}
       <Shelf title={$t('genre.artists')} items={page.artists} round let:item>
         <MediaCard
           href={paths.artist(item.id)}
@@ -90,19 +102,21 @@
           playing={isContext(playingCtx, 'artist', item.id)}
         />
       </Shelf>
-    </div>
-  {/if}
+    {/if}
 
-  {#if more.length}
-    <section class="page-pad">
-      <h2>{$t('genre.more')}</h2>
-      <TrackList rows={more} showCover showAlbum header={false} />
-    </section>
-  {/if}
+    {#if more.length}
+      <section>
+        <SectionHead title={$t('genre.more')} />
+        <TrackList rows={more} showCover showAlbum header={false} />
+      </section>
+    {/if}
 
-  {#if !own.length && !page.artists.length && !more.length}
-    <p class="page-pad muted">{$t('genre.empty')}</p>
-  {/if}
+    {#if !own.length && !page.artists.length && !more.length}
+      <p class="muted">{$t('genre.empty')}</p>
+    {/if}
+  </div>
+{:else}
+  <div class="page-pad"><Skeleton kind="hero" /></div>
 {/if}
 
 <style>
@@ -110,13 +124,6 @@
     width: 100%;
     color: rgba(255, 255, 255, 0.7);
     font-weight: 400;
-  }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding-top: 20px;
-    padding-bottom: 24px;
   }
   .mix {
     min-width: 0;
@@ -127,24 +134,5 @@
   .mix .label {
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  section {
-    margin-bottom: 32px;
-  }
-  section h2 {
-    font-size: 24px;
-    margin-bottom: 8px;
-  }
-  .empty {
-    padding-top: 48px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  @media (max-width: 768px) {
-    section h2 {
-      font-size: 20px;
-    }
   }
 </style>

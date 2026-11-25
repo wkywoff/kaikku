@@ -19,6 +19,8 @@
   import { rowFromDeezerTrack } from '../rows.js';
   import { recordTypeLabel, tracksCount, longDuration, year, longDate } from '../format.js';
   import Hero from '../components/Hero.svelte';
+  import HeroActions from '../components/HeroActions.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import TrackList from '../components/TrackList.svelte';
   import CoverLightbox from '../components/CoverLightbox.svelte';
@@ -206,7 +208,7 @@
     </div>
   {/if}
 
-  <div class="actions page-pad">
+  <HeroActions>
     <PlayButton size={56} playing={playingHere && $playerPlaying} disabled={unavailable} on:click={onPlay}
       label={playingHere && $playerPlaying ? $t('player.pause') : $t('player.play')} />
     <button class="icon-btn big" class:on={$shuffleOn} title={$t('player.shuffle')} aria-pressed={$shuffleOn} on:click={() => player.toggleShuffle()}>
@@ -227,16 +229,18 @@
         <Ellipsis size={24} />
       </button>
     {/if}
-  </div>
+  </HeroActions>
 
-  <div class="page-pad">
-    <TrackList {rows} {context} highlight={$navStore.track || null} ownEditable={!!(album.own && album.editable)} on:changed={reload} />
-    {#if longDate(album.releaseDate, $lang) || album.label}
-      <footer class="release muted">
-        {#if longDate(album.releaseDate, $lang)}<div>{longDate(album.releaseDate, $lang)}</div>{/if}
-        {#if album.label}<div class="small">{$t('album.label', { label: album.label })}</div>{/if}
-      </footer>
-    {/if}
+  <div class="page-pad sections">
+    <div>
+      <TrackList {rows} {context} highlight={$navStore.track || null} ownEditable={!!(album.own && album.editable)} on:changed={reload} />
+      {#if longDate(album.releaseDate, $lang) || album.label}
+        <footer class="release muted">
+          {#if longDate(album.releaseDate, $lang)}<div>{longDate(album.releaseDate, $lang)}</div>{/if}
+          {#if album.label}<div class="small">{$t('album.label', { label: album.label })}</div>{/if}
+        </footer>
+      {/if}
+    </div>
     {#if album.versions?.length}
       <AlbumVersions versions={album.versions} explicit={album.explicit} />
     {/if}
@@ -251,10 +255,7 @@
     <CoverLightbox src={album.coverUrl} alt={album.title} on:close={() => (showCover = false)} />
   {/if}
 {:else if loading}
-  <div class="page-pad skeleton">
-    <div class="sk-art"></div>
-    <div class="sk-lines"><div></div><div></div></div>
-  </div>
+  <div class="page-pad"><Skeleton kind="hero" /></div>
 {/if}
 
 <style>
@@ -309,17 +310,6 @@
     color: var(--text);
     text-decoration: underline;
   }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding-top: 20px;
-    padding-bottom: 24px;
-  }
-  .icon-btn.big {
-    width: 44px;
-    height: 44px;
-  }
   .save.saved {
     color: var(--ok);
   }
@@ -327,36 +317,7 @@
     font-size: 13px;
   }
   .release {
-    padding: 32px 12px 16px;
+    padding: 32px 12px 0;
     font-size: 14px;
-  }
-  .skeleton {
-    display: flex;
-    align-items: flex-end;
-    gap: 24px;
-    padding-top: 48px;
-  }
-  .sk-art {
-    width: 232px;
-    height: 232px;
-    border-radius: 6px;
-    background: var(--bg-card);
-  }
-  .sk-lines div {
-    height: 48px;
-    width: 360px;
-    max-width: 50vw;
-    border-radius: 8px;
-    background: var(--bg-card);
-    margin-top: 12px;
-  }
-  @media (max-width: 768px) {
-    .actions {
-      gap: 16px;
-    }
-    .skeleton {
-      flex-direction: column;
-      align-items: center;
-    }
   }
 </style>

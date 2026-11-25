@@ -7,6 +7,8 @@
   import { playingContext, isContext, playAlbum } from '../library.js';
   import { toast } from '../stores/toast.js';
   import MediaCard from './MediaCard.svelte';
+  import SectionHead from './SectionHead.svelte';
+  import CardGrid from './CardGrid.svelte';
 
   export let versions = [];
   export let explicit = false;
@@ -20,8 +22,8 @@
 
 {#if versions.length}
   <section>
-    <h2>{$t('album.versions')}</h2>
-    <div class="grid">
+    <SectionHead title={$t('album.versions')} />
+    <CardGrid>
       {#each versions as v (v.id)}
         <MediaCard
           href={paths.album(v.id)}
@@ -34,30 +36,6 @@
           playing={isContext(playingCtx, 'album', v.id)}
         />
       {/each}
-    </div>
+    </CardGrid>
   </section>
 {/if}
-
-<style>
-  section {
-    margin-top: 40px;
-  }
-  h2 {
-    font-size: 24px;
-    margin-bottom: 8px;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  @media (max-width: 768px) {
-    h2 {
-      font-size: 20px;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
-  }
-</style>

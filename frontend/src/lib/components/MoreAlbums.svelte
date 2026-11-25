@@ -13,14 +13,14 @@
   import { playingContext, isContext, playAlbum } from '../library.js';
   import { toast } from '../stores/toast.js';
   import MediaCard from './MediaCard.svelte';
-  import { cardsPerRow } from '../layout.js';
+  import SectionHead from './SectionHead.svelte';
+  import CardGrid from './CardGrid.svelte';
 
   export let artist;
   export let excludeId = null;
 
   let albums = [];
-  let gridWidth = 0;
-  let grid;
+  let perRow = 2;
 
   $: load(artist.id);
 
@@ -33,21 +33,18 @@
       .sort((x, y) => (y.release_date || '').localeCompare(x.release_date || ''));
   }
 
-  $: perRow = gridWidth && grid ? cardsPerRow(grid) : 2;
-
   $: playingCtx = $playerPlaying ? $playingContext : null;
   const play = (id) => playAlbum(id).catch((e) => toast(e.message, 'error'));
 </script>
 
 {#if albums.length}
   <section>
-    <div class="head">
-      <h2>{$t('album.moreBy', { name: artist.name })}</h2>
+    <SectionHead title={$t('album.moreBy', { name: artist.name })}>
       {#if albums.length > perRow}
-        <a class="show-all" href={paths.discography(artist.id, 'album')} use:link>{$t('disc.showAll')}</a>
+        <a class="text-btn" href={paths.discography(artist.id, 'album')} use:link>{$t('disc.showAll')}</a>
       {/if}
-    </div>
-    <div class="grid" bind:this={grid} bind:clientWidth={gridWidth}>
+    </SectionHead>
+    <CardGrid bind:perRow>
       {#each albums.slice(0, perRow) as a (a.id)}
         <MediaCard
           href={paths.album(a.id)}
@@ -60,48 +57,6 @@
           playing={isContext(playingCtx, 'album', a.id)}
         />
       {/each}
-    </div>
+    </CardGrid>
   </section>
 {/if}
-
-<style>
-  section {
-    margin-top: 40px;
-  }
-  .head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 8px;
-  }
-  h2 {
-    font-size: 24px;
-  }
-  .show-all {
-    flex-shrink: 0;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .show-all:hover {
-      color: var(--text);
-      text-decoration: underline;
-    }
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  @media (max-width: 768px) {
-    h2 {
-      font-size: 20px;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
-  }
-</style>

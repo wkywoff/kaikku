@@ -13,6 +13,9 @@
   import { shareItem } from '../share.js';
   import { tracksCount, longDuration } from '../format.js';
   import Hero from '../components/Hero.svelte';
+  import HeroActions from '../components/HeroActions.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Artwork from '../components/Artwork.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import TrackList from '../components/TrackList.svelte';
@@ -168,7 +171,7 @@
     </Hero>
   </div>
 
-  <div class="actions page-pad">
+  <HeroActions>
     {#if rows.length}
       <PlayButton size={56} playing={playingHere && $playerPlaying} label={playingHere && $playerPlaying ? $t('player.pause') : $t('player.play')} on:click={onPlay} />
       <button class="icon-btn big" class:on={$shuffleOn} title={$t('player.shuffle')} aria-pressed={$shuffleOn} on:click={() => player.toggleShuffle()}>
@@ -187,7 +190,7 @@
         <SortButton options={sortOptions} value={sort} on:change={(e) => sortPrefs.update((p) => ({ ...p, playlist: e.detail }))} />
       </div>
     {/if}
-  </div>
+  </HeroActions>
 
   <div class="page-pad">
     {#if rows.length && !shown.length}
@@ -195,11 +198,9 @@
     {:else if rows.length}
       <TrackList rows={shown} showCover showAlbum numbered reorderable={playlist.can_edit && !filter && customOrder} playlist={{ id: playlist.id, mine: playlist.can_edit }} showAddedBy={playlist.collaborative} context={{ kind: 'playlist', id: playlist.id, title: playlist.title }} on:remove={(e) => removeRow(e.detail)} on:reorder={(e) => onReorder(e.detail)} on:changed={() => load(playlist.id)} />
     {:else}
-      <div class="empty">
-        <h2>{$t('playlist.empty')}</h2>
-        <p class="muted">{$t('playlist.emptyHint')}</p>
+      <EmptyState title={$t('playlist.empty')} text={$t('playlist.emptyHint')}>
         <a class="pill" href={paths.search()} use:link><Search size={16} /> {$t('playlist.find')}</a>
-      </div>
+      </EmptyState>
     {/if}
   </div>
 
@@ -207,10 +208,7 @@
     <PlaylistDialog {playlist} on:close={() => (editing = false)} on:saved={onSaved} on:deleted={onDeleted} on:collaborators={() => (load(playlist.id), refreshPlaylists())} />
   {/if}
 {:else if loading}
-  <div class="page-pad skeleton">
-    <div class="sk-art"></div>
-    <div class="sk-lines"><div></div><div></div></div>
-  </div>
+  <div class="page-pad"><Skeleton kind="hero" /></div>
 {/if}
 
 <style>
@@ -234,18 +232,6 @@
   .muted-meta {
     color: rgba(255, 255, 255, 0.7);
   }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding-top: 20px;
-    padding-bottom: 24px;
-    min-height: 56px;
-  }
-  .icon-btn.big {
-    width: 44px;
-    height: 44px;
-  }
   .filter-slot {
     margin-left: auto;
     display: flex;
@@ -254,44 +240,5 @@
   }
   .no-match {
     padding: 24px 0;
-  }
-  .empty {
-    padding: 32px 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .empty h2 {
-    font-size: 22px;
-  }
-  .skeleton {
-    display: flex;
-    align-items: flex-end;
-    gap: 24px;
-    padding-top: 48px;
-  }
-  .sk-art {
-    width: 232px;
-    height: 232px;
-    border-radius: 6px;
-    background: var(--bg-card);
-  }
-  .sk-lines div {
-    height: 48px;
-    width: 360px;
-    max-width: 50vw;
-    border-radius: 8px;
-    background: var(--bg-card);
-    margin-top: 12px;
-  }
-  @media (max-width: 768px) {
-    .actions {
-      gap: 16px;
-    }
-    .skeleton {
-      flex-direction: column;
-      align-items: center;
-    }
   }
 </style>

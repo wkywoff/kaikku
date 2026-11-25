@@ -15,11 +15,16 @@
   import { mixHue, mixColor } from '../mixes.js';
   import { tracksCount } from '../format.js';
   import Hero from '../components/Hero.svelte';
+  import HeroActions from '../components/HeroActions.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Artwork from '../components/Artwork.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import Shelf from '../components/Shelf.svelte';
   import FollowButton from '../components/FollowButton.svelte';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
+  import House from '@lucide/svelte/icons/house';
 
   const name = $navStore.id;
   let page = null;
@@ -27,12 +32,18 @@
   let error = '';
   let busy = false;
 
-  pageTint().color(mixColor(`user-${name.toLowerCase()}`));
+  const tint = pageTint();
+  tint.color(mixColor(`user-${name.toLowerCase()}`));
 
   api
     .profile(name)
     .then((p) => (page = p))
-    .catch((e) => (e.status === 404 ? (missing = true) : (error = e.message)));
+    .catch((e) => {
+      if (e.status === 404) {
+        missing = true;
+        tint.none();
+      } else error = e.message;
+    });
 
   $: user = page?.user;
   $: if (user) setRouteTitle(`user:${name}`, user.username);
@@ -67,8 +78,10 @@
 {#if error}
   <p class="error-text page-pad">{error}</p>
 {:else if missing}
-  <div class="page-pad empty">
-    <h2>{$t('people.missing')}</h2>
+  <div class="page-pad">
+    <EmptyState title={$t('people.missing')}>
+      <a class="pill" href={paths.home()} use:link><House size={16} /> {$t('nav.home')}</a>
+    </EmptyState>
   </div>
 {:else if page}
   <div class="page-pad" role="group" on:contextmenu={menu} use:longpress={menu}>
@@ -86,39 +99,39 @@
     </Hero>
   </div>
 
-  <div class="actions page-pad">
+  <HeroActions>
     {#if !page.me}
       <FollowButton following={user.i_follow} label={$t(followLabel(user))} disabled={busy} on:click={() => toggle(user)} />
     {/if}
     <button class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title: user.username })} on:click={menu}><Ellipsis size={24} /></button>
-  </div>
+  </HeroActions>
 
-  {#if page.me}
-    {#each [['people.friendsTitle', friends], ['people.followersTitle', followers], ['people.followingTitle', following]] as [title, list] (title)}
-      {#if list.length}
-        <section class="page-pad">
-          <h2>{$t(title)}</h2>
-          <ul class="people">
-            {#each list as p (p.id)}
-              <li>
-                <a class="person" href={paths.user(p.username)} use:link>
-                  <span class="dot" style="--hue: {mixHue(`user-${p.username.toLowerCase()}`)}">{p.username.slice(0, 1).toUpperCase()}</span>
-                  <span class="pname">{p.username}</span>
-                </a>
-                <FollowButton following={p.i_follow} label={$t(followLabel(p))} disabled={busy} on:click={() => toggle(p)} />
-              </li>
-            {/each}
-          </ul>
-        </section>
+  <div class="page-pad sections">
+    {#if page.me}
+      {#each [['people.friendsTitle', friends], ['people.followersTitle', followers], ['people.followingTitle', following]] as [title, list] (title)}
+        {#if list.length}
+          <section>
+            <SectionHead title={$t(title)} />
+            <ul class="people">
+              {#each list as p (p.id)}
+                <li>
+                  <a class="person" href={paths.user(p.username)} use:link>
+                    <span class="dot" style="--hue: {mixHue(`user-${p.username.toLowerCase()}`)}">{p.username.slice(0, 1).toUpperCase()}</span>
+                    <span class="pname">{p.username}</span>
+                  </a>
+                  <FollowButton following={p.i_follow} label={$t(followLabel(p))} disabled={busy} on:click={() => toggle(p)} />
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
+      {/each}
+      {#if !page.people.length}
+        <p class="muted hint">{$t('people.empty')}</p>
       {/if}
-    {/each}
-    {#if !page.people.length}
-      <p class="page-pad muted hint">{$t('people.empty')}</p>
     {/if}
-  {/if}
 
-  {#if page.playlists.length}
-    <div class="page-pad">
+    {#if page.playlists.length}
       <Shelf title={$t('people.playlists')} items={page.playlists} let:item>
         <MediaCard
           href={paths.playlist(item.id)}
@@ -131,13 +144,15 @@
           <Artwork slot="art" images={item.covers} iconSize={48} />
         </MediaCard>
       </Shelf>
-    </div>
-  {:else}
-    <section class="page-pad">
-      <h2>{$t('people.playlists')}</h2>
-      <p class="muted">{$t(page.me ? 'people.noPlaylistsMe' : 'people.noPlaylists')}</p>
-    </section>
-  {/if}
+    {:else}
+      <section>
+        <SectionHead title={$t('people.playlists')} />
+        <p class="muted">{$t(page.me ? 'people.noPlaylistsMe' : 'people.noPlaylists')}</p>
+      </section>
+    {/if}
+  </div>
+{:else}
+  <div class="page-pad"><Skeleton kind="hero" round /></div>
 {/if}
 
 <style>
@@ -152,20 +167,6 @@
     color: #fff;
     font-size: 96px;
     font-weight: 800;
-  }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding-top: 20px;
-    padding-bottom: 24px;
-  }
-  section {
-    margin-bottom: 32px;
-  }
-  section h2 {
-    font-size: 24px;
-    margin-bottom: 12px;
   }
   .people {
     display: flex;
@@ -188,7 +189,7 @@
     align-items: center;
     gap: 12px;
     padding: 6px 8px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
   }
   @media (hover: hover) {
     .person:hover {
@@ -215,17 +216,10 @@
   }
   .hint {
     max-width: 560px;
-    margin-bottom: 32px;
-  }
-  .empty {
-    padding-top: 48px;
   }
   @media (max-width: 768px) {
     .initial {
       font-size: 72px;
-    }
-    section h2 {
-      font-size: 20px;
     }
   }
 </style>

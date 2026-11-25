@@ -6,6 +6,7 @@
   import { toast } from '../stores/toast.js';
   import Pencil from '@lucide/svelte/icons/pencil';
   import X from '@lucide/svelte/icons/x';
+  import SectionHead from './SectionHead.svelte';
   import { paths, link } from '../stores/nav.js';
   import { tagSlug } from '../mixes.js';
 
@@ -103,24 +104,25 @@
 </script>
 
 {#if bio && (bio.text || bio.editable || bio.tags?.length)}
-  <section class="page-pad about">
-    <div class="section-head">
-      <h2>{$t('artist.about')}</h2>
-      {#if bio.editable && !editing && bio.text}
-        <button class="icon-btn" title={$t('artist.bioEdit')} aria-label={$t('artist.bioEdit')} on:click={startEdit}><Pencil size={18} /></button>
-      {/if}
-    </div>
+  <section>
+    <SectionHead title={$t('artist.about')}>
+      <svelte:fragment slot="extra">
+        {#if bio.editable && !editing && bio.text}
+          <button class="icon-btn" title={$t('artist.bioEdit')} aria-label={$t('artist.bioEdit')} on:click={startEdit}><Pencil size={18} /></button>
+        {/if}
+      </svelte:fragment>
+    </SectionHead>
 
     {#if editing}
       <form on:submit|preventDefault={() => save(() => api.setArtistBio(artistId, draft))}>
-        <textarea bind:value={draft} rows="8" maxlength="20000" placeholder={$t('artist.bioPlaceholder')} aria-label={$t('artist.about')}></textarea>
+        <textarea class="input" bind:value={draft} rows="8" maxlength="20000" placeholder={$t('artist.bioPlaceholder')} aria-label={$t('artist.about')}></textarea>
         <p class="hint">{$t('artist.bioHint')}</p>
         <div class="buttons">
           {#if bio.source === 'custom'}
             <button type="button" class="pill outline reset" disabled={busy} on:click={() => save(() => api.resetArtistBio(artistId))}>{$t('artist.bioReset')}</button>
           {/if}
           <button type="button" class="pill outline" disabled={busy} on:click={() => (editing = false)}>{$t('settings.cancel')}</button>
-          <button type="submit" class="pill save" disabled={busy}>{$t('edit.save')}</button>
+          <button type="submit" class="pill primary" disabled={busy}>{$t('edit.save')}</button>
         </div>
       </form>
     {:else}
@@ -129,7 +131,7 @@
           {#if bio.text}
             <p class="text" class:clamped={long && !expanded}>{bio.text}</p>
             {#if long}
-              <button class="more" on:click={() => (expanded = !expanded)}>{expanded ? $t('artist.bioLess') : $t('artist.bioMore')}</button>
+              <button class="text-btn more" on:click={() => (expanded = !expanded)}>{expanded ? $t('artist.bioLess') : $t('artist.bioMore')}</button>
             {/if}
           {/if}
           {#if editingTags}
@@ -143,18 +145,18 @@
                 {/each}
               </ul>
               <!-- svelte-ignore a11y-autofocus -->
-              <input bind:value={tagInput} maxlength="40" autofocus placeholder={$t('artist.tagPlaceholder')} aria-label={$t('artist.tagPlaceholder')} />
+              <input class="input" bind:value={tagInput} maxlength="40" autofocus placeholder={$t('artist.tagPlaceholder')} aria-label={$t('artist.tagPlaceholder')} />
               <div class="buttons">
                 {#if bio.tags_custom}
                   <button type="button" class="pill outline reset" disabled={busy} on:click={() => saveTags(() => api.resetArtistTags(artistId))}>{$t('artist.tagsReset')}</button>
                 {/if}
                 <button type="button" class="pill outline" disabled={busy} on:click={() => (editingTags = false)}>{$t('settings.cancel')}</button>
-                <button type="button" class="pill save" disabled={busy} on:click={() => addTag() && saveTags(() => api.setArtistTags(artistId, tagDraft))}>{$t('edit.save')}</button>
+                <button type="button" class="pill primary" disabled={busy} on:click={() => addTag() && saveTags(() => api.setArtistTags(artistId, tagDraft))}>{$t('edit.save')}</button>
               </div>
             </form>
           {:else if bio.tags?.length}
             <ul class="tags" class:alone={!bio.text} aria-label={$t('artist.tags')}>
-              {#each bio.tags as tag}<li><a href={paths.genre(tagSlug(tag))} use:link>{tag}</a></li>{/each}
+              {#each bio.tags as tag}<li><a class="chip" href={paths.genre(tagSlug(tag))} use:link>{tag}</a></li>{/each}
               {#if bio.editable}
                 <li><button class="edit-tags" title={$t('artist.tagsEdit')} aria-label={$t('artist.tagsEdit')} on:click={startTags}><Pencil size={13} /></button></li>
               {/if}
@@ -176,22 +178,10 @@
 {/if}
 
 <style>
-  .about {
-    margin-bottom: 40px;
-  }
-  .section-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
-  h2 {
-    font-size: 24px;
-  }
   .card {
     max-width: 760px;
     padding: 20px 24px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: var(--bg-card);
   }
   .text {
@@ -211,13 +201,14 @@
   }
   .more {
     margin-top: 8px;
-    font-weight: 700;
-    font-size: 14px;
   }
   @media (hover: hover) {
-    .more:hover,
     .source:hover {
       text-decoration: underline;
+    }
+    .tags .chip:hover {
+      background: var(--bg-hover);
+      color: var(--text);
     }
   }
   .tags {
@@ -230,20 +221,6 @@
   }
   .tags.alone {
     margin-top: 0;
-  }
-  .tags li a {
-    display: block;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--bg-hover);
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-  @media (hover: hover) {
-    .tags li a:hover {
-      background: var(--bg-press);
-      color: var(--text);
-    }
   }
   .adds {
     display: flex;
@@ -303,21 +280,8 @@
       color: var(--text);
     }
   }
-  .tag-edit input {
-    width: 100%;
+  .tag-edit .input {
     max-width: 320px;
-    padding: 8px 12px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font: inherit;
-    font-size: 15px;
-  }
-  .tag-edit input:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
   }
   .source {
     display: block;
@@ -330,23 +294,6 @@
     flex-direction: column;
     gap: 8px;
     max-width: 760px;
-  }
-  textarea {
-    width: 100%;
-    padding: 10px 12px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #3e3e3e;
-    color: var(--text);
-    font: inherit;
-    font-size: 15px;
-    line-height: 1.5;
-    resize: vertical;
-  }
-  textarea:focus {
-    outline: none;
-    border-color: #6a6a6a;
-    background: #333;
   }
   .hint {
     margin: 0;
@@ -362,15 +309,7 @@
   .reset {
     margin-right: auto;
   }
-  .save {
-    background: var(--text);
-    color: var(--bg);
-    font-weight: 700;
-  }
   @media (max-width: 768px) {
-    h2 {
-      font-size: 20px;
-    }
     .card {
       padding: 16px;
     }
