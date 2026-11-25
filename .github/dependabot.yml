@@ -1,6 +1,3 @@
-# Dependency updates as pull requests, checked by the Tests workflow.
-# Weekly, one grouped pull request per ecosystem for minor and patch
-# versions; major versions and security fixes come one by one.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -30,13 +27,11 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
-  # Base images in the Dockerfile (Go, Node, Debian, nginx, Deno).
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
 
-  # postgres in compose.yaml.
   - package-ecosystem: docker-compose
     directory: /
     schedule:

@@ -1,27 +1,13 @@
-# kaikku в Docker: сайт, /api/ и файлы. Без TLS: HTTPS — на вашем reverse proxy перед этим контейнером (README).
-# ${MEDIA_SECRET} подставляет образ nginx при старте (envsubst) из .env.
-#
-# НЕ добавлять `error_page 400 403 404 405 = @close` / `return 444`: плеер
-# должен отличать протухшую ссылку (403/410 от secure_link) от сетевой ошибки.
-
-# Адрес клиента — из X-Forwarded-For, если запрос пришёл от своего reverse
-# proxy: иначе лимит входа был бы общим на всех. Кто «свой» — список
-# set_real_ip_from, его при старте пишет docker/real-ip.sh: эта машина и
-# TRUSTED_PROXIES. Всей частной сети не верим: её клиент подставил бы в
-# заголовок любой адрес и обошёл бы лимиты.
 real_ip_header    X-Forwarded-For;
 real_ip_recursive on;
 include /etc/nginx/kaikku-real-ip.conf;
 
-# В журнале — без параметров запроса и Referer: в них пароли приложений
-# (/rest/), подписи ссылок, токены и поисковые запросы.
 log_format kaikku '$remote_addr - [$time_local] "$request_method $uri $server_protocol" '
                   '$status $body_bytes_sent "$http_user_agent"';
 
 limit_req_zone $binary_remote_addr zone=kaikku_login:10m rate=30r/m;
 limit_req_zone $binary_remote_addr zone=kaikku_og:10m rate=10r/m;
 
-# DNS Docker: API может перезапуститься с другим адресом.
 resolver 127.0.0.11 valid=10s ipv6=off;
 upstream kaikku_api {
   zone kaikku_api 64k;
@@ -39,19 +25,11 @@ server {
   add_header X-Frame-Options        "SAMEORIGIN"                      always;
   add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
 
-  # Сайт только для своих: поисковики страницы не индексируют. Превью ссылок
-  # в мессенджерах (og-теги) от этого не пропадают. robots.txt страницы не
-  # закрывает — иначе поисковик не увидит этот заголовок.
   add_header X-Robots-Tag           "noindex"                         always;
 
-  # Чужие окна не получают ссылку на наше (window.opener), и наоборот.
   add_header Cross-Origin-Opener-Policy "same-origin" always;
-  # Плееру не нужны камера, микрофон, геолокация, платежи и устройства —
-  # выключены и для встроенных фреймов. Полный экран, буфер обмена и
-  # «Поделиться» (web-share) остаются: ими пользуется плеер.
   add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), midi=(), browsing-topics=()" always;
 
-  # Политика содержимого: всё только со своего домена (картинки Deezer идут через /api/img).
   add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
 
   gzip on;
@@ -68,14 +46,11 @@ server {
   proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
   proxy_set_header X-Forwarded-Proto $scheme;
 
-  # Обложки — публично, без подписи (иначе ломается кеширование <img>).
   location /media/covers/ {
     alias /data/storage/covers/;
     expires 1d;
   }
 
-  # Треки — secure_link + Range. alias — тот же каталог, что STORAGE_DIR
-  # воркера: подпись считается от $uri (/media/<key>).
   location /media/ {
     secure_link $arg_st,$arg_e;
     secure_link_md5 "$secure_link_expires$uri ${MEDIA_SECRET}";
@@ -89,21 +64,19 @@ server {
     proxy_pass http://kaikku_api;
   }
 
-  # Свой аудиофайл трека (админ): до 200 МБ и перекодирование до минут.
   location ~ ^/api/tracks/deezer/[0-9]+/audio$ {
     client_max_body_size 200m;
-    proxy_request_buffering off; # без токена API откажет сразу, не принимая файл на диск
+    proxy_request_buffering off;
     proxy_read_timeout 360s;
     proxy_pass http://kaikku_api;
   }
 
-  # Загрузка своих релизов. Список — без слеша, иначе редирект на /api/uploads/.
   location = /api/uploads {
     proxy_pass http://kaikku_api;
   }
   location /api/uploads/ {
     client_max_body_size 200m;
-    proxy_request_buffering off; # без токена API откажет сразу, не принимая файл на диск
+    proxy_request_buffering off;
     proxy_read_timeout 420s;
     proxy_pass http://kaikku_api;
   }
@@ -112,14 +85,10 @@ server {
     proxy_pass http://kaikku_api;
   }
 
-  # Subsonic API для приложений.
   location /rest/ {
     proxy_pass http://kaikku_api;
   }
 
-  # Ссылки на альбом, артиста и плейлист — через API (og-теги для превью).
-  # API недоступен или лимит превышен — обычная страница: один адрес не
-  # выбирает общий бюджет превью (og.go), а человек ничего не заметит.
   location ~ ^/(album|artist|playlist)/[^/]+$ {
     limit_req zone=kaikku_og burst=5 nodelay;
     proxy_pass http://kaikku_api;
@@ -131,17 +100,12 @@ server {
     expires -1;
   }
 
-  # Файлы сборки с хешем в имени не меняются — кеш на год.
   location /assets/ {
     expires 1y;
   }
-  # Страница и сервис-воркер — всегда свежие.
   location ~ ^/(index\.html|sw\.js)$ {
     expires -1;
   }
-  # Файлы в корне (favicon.ico, robots.txt, …) и /.well-known/: нет файла —
-  # 404, а не страница плеера с кодом 200 (поисковики и боты приняли бы её
-  # за сам файл).
   location ~ ^/[^/]+\.[A-Za-z0-9]+$ {
     try_files $uri =404;
   }
@@ -149,7 +113,6 @@ server {
     try_files $uri =404;
   }
 
-  # SPA: всё неизвестное → index.html.
   location / {
     try_files $uri /index.html;
   }

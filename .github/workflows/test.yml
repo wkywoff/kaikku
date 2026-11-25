@@ -1,6 +1,3 @@
-# Tests on every push and pull request: Go against a real PostgreSQL (with the
-# race detector), staticcheck and govulncheck, the frontend's unit tests,
-# linter, type check and build. The same commands as in docs/development.md.
 name: Tests
 
 on:
@@ -38,19 +35,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # ffmpeg for the upload and audio tests; without it they're skipped.
       - run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg postgresql-client
       - name: gofmt
         run: test -z "$(gofmt -l cmd internal | tee /dev/stderr)"
       - run: DATABASE_URL="$TEST_DATABASE_URL" migrations/migrate.sh
       - run: go vet ./...
-      # -p 1: the api and ingest packages share the test database.
-      # -race: the API and the worker run many goroutines over shared state.
       - run: go test -race -p 1 -count=1 ./...
-      # Versions are pinned: a new release of a linter must not turn an
-      # unrelated push red. govulncheck still can, when a vulnerability in
-      # Go itself or in lib/pq is published — that is its job. Both run even
-      # when the tests failed, so one run shows everything.
       - name: staticcheck
         if: ${{ !cancelled() }}
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...

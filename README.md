@@ -135,10 +135,14 @@ docker/backup.sh
 docker compose logs -f api worker
 ```
 
-`docker/backup.sh` keeps 14 days. Run it nightly, e.g. from cron:
-`30 3 * * * /path/to/kaikku/docker/backup.sh /var/backups/kaikku`.
-Downloaded audio isn't backed up: it's fetched again when played. How to
-restore is at the top of the script.
+`docker/backup.sh` keeps 14 days (`KEEP_DAYS`). Run it nightly, e.g. from
+cron: `30 3 * * * /path/to/kaikku/docker/backup.sh /var/backups/kaikku`.
+Downloaded audio isn't backed up, it's fetched again when played; audio an
+admin replaced is. Restore the database with:
+
+```bash
+docker compose exec -T postgres pg_restore -U kaikku -d kaikku --clean --if-exists < kaikku-<date>.dump
+```
 
 yt-dlp updates itself every day; YouTube breaks old versions often.
 

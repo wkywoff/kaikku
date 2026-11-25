@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Применяет migrations/NNNN_*.sql, которых ещё нет в schema_migrations.
-# Каждый файл — в одной транзакции вместе с записью о нём.
-# DATABASE_URL берётся из окружения или из .env в корне checkout.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

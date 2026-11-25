@@ -1,12 +1,9 @@
-# секреты и данные — никогда в git
 .env
 data/
 
-# сборка
 /bin/
 frontend/node_modules/
 frontend/dist/
 /backups/
 
-# инструменты
 .claude/

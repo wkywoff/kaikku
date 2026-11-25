@@ -1,7 +1,8 @@
 # Development
 
 kaikku runs in Docker (see the [README](../README.md)); this page is for
-working on the code. Code comments are mostly in Russian.
+working on the code. The code has no comments: names say what it does, and
+the reasons are in the commit messages.
 
 | | Version | For |
 |---|---|---|

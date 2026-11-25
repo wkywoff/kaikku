@@ -1,18 +1,8 @@
-# kaikku in one command: cp .env.example .env, fill in the secrets, then
-#   docker compose up -d
-# Images come from ghcr.io (KAIKKU_VERSION in .env); if they can't be pulled,
-# Compose builds them from this checkout. Build from source on purpose:
-#   docker compose up -d --build
-# The site is at http://127.0.0.1:8080 (HTTP_BIND and HTTP_PORT in .env).
-# HTTPS: your own reverse proxy in front (README, "Open it to your phone and
-# the internet").
-
 name: kaikku
 
 x-app: &app
   image: ghcr.io/wkywoff/kaikku-app:${KAIKKU_VERSION:-latest}
   restart: unless-stopped
-  # tini as PID 1: reaps yt-dlp/ffmpeg zombies and passes SIGTERM on.
   init: true
   environment: &app-env
     DATABASE_URL: postgres://kaikku:${POSTGRES_PASSWORD:-kaikku}@postgres:5432/kaikku?sslmode=disable
@@ -27,8 +17,6 @@ services:
       POSTGRES_DB: kaikku
     volumes:
       - pgdata:/var/lib/postgresql
-    # Every 30 s while running, every second while starting: the stack
-    # still comes up as soon as Postgres is ready.
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "kaikku", "-d", "kaikku"]
       interval: 30s
@@ -37,17 +25,12 @@ services:
       start_period: 2m
       start_interval: 1s
 
-  # Migrations: on every `up`, before the API and the worker.
   migrate:
     <<: *app
-    # The app image is built here only: api and worker use the same image,
-    # and a build: on each of them would build it three times over.
     build:
       context: .
       target: app
       args:
-        # Shown in Settings when you build from source, e.g.
-        # KAIKKU_BUILD_VERSION=$(git describe --tags --always) docker compose up -d --build
         VERSION: ${KAIKKU_BUILD_VERSION:-dev}
     command: migrate
     restart: "no"
@@ -72,8 +55,6 @@ services:
       LRCRED_CONTACT: ${LRCRED_CONTACT:-}
       YTDLP_VERSION: ${YTDLP_VERSION:-}
       YTDLP_UPDATE_HOURS: ${YTDLP_UPDATE_HOURS:-24}
-    # DEEZER_PROXY / YTDLP_PROXY=socks5://host.docker.internal:… reach a
-    # proxy on the host.
     extra_hosts:
       - host.docker.internal:host-gateway
     volumes:
@@ -86,7 +67,6 @@ services:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
       interval: 30s
       timeout: 5s
-      # The first start updates yt-dlp: up to a couple of minutes.
       start_period: 5m
       start_interval: 2s
     mem_limit: 600m
@@ -103,14 +83,12 @@ services:
       - host.docker.internal:host-gateway
     volumes:
       - data:/data
-      # The API updates yt-dlp; the worker only reads it.
       - ytdlp:/opt/yt-dlp:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
       api:
         condition: service_healthy
-    # On SIGTERM the worker finishes the current download.
     stop_grace_period: 15m
     mem_limit: 900m
 

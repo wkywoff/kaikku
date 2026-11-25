@@ -1,13 +1,4 @@
 #!/bin/sh
-# Бэкап kaikku в Docker: база (pg_dump) и свои файлы — обложки, фото
-# артистов, загруженные релизы и аудио, которое заменил админ (его не скачать
-# заново). Остальное скачанное аудио не сохраняется: его можно скачать снова.
-# Запускать из любого места, нужен доступ к docker.
-#   docker/backup.sh [каталог]   (по умолчанию backups/ в checkout)
-# Хранит KEEP_DAYS последних дней (14). Каждую ночь, например из cron:
-#   30 3 * * * /path/to/kaikku/docker/backup.sh /var/backups/kaikku
-# Восстановить базу:
-#   docker compose exec -T postgres pg_restore -U kaikku -d kaikku --clean --if-exists < kaikku-<дата>.dump
 set -eu
 
 cd "$(dirname "$0")/.."
