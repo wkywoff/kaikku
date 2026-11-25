@@ -344,15 +344,15 @@
     }
   }
   .side-player {
-    --side-bg: var(--bg);
+    --tint-bg: var(--bg);
     flex-shrink: 0;
     margin-right: 8px;
     border-radius: var(--radius);
-    background: var(--side-bg);
+    background: var(--tint-bg);
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    transition: background-color 0.6s;
+    transition: --tint-bg 0.6s;
   }
   .side-player::-webkit-scrollbar {
     display: none;
@@ -364,11 +364,11 @@
     bottom: 0;
     height: 16px;
     margin-top: -16px;
-    background: linear-gradient(to bottom, transparent, var(--side-bg));
+    background: linear-gradient(to bottom, transparent, var(--tint-bg));
     pointer-events: none;
   }
   .side-player.tint-full {
-    --side-bg: var(--player-flat);
+    --tint-bg: var(--player-flat);
     --bg-card: rgba(255, 255, 255, 0.07);
   }
   .head {

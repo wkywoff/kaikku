@@ -71,6 +71,11 @@
   inherits: true;
   initial-value: #121212;
 }
+@property --tint-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #121212;
+}
 
 * {
   box-sizing: border-box;

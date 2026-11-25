@@ -155,8 +155,9 @@
   .player.tint-full {
     margin: 8px;
     border-radius: var(--radius);
-    background: var(--player-flat);
-    transition: background-color 0.6s;
+    --tint-bg: var(--player-flat);
+    background: var(--tint-bg);
+    transition: --tint-bg 0.6s;
   }
   @media (min-width: 769px) {
     :global(:root:has(.player.tint-full)) {
@@ -195,10 +196,11 @@
     inset: 0;
     z-index: -1;
     border-radius: 8px;
-    background-color: var(--player-base);
+    --tint-bg: var(--player-base);
+    background-color: var(--tint-bg);
     -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.55) 45%, transparent 100%);
     mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.55) 45%, transparent 100%);
-    transition: background-color 0.6s;
+    transition: --tint-bg 0.6s;
   }
   .cover {
     width: 56px;
@@ -361,7 +363,7 @@
     }
     .player.tint-full {
       margin: 0;
-      background: color-mix(in srgb, var(--player-base) 65%, #000);
+      --tint-bg: color-mix(in srgb, var(--player-base) 65%, #000);
     }
     .player.tint-off {
       background: var(--bg-press);

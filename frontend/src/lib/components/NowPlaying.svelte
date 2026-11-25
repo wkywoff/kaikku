@@ -333,8 +333,9 @@
     position: fixed;
     inset: 0 0 calc(-1 * var(--bottom-overhang));
     z-index: 50;
-    background: var(--player-dark);
-    transition: background-color 1.2s;
+    --tint-bg: var(--player-dark);
+    background: var(--tint-bg);
+    transition: --tint-bg 1.2s;
     isolation: isolate;
     will-change: transform;
   }
