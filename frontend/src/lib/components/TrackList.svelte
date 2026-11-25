@@ -210,6 +210,7 @@
     <div
       class="row"
       class:playing
+      class:with-adder={showAddedBy && row.addedBy}
       class:unavailable={row.hidden && !$canEdit}
       class:selected={selected === i}
       class:lifted={drag?.active && drag.from === i}
@@ -389,6 +390,10 @@
   }
   .compact .row {
     min-height: 32px;
+  }
+  .row.with-adder {
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
   .row:focus-visible {
     background: rgba(255, 255, 255, 0.08);
