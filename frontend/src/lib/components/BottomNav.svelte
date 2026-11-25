@@ -48,6 +48,9 @@
       height: var(--bottom-overhang);
       background: #000;
     }
+    :global(:root:has(.savebar)) .bottom-nav::before {
+      display: none;
+    }
     .bottom-nav::before {
       content: '';
       position: absolute;

@@ -295,9 +295,12 @@
   @media (max-width: 768px) {
     .savebar {
       bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+      background: var(--bg);
+      backdrop-filter: none;
+      box-shadow: 0 0 0 100vmax var(--bg);
     }
     :global(.shell.with-player) .savebar {
-      bottom: calc(var(--tabbar-h) + 76px + env(safe-area-inset-bottom));
+      padding-bottom: 72px;
     }
   }
 
