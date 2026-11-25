@@ -272,7 +272,7 @@
           <section class="card next">
             <div class="card-head">
               <h3>{$t('queue.next')}</h3>
-              <button class="text-link" on:click={() => (showQueue = true)}>{$t('side.openQueue')}</button>
+              <button class="text-btn" on:click={() => (showQueue = true)}>{$t('side.openQueue')}</button>
             </div>
             <button class="next-track" on:click={() => player.jumpTo(nextIndex)} aria-label={`${$t('player.play')}: ${nextEntry.title}`}>
               {#if nextEntry.coverUrl}<img src={sized(nextEntry.coverUrl, 64)} alt="" loading="lazy" />{:else}<span class="ph"></span>{/if}
@@ -561,18 +561,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-  }
-  .text-link {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-dim);
-    white-space: nowrap;
-  }
-  @media (hover: hover) {
-    .text-link:hover {
-      color: var(--text);
-      text-decoration: underline;
-    }
   }
   .next-track {
     display: flex;
