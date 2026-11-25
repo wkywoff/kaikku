@@ -13,19 +13,21 @@
   import { t } from '../i18n.js';
   import { pageTint } from '../stores/theme.js';
   import { libraryState, refresh, playRows, trackIdOf, playArtistRadio, playingContext, isContext, playAlbum, playArtistTop } from '../library.js';
-  import { followedIds, toggleFollow } from '../stores/collection.js';
+  import { likedIds, savedAlbumIds, followedIds, collectionLoaded, toggleFollow } from '../stores/collection.js';
   import { toast } from '../stores/toast.js';
   import Radio from '@lucide/svelte/icons/radio';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import { openMenu } from '../stores/contextMenu.js';
   import { longpress } from '../longpress.js';
   import { rowFromDeezerTrack } from '../rows.js';
-  import { fansLabel, recordCategory, recordTypeLabel, year } from '../format.js';
+  import { fansLabel, recordCategory, recordTypeLabel, releasesCount, tracksCount, year } from '../format.js';
+  import { countLiked } from '../artistHighlights.js';
   import Hero from '../components/Hero.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import TrackList from '../components/TrackList.svelte';
   import { albumMenuItems, artistMenuItems } from '../cardMenu.js';
   import MediaCard from '../components/MediaCard.svelte';
+  import ArtistHighlight from '../components/ArtistHighlight.svelte';
   import ArtistAbout from '../components/ArtistAbout.svelte';
   import { canEdit } from '../stores/me.js';
   import { isLocalId } from '../links.js';
@@ -33,11 +35,16 @@
   import { setRouteTitle } from '../stores/title.js';
   import Shuffle from '@lucide/svelte/icons/shuffle';
 
+  const BESIDE_POPULAR_MIN = 1000;
+  const NOTHING_LIKED = { tracks: [], albums: [] };
+
   let artist = null;
   const tint = pageTint();
   let top = [];
   let topExpanded = false;
   let albums = [];
+  let liked = NOTHING_LIKED;
+  let leadWidth = 0;
   let loading = true;
   let error = '';
   let category = $navStore.disc || 'all';
@@ -76,6 +83,7 @@
       artist = null;
       top = [];
       albums = [];
+      liked = NOTHING_LIKED;
     }
     loading = !cached;
     try {
@@ -94,6 +102,7 @@
     artist = data.artist;
     editable = !!data.editable;
     albums = data.albums;
+    liked = data.liked || NOTHING_LIKED;
     setRouteTitle(`artist:${$navStore.id}`, artist.name);
     top = (data.top || []).map((tr) => ({ ...rowFromDeezerTrack(tr), trackNo: null, discNo: null }));
     tint.from(artist.picture_url);
@@ -111,6 +120,9 @@
   $: perRow = gridWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(gridWidth / 176)));
   $: visible = shown.slice(0, perRow);
   $: relatedVisible = relatedExpanded ? related : related.slice(0, perRow);
+  $: likedSongs = $collectionLoaded ? countLiked($likedIds, liked.tracks, top.map((r) => r.deezerId)) : liked.tracks.length;
+  $: likedReleases = $collectionLoaded ? countLiked($savedAlbumIds, liked.albums, albums.map((a) => a.id)) : liked.albums.length;
+  $: likedLabel = [likedSongs && tracksCount(likedSongs, $lang), likedReleases && releasesCount(likedReleases, $lang)].filter(Boolean).join(' • ');
   $: following = !!artist && $followedIds.has(artist.id);
 
   function artistMenu(e) {
@@ -173,18 +185,36 @@
     {/await}
   {/if}
 
-  {#if top.length}
-    <section class="page-pad">
-      <div class="section-head">
-        <h2>{$t('artist.popular')}</h2>
-        {#if top.length > 5}
-          <button class="show-all" on:click={() => (topExpanded = !topExpanded)}>
-            {topExpanded ? $t('disc.showLess') : $t('disc.showAll')}
-          </button>
+  {#if top.length || likedLabel}
+    <div class="page-pad">
+      <div class="lead" class:beside={top.length && leadWidth >= BESIDE_POPULAR_MIN} bind:clientWidth={leadWidth}>
+        {#if likedLabel}
+          <div class="highlights">
+            <ArtistHighlight
+              href={paths.artistLiked(artist.id)}
+              label={$t('artist.youLiked')}
+              title={likedLabel}
+              subtitle={$t('artist.likedBy', { name: artist.name })}
+              image={artist.picture_url}
+              liked
+            />
+          </div>
+        {/if}
+        {#if top.length}
+          <section class="popular">
+            <div class="section-head">
+              <h2>{$t('artist.popular')}</h2>
+              {#if top.length > 5}
+                <button class="show-all" on:click={() => (topExpanded = !topExpanded)}>
+                  {topExpanded ? $t('disc.showLess') : $t('disc.showAll')}
+                </button>
+              {/if}
+            </div>
+            <TrackList rows={topExpanded ? top : top.slice(0, 5)} queue={top} showCover header={false} context={{ kind: 'artist', id: artist.id, title: artist.name }} on:changed={reload} />
+          </section>
         {/if}
       </div>
-      <TrackList rows={topExpanded ? top : top.slice(0, 5)} queue={top} showCover header={false} context={{ kind: 'artist', id: artist.id, title: artist.name }} on:changed={reload} />
-    </section>
+    </div>
   {/if}
 
   {#if albums.length}
@@ -298,8 +328,30 @@
       text-overflow: ellipsis;
     }
   }
-  section {
+  section,
+  .highlights {
     margin-bottom: 40px;
+  }
+  .highlights {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: 24px;
+    max-width: 900px;
+  }
+  .lead.beside {
+    display: flex;
+    align-items: flex-start;
+    gap: 48px;
+  }
+  .beside .popular {
+    flex: 1;
+    min-width: 0;
+  }
+  .beside .highlights {
+    order: 1;
+    flex-shrink: 0;
+    grid-template-columns: 300px;
+    gap: 40px;
   }
   h2 {
     font-size: 24px;
@@ -356,6 +408,10 @@
     .grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       margin: 0 -8px;
+    }
+    .highlights {
+      gap: 16px;
+      margin-bottom: 32px;
     }
     h2 {
       font-size: 20px;

@@ -16,7 +16,7 @@ any unknown path, so direct links open.
 /playlist/<uuid>                    playlist
 /mix/<id>                           mix: on-repeat, forgotten, tag-<genre>
 /genre/<slug>                       genre (Last.fm tags)
-/artist/<id>                        artist: top, discography, similar, follow, radio
+/artist/<id>                        artist: top, what you liked, discography, similar, follow, radio
 /artist/<id>/liked                  the artist's songs you liked and releases you saved
 /artist/<id>/discography/<filter>   full discography (all | album | ep | single)
 /album/<id>                         album (?track=<id> highlights a track)

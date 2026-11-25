@@ -27,6 +27,11 @@ export function tracksCount(n, lang = 'ru') {
   return `${n} ${plural(n, ['трек', 'трека', 'треков'])}`;
 }
 
+export function releasesCount(n, lang = 'ru') {
+  if (lang === 'en') return `${n} ${n === 1 ? 'release' : 'releases'}`;
+  return `${n} ${plural(n, ['релиз', 'релиза', 'релизов'])}`;
+}
+
 export function longDuration(totalSec, lang = 'ru') {
   const s = Math.round(totalSec || 0);
   const h = Math.floor(s / 3600);

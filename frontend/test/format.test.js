@@ -5,6 +5,7 @@ import {
   albumArtists,
   plural,
   tracksCount,
+  releasesCount,
   longDuration,
   year,
   shortDate,
@@ -20,6 +21,9 @@ test('russian plurals', () => {
   const cases = { 1: 'трек', 2: 'трека', 4: 'трека', 5: 'треков', 11: 'треков', 12: 'треков', 14: 'треков', 21: 'трек', 22: 'трека', 25: 'треков', 101: 'трек', 111: 'треков' };
   for (const [n, want] of Object.entries(cases)) assert.equal(plural(Number(n), forms), want, n);
   assert.equal(tracksCount(13), '13 треков');
+  assert.equal(releasesCount(1), '1 релиз');
+  assert.equal(releasesCount(3), '3 релиза');
+  assert.equal(releasesCount(11), '11 релизов');
 });
 
 test('album duration', () => {
@@ -66,6 +70,8 @@ test('release categories for filters', () => {
 test('english formatting', () => {
   assert.equal(tracksCount(1, 'en'), '1 song');
   assert.equal(tracksCount(13, 'en'), '13 songs');
+  assert.equal(releasesCount(1, 'en'), '1 release');
+  assert.equal(releasesCount(2, 'en'), '2 releases');
   assert.equal(longDuration(4464, 'en'), '1 hr 14 min');
   assert.equal(compactNumber(5219978, 'en'), '5.2M');
   assert.equal(fansLabel(886377, 'en'), '886K fans on Deezer');

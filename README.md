@@ -42,7 +42,8 @@ app, or use any Subsonic app.
   lrc.red (word and syllable timing, duets).
 
 **Library and playlists**
-- Liked songs, saved albums, followed artists.
+- Liked songs, saved albums, followed artists; an artist's page shows what
+  you liked by them.
 - Playlists with your own cover, public or private; add a whole album or
   artist at once.
 - Link previews for albums, songs, artists and public playlists in messengers.
