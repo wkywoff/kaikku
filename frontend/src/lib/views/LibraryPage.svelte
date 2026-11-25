@@ -18,6 +18,10 @@
   import { sortLibrary } from '../sort.js';
   import { sortPrefs } from '../stores/sort.js';
   import SortButton from '../components/SortButton.svelte';
+  import PageHead from '../components/PageHead.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import GhostCard from '../components/GhostCard.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import Artwork from '../components/Artwork.svelte';
   import AccountMenu from '../components/AccountMenu.svelte';
@@ -34,6 +38,7 @@
   let albums = cachedAlbums || [];
   let artists = cachedArtists;
   let loading = !cachedAlbums;
+  let perRow = 2;
   let error = '';
   let filter = 'all';
 
@@ -98,18 +103,15 @@
   ];
 </script>
 
-<div class="page-pad library">
-  <div class="top">
-    <h1>{$t('library.title')}</h1>
-    <div class="phone-account"><AccountMenu /></div>
-    <div class="top-actions">
-      <button class="pill" on:click={() => (importing = true)}><Import size={16} /> {$t('home.import')}</button>
-      <button class="pill" on:click={newPlaylist}><Plus size={16} /> {$t('home.create')}</button>
-      {#if $me?.can_upload}
-        <a class="pill" href={paths.uploads()} use:link><Upload size={16} /> {$t('upload.button')}</a>
-      {/if}
-    </div>
-  </div>
+<div class="page-pad">
+  <PageHead title={$t('library.title')}>
+    <div slot="corner"><AccountMenu /></div>
+    <button class="pill" on:click={() => (importing = true)}><Import size={16} /> {$t('home.import')}</button>
+    <button class="pill" on:click={newPlaylist}><Plus size={16} /> {$t('home.create')}</button>
+    {#if $me?.can_upload}
+      <a class="pill" href={paths.uploads()} use:link><Upload size={16} /> {$t('upload.button')}</a>
+    {/if}
+  </PageHead>
 
   {#if importing}
     {#await import('../components/ImportDialog.svelte') then m}
@@ -120,11 +122,9 @@
   {#if error}<p class="error-text">{error}</p>{/if}
 
   {#if empty}
-    <div class="empty">
-      <h2>{$t('home.emptyTitle')}</h2>
-      <p class="muted">{$t('home.emptyText')}</p>
+    <EmptyState title={$t('home.emptyTitle')} text={$t('home.emptyText')}>
       <a class="pill" href={paths.search()} use:link><Search size={16} /> {$t('home.emptyCta')}</a>
-    </div>
+    </EmptyState>
   {:else}
     <div class="chips">
       {#each filters as [key, label]}
@@ -138,7 +138,7 @@
       </span>
     </div>
 
-    <div class="grid">
+    <CardGrid bind:perRow>
       {#if filter === 'all' || filter === 'playlists'}
         <MediaCard
           href={paths.liked()}
@@ -188,74 +188,22 @@
           />
         {/if}
       {/each}
-    </div>
+      {#if loading}
+        {#each Array(perRow) as _}<GhostCard />{/each}
+      {/if}
+    </CardGrid>
   {/if}
 </div>
 
 <style>
-  .library {
-    padding-top: 24px;
-    padding-bottom: 24px;
-  }
-  .top {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 16px;
-  }
-  .phone-account {
-    display: none;
-  }
-  h1 {
-    font-size: 32px;
-  }
-  .top-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
   .chips {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    margin: 24px 0 16px;
+    margin-bottom: 16px;
   }
   .sort-slot {
     margin-left: auto;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  .empty {
-    padding: 48px 0 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-    max-width: 480px;
-  }
-  @media (max-width: 768px) {
-    .library {
-      padding-top: 16px;
-    }
-    h1 {
-      font-size: 26px;
-    }
-    .phone-account {
-      display: block;
-    }
-    .top {
-      row-gap: 12px;
-    }
-    .top-actions {
-      grid-column: 1 / -1;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
   }
 </style>

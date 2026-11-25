@@ -8,6 +8,10 @@
   import { toast } from '../stores/toast.js';
   import { recordTypeLabel } from '../format.js';
   import MediaCard from '../components/MediaCard.svelte';
+  import PageHead from '../components/PageHead.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import GhostCard from '../components/GhostCard.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import Plus from '@lucide/svelte/icons/plus';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
@@ -16,6 +20,7 @@
   let releases = null;
   let error = '';
   let creating = false;
+  let perRow = 2;
 
   api
     .uploads()
@@ -40,91 +45,29 @@
       .join(' • ');
 </script>
 
-<div class="page-pad uploads">
-  <div class="top">
-    <h1>{$t('upload.title')}</h1>
+<div class="page-pad">
+  <PageHead title={$t('upload.title')} intro={$t('upload.intro')}>
     {#if $me?.can_upload}
-      <button class="pill new" disabled={creating} on:click={newRelease}>
+      <button class="pill primary lg" disabled={creating} on:click={newRelease}>
         {#if creating}<LoaderCircle class="spin" size={16} />{:else}<Plus size={16} />{/if}
         {$t('upload.newRelease')}
       </button>
     {/if}
-  </div>
-  <p class="muted intro">{$t('upload.intro')}</p>
+  </PageHead>
 
   {#if error}
     <p class="error-text">{error}</p>
   {:else if releases && !releases.length}
-    <div class="empty">
-      <h2>{$t('upload.empty')}</h2>
-      <p class="muted">{$t('upload.emptyText')}</p>
-    </div>
-  {:else if releases}
-    <div class="grid">
-      {#each releases as r (r.id)}
-        <MediaCard href={paths.releaseEdit(r.id)} image={r.cover_url || null} title={r.title || $t('upload.untitled')} subtitle={subtitle(r)} />
-      {/each}
-    </div>
+    <EmptyState title={$t('upload.empty')} text={$t('upload.emptyText')} />
   {:else}
-    <div class="loading"><LoaderCircle class="spin" size={24} /></div>
+    <CardGrid bind:perRow>
+      {#if releases}
+        {#each releases as r (r.id)}
+          <MediaCard href={paths.releaseEdit(r.id)} image={r.cover_url || null} title={r.title || $t('upload.untitled')} subtitle={subtitle(r)} />
+        {/each}
+      {:else}
+        {#each Array(perRow) as _}<GhostCard />{/each}
+      {/if}
+    </CardGrid>
   {/if}
 </div>
-
-<style>
-  .uploads {
-    padding-top: 24px;
-    padding-bottom: 24px;
-  }
-  .top {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  h1 {
-    font-size: 32px;
-  }
-  .new {
-    height: 40px;
-    padding: 0 18px;
-    background: var(--text);
-    color: var(--bg);
-    font-weight: 700;
-  }
-  @media (hover: hover) {
-    .new:hover:not(:disabled) {
-      background: var(--text);
-    }
-  }
-  .intro {
-    margin: 8px 0 24px;
-    max-width: 640px;
-    font-size: 14px;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  .empty {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 32px 0;
-    max-width: 480px;
-  }
-  .loading {
-    padding: 48px 0;
-    color: var(--text-dim);
-  }
-  @media (max-width: 768px) {
-    h1 {
-      font-size: 26px;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
-  }
-</style>

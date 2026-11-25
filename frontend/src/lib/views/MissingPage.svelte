@@ -8,6 +8,9 @@
   import { sized } from '../imageproxy.js';
   import { formatTime } from '../stores/player.js';
   import { cookieUploadMessage, signInHint } from '../youtubeCookies.js';
+  import PageHead from '../components/PageHead.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import FileMusic from '@lucide/svelte/icons/file-music';
@@ -122,8 +125,7 @@
 </script>
 
 <div class="page-pad missing">
-  <h1>{$t('missing.title')}</h1>
-  <p class="muted intro">{$t('missing.intro')}</p>
+  <PageHead title={$t('missing.title')} intro={$t('missing.intro')} />
 
   {#if tracks}
     <section class="youtube" class:alert={blocked} role={blocked ? 'status' : null}>
@@ -151,7 +153,7 @@
           {#if cookies && !cookies.signed_in}<small class="warn">{$t('missing.cookiesSignedOut')}</small>{/if}
         </div>
         <div class="buttons">
-          <label class="pill outline file" class:disabled={!!cookiesBusy}>
+          <label class="pill outline" class:disabled={!!cookiesBusy}>
             {#if cookiesBusy === 'upload'}
               <LoaderCircle class="spin" size={16} /> {$t('missing.cookiesChecking')}
             {:else}
@@ -180,9 +182,7 @@
   {#if error}
     <p class="error-text">{error}</p>
   {:else if tracks && !tracks.length}
-    <div class="empty">
-      <h2>{$t('missing.empty')}</h2>
-    </div>
+    <EmptyState title={$t('missing.empty')} />
   {:else if tracks}
     <ul class="list">
       {#each tracks as m (m.job_id)}
@@ -215,19 +215,20 @@
             <div class="actions">
               <form class="video" on:submit|preventDefault={() => useVideo(m)}>
                 <input
+                  class="input"
                   type="url"
                   inputmode="url"
                   placeholder={$t('missing.videoPlaceholder')}
                   aria-label={$t('missing.video')}
                   bind:value={links[m.job_id]}
                 />
-                <button class="pill" type="submit" disabled={!links[m.job_id]?.trim() || !!busy[m.job_id]}>
+                <button class="pill lg" type="submit" disabled={!links[m.job_id]?.trim() || !!busy[m.job_id]}>
                   {#if busy[m.job_id] === 'video'}<LoaderCircle class="spin" size={16} />{:else}<Link size={16} />{/if}
                   {$t('missing.useVideo')}
                 </button>
               </form>
               <div class="buttons">
-                <label class="pill outline file" class:disabled={!!busy[m.job_id]}>
+                <label class="pill outline" class:disabled={!!busy[m.job_id]}>
                   {#if busy[m.job_id] === 'upload'}
                     <LoaderCircle class="spin" size={16} />
                     {progress[m.job_id] < 1 ? $t('edit.uploading', { pct: Math.floor((progress[m.job_id] || 0) * 100) }) : $t('edit.preparing')}
@@ -253,22 +254,13 @@
       {/each}
     </ul>
   {:else}
-    <div class="loading"><LoaderCircle class="spin" size={24} /></div>
+    <Skeleton kind="rows" />
   {/if}
 </div>
 
 <style>
   .missing {
-    padding-top: 24px;
     padding-bottom: 24px;
-  }
-  h1 {
-    font-size: 32px;
-  }
-  .intro {
-    margin: 8px 0 24px;
-    max-width: 680px;
-    font-size: 14px;
   }
   .youtube {
     max-width: 680px;
@@ -379,7 +371,7 @@
     gap: 16px;
     align-items: center;
     padding: 12px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: var(--bg-elevated);
   }
   .row.resolved {
@@ -427,12 +419,6 @@
     font-size: 12px;
     color: var(--text-faint);
   }
-  .chip {
-    padding: 1px 8px;
-    border-radius: 999px;
-    background: var(--bg-hover);
-    color: var(--text-dim);
-  }
   .hint {
     margin: 6px 0 0;
     max-width: 560px;
@@ -463,42 +449,14 @@
     display: flex;
     gap: 8px;
   }
-  .video input {
-    flex: 1;
-    min-width: 0;
-    height: 32px;
-    padding: 0 12px;
-    border-radius: 999px;
-    border: 1px solid transparent;
-    background: var(--bg-input);
-    font-size: 14px;
-  }
-  .video input:focus {
-    outline: none;
-    border-color: var(--text-faint);
-  }
   .buttons {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
   }
-  .file {
-    cursor: pointer;
-  }
-  .file.disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
   .status {
     font-size: 14px;
     color: var(--ok);
-  }
-  .empty {
-    padding: 32px 0;
-  }
-  .loading {
-    padding: 48px 0;
-    color: var(--text-dim);
   }
   @media (max-width: 900px) {
     .row {
@@ -511,11 +469,6 @@
     .actions,
     .status {
       grid-column: 1 / -1;
-    }
-  }
-  @media (max-width: 768px) {
-    h1 {
-      font-size: 26px;
     }
   }
 </style>

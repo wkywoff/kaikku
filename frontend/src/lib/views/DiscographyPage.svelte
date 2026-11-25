@@ -4,7 +4,7 @@
   function loadPrefs() {
     try {
       const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
-      return { sort: p.sort === 'name' ? 'name' : 'date', desc: p.desc !== false };
+      return p.sort === 'name' ? { sort: 'name', desc: false } : { sort: 'date', desc: p.desc !== false };
     } catch {
       return { sort: 'date', desc: true };
     }
@@ -25,9 +25,11 @@
   import { recordCategory, recordTypeLabel, year } from '../format.js';
   import { albumMenuItems } from '../cardMenu.js';
   import MediaCard from '../components/MediaCard.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import SortButton from '../components/SortButton.svelte';
+  import StickyBar from '../components/StickyBar.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
-  import ArrowDown from '@lucide/svelte/icons/arrow-down';
-  import ArrowUp from '@lucide/svelte/icons/arrow-up';
 
   let artist = null;
   let albums = [];
@@ -69,7 +71,7 @@
     .filter((a) => matches(a, filter))
     .sort((x, y) => {
       const c = prefs.sort === 'name' ? x.title.localeCompare(y.title, $lang) : (x.release_date || '').localeCompare(y.release_date || '');
-      return prefs.sort === 'name' ? c : prefs.desc ? -c : c;
+      return prefs.desc ? -c : c;
     });
 
   const FILTER_LABELS = { all: 'disc.all', album: 'disc.album', ep: 'disc.ep', single: 'disc.single' };
@@ -87,19 +89,10 @@
     );
   }
 
-  function sortMenu(e) {
-    const arrow = prefs.desc ? ArrowDown : ArrowUp;
-    openMenu(e, [
-      { heading: $t('disc.sortBy') },
-      {
-        label: $t('disc.byDate'),
-        checked: prefs.sort === 'date',
-        icon: prefs.sort === 'date' ? arrow : null,
-        onClick: () => savePrefs({ ...prefs, sort: 'date', desc: prefs.sort === 'date' ? !prefs.desc : true }),
-      },
-      { label: $t('disc.byName'), checked: prefs.sort === 'name', onClick: () => savePrefs({ ...prefs, sort: 'name' }) },
-    ]);
-  }
+  $: sortOptions = [
+    { key: 'date', label: $t('disc.byDate'), desc: true },
+    { key: 'name', label: $t('disc.byName') },
+  ];
 
   $: playingCtx = $playerPlaying ? $playingContext : null;
 
@@ -113,22 +106,16 @@
 {#if error}
   <p class="error-text page-pad">{error}</p>
 {:else if artist}
-  <div class="bar page-pad">
-    <a class="name" href={paths.artist(artist.id)} use:link>{artist.name}</a>
-    <div class="controls">
-      <button class="ctl" on:click={filterMenu} aria-haspopup="menu">
-        {$t(FILTER_LABELS[filter])}
-        <ChevronDown size={16} />
-      </button>
-      <button class="ctl" on:click={sortMenu} aria-haspopup="menu" aria-label={$t('disc.sortBy')}>
-        {prefs.sort === 'name' ? $t('disc.byName') : $t('disc.byDate')}
-        <ChevronDown size={16} />
-      </button>
-    </div>
-  </div>
+  <StickyBar>
+    <a href={paths.artist(artist.id)} use:link>{artist.name}</a>
+    <svelte:fragment slot="aside">
+      <button class="drop-btn" on:click={filterMenu} aria-haspopup="menu">{$t(FILTER_LABELS[filter])}<ChevronDown size={16} /></button>
+      <SortButton options={sortOptions} value={{ key: prefs.sort, desc: prefs.desc }} on:change={(e) => savePrefs({ sort: e.detail.key, desc: e.detail.desc })} />
+    </svelte:fragment>
+  </StickyBar>
 
   <div class="page-pad">
-    <div class="grid">
+    <CardGrid>
       {#each shown as a (a.id)}
         <MediaCard
           href={paths.album(a.id)}
@@ -141,86 +128,8 @@
           playing={isContext(playingCtx, 'album', a.id)}
         />
       {/each}
-    </div>
+    </CardGrid>
   </div>
 {:else}
-  <div class="page-pad">
-    <div class="sk-bar"></div>
-  </div>
+  <div class="page-pad"><Skeleton kind="bar" /></div>
 {/if}
-
-<style>
-  .bar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding-top: 20px;
-    padding-bottom: 16px;
-    background: var(--bg);
-    box-shadow: 0 0 0 100vmax var(--bg);
-    clip-path: inset(0 -100vmax);
-  }
-  .name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 24px;
-    font-weight: 700;
-  }
-  @media (hover: hover) {
-    .name:hover {
-      text-decoration: underline;
-    }
-  }
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-shrink: 0;
-  }
-  .ctl {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .ctl:hover {
-      color: var(--text);
-    }
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  .sk-bar {
-    height: 32px;
-    width: 240px;
-    margin-top: 24px;
-    border-radius: 8px;
-    background: var(--bg-card);
-  }
-  @media (max-width: 768px) {
-    .bar {
-      padding-top: 12px;
-    }
-    .name {
-      font-size: 20px;
-    }
-    .controls {
-      gap: 14px;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
-  }
-</style>

@@ -27,27 +27,13 @@
   }
 </script>
 
-<button class="sort" on:click={show} aria-haspopup="menu" aria-label={$t('disc.sortBy')} title={current?.label || ''}>
+<button class="drop-btn" on:click={show} aria-haspopup="menu" aria-label={$t('disc.sortBy')} title={current?.label || ''}>
   <span class="label">{current?.label || ''}</span>
   <span class="chevron"><ChevronDown size={16} /></span>
   <span class="icon"><ArrowDownUp size={20} /></span>
 </button>
 
 <style>
-  .sort {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-dim);
-    white-space: nowrap;
-  }
-  @media (hover: hover) {
-    .sort:hover {
-      color: var(--text);
-    }
-  }
   .icon {
     display: none;
   }

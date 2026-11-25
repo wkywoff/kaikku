@@ -20,6 +20,10 @@
   import TrackList from '../components/TrackList.svelte';
   import { albumMenuItems, artistMenuItems } from '../cardMenu.js';
   import MediaCard from '../components/MediaCard.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Search from '@lucide/svelte/icons/search';
   import X from '@lucide/svelte/icons/x';
   import History from '@lucide/svelte/icons/history';
@@ -48,7 +52,7 @@
     inflight = null;
     lastSearch.set(q);
     error = '';
-    tint.from(null);
+    tint.none();
     if (!q) {
       results = null;
       loading = false;
@@ -88,129 +92,123 @@
 <div class="page-pad search">
   <div class="phone-search"><SearchField /></div>
   {#if !$navStore.q}
-    {#if $recentSearches.length}
-      <section class="recent">
-        <div class="recent-head">
-          <h2>{$t('search.recent')}</h2>
-          <button class="clear-recent" on:click={() => recentSearches.set([])}>{$t('search.clearRecent')}</button>
-        </div>
-        <ul>
-          {#each $recentSearches as q (q)}
-            <li>
-              <a href={paths.search(q)} use:link><History size={18} /> <span>{q}</span></a>
-              <button class="icon-btn" aria-label={$t('search.removeRecent', { q })} title={$t('search.removeRecent', { q })} on:click={() => recentSearches.update((l) => removeRecent(l, q))}><X size={16} /></button>
-            </li>
-          {/each}
-        </ul>
-      </section>
-    {:else}
-      <div class="hint">
-        <Search size={48} />
-        <h2>{$t('search.hintTitle')}</h2>
-        <p class="muted">{$t('search.hintText')}</p>
-      </div>
-    {/if}
-    {#if genres.length}
-      <section class="genres">
-        <h2>{$t('search.genres')}</h2>
-        <div class="tiles">
-          {#each genres as g (g.slug)}
-            <a class="tile" href={paths.genre(g.slug)} use:link style:--hue={mixHue(`tag-${g.slug}`)}>{tagTitle(g.name)}</a>
-          {/each}
-        </div>
-      </section>
-    {/if}
+    <div class="sections">
+      {#if $recentSearches.length}
+        <section>
+          <SectionHead title={$t('search.recent')}>
+            <button class="text-btn" on:click={() => recentSearches.set([])}>{$t('search.clearRecent')}</button>
+          </SectionHead>
+          <ul class="recent">
+            {#each $recentSearches as q (q)}
+              <li>
+                <a href={paths.search(q)} use:link><History size={18} /> <span>{q}</span></a>
+                <button class="icon-btn" aria-label={$t('search.removeRecent', { q })} title={$t('search.removeRecent', { q })} on:click={() => recentSearches.update((l) => removeRecent(l, q))}><X size={16} /></button>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {:else}
+        <EmptyState icon={Search} title={$t('search.hintTitle')} text={$t('search.hintText')} />
+      {/if}
+      {#if genres.length}
+        <section>
+          <SectionHead title={$t('search.genres')} />
+          <div class="tiles">
+            {#each genres as g (g.slug)}
+              <a class="tile" href={paths.genre(g.slug)} use:link style:--hue={mixHue(`tag-${g.slug}`)}>{tagTitle(g.name)}</a>
+            {/each}
+          </div>
+        </section>
+      {/if}
+    </div>
   {:else if error}
     <p class="error-text">{error}</p>
   {:else if empty}
-    <div class="hint">
-      <h2>{$t('search.none', { q: $navStore.q })}</h2>
-      <p class="muted">{$t('search.noneText')}</p>
-    </div>
+    <EmptyState title={$t('search.none', { q: $navStore.q })} text={$t('search.noneText')} />
   {:else if results}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="results" on:click|capture={(e) => e.target instanceof Element && e.target.closest('a, button, .row') && rememberSearch($navStore.q)}>
-    <div class="top">
-      {#if topArtist}
-        <section class="best">
-          <h2>{$t('search.best')}</h2>
-          <a class="best-card" href={paths.artist(topArtist.id)} use:link>
-            {#if topArtist.picture_url}<img src={sized(topArtist.picture_url, 320)} alt="" />{/if}
-            <div class="best-name">{topArtist.name}</div>
-            <span class="best-kind">{$t('artist.kind')}</span>
-          </a>
+    <div class="sections" on:click|capture={(e) => e.target instanceof Element && e.target.closest('a, button, .row') && rememberSearch($navStore.q)}>
+      <div class="top">
+        {#if topArtist}
+          <section class="best">
+            <SectionHead title={$t('search.best')} />
+            <a class="best-card" href={paths.artist(topArtist.id)} use:link>
+              {#if topArtist.picture_url}<img src={sized(topArtist.picture_url, 320)} alt="" />{/if}
+              <div class="best-name">{topArtist.name}</div>
+              <span class="best-kind">{$t('artist.kind')}</span>
+            </a>
+          </section>
+        {/if}
+        {#if rows.length}
+          <section class="songs">
+            <SectionHead title={$t('search.tracks')} />
+            <TrackList rows={rows.slice(0, 4)} showCover header={false} numbered={false} playSimilar on:changed={() => (cache.delete($navStore.q), run($navStore.q))} />
+          </section>
+        {/if}
+      </div>
+
+      {#if people.length}
+        <section>
+          <SectionHead title={$t('search.people')} />
+          <CardGrid>
+            {#each people as p (p.id)}
+              <MediaCard href={paths.user(p.username)} round title={p.username} subtitle={$t('people.kind')}>
+                <div slot="art" class="initial" style="--hue: {mixHue(`user-${p.username.toLowerCase()}`)}">{p.username.slice(0, 1).toUpperCase()}</div>
+              </MediaCard>
+            {/each}
+          </CardGrid>
         </section>
       {/if}
-      {#if rows.length}
-        <section class="songs">
-          <h2>{$t('search.tracks')}</h2>
-          <TrackList rows={rows.slice(0, 4)} showCover header={false} numbered={false} playSimilar on:changed={() => (cache.delete($navStore.q), run($navStore.q))} />
+
+      {#if results.artists.length}
+        <section>
+          <SectionHead title={$t('search.artists')} />
+          <CardGrid>
+            {#each results.artists.slice(0, 6) as a (a.id)}
+              <MediaCard
+                href={paths.artist(a.id)}
+                menu={() => artistMenuItems(a)}
+                image={a.picture_url}
+                title={a.name}
+                subtitle={$t('artist.kind')}
+                round
+                onPlay={() => playCard(() => playArtistTop(a.id))}
+                playing={isContext(playingCtx, 'artist', a.id)}
+              />
+            {/each}
+          </CardGrid>
         </section>
       {/if}
-    </div>
 
-    {#if people.length}
-      <section>
-        <h2>{$t('search.people')}</h2>
-        <div class="row-grid">
-          {#each people as p (p.id)}
-            <MediaCard href={paths.user(p.username)} round title={p.username} subtitle={$t('people.kind')}>
-              <div slot="art" class="initial" style="--hue: {mixHue(`user-${p.username.toLowerCase()}`)}">{p.username.slice(0, 1).toUpperCase()}</div>
-            </MediaCard>
-          {/each}
-        </div>
-      </section>
-    {/if}
+      {#if results.albums.length}
+        <section>
+          <SectionHead title={$t('search.albums')} />
+          <CardGrid>
+            {#each results.albums.slice(0, 6) as a (a.id)}
+              <MediaCard
+                href={paths.album(a.id)}
+                menu={() => albumMenuItems(a)}
+                image={a.cover_url}
+                hidden={a.hidden}
+                title={a.title}
+                subtitle={[year(a.release_date), recordTypeLabel(a.record_type, $lang), a.artist_name].filter(Boolean).join(' • ')}
+                onPlay={() => playCard(() => playAlbum(a.id))}
+                playing={isContext(playingCtx, 'album', a.id)}
+              />
+            {/each}
+          </CardGrid>
+        </section>
+      {/if}
 
-    {#if results.artists.length}
-      <section>
-        <h2>{$t('search.artists')}</h2>
-        <div class="row-grid">
-          {#each results.artists.slice(0, 6) as a (a.id)}
-            <MediaCard
-              href={paths.artist(a.id)}
-              menu={() => artistMenuItems(a)}
-              image={a.picture_url}
-              title={a.name}
-              subtitle={$t('artist.kind')}
-              round
-              onPlay={() => playCard(() => playArtistTop(a.id))}
-              playing={isContext(playingCtx, 'artist', a.id)}
-            />
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    {#if results.albums.length}
-      <section>
-        <h2>{$t('search.albums')}</h2>
-        <div class="row-grid">
-          {#each results.albums.slice(0, 6) as a (a.id)}
-            <MediaCard
-              href={paths.album(a.id)}
-              menu={() => albumMenuItems(a)}
-              image={a.cover_url}
-              hidden={a.hidden}
-              title={a.title}
-              subtitle={[year(a.release_date), recordTypeLabel(a.record_type, $lang), a.artist_name].filter(Boolean).join(' • ')}
-              onPlay={() => playCard(() => playAlbum(a.id))}
-              playing={isContext(playingCtx, 'album', a.id)}
-            />
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    {#if rows.length > 4}
-      <section>
-        <h2>{$t('search.more')}</h2>
-        <TrackList rows={rows.slice(4)} showCover showAlbum header={false} numbered={false} playSimilar on:changed={() => (cache.delete($navStore.q), run($navStore.q))} />
-      </section>
-    {/if}
+      {#if rows.length > 4}
+        <section>
+          <SectionHead title={$t('search.more')} />
+          <TrackList rows={rows.slice(4)} showCover showAlbum header={false} numbered={false} playSimilar on:changed={() => (cache.delete($navStore.q), run($navStore.q))} />
+        </section>
+      {/if}
     </div>
   {:else if loading}
-    <p class="muted">{$t('search.searching')}</p>
+    <Skeleton kind="rows" />
   {/if}
 </div>
 
@@ -230,27 +228,16 @@
     font-size: 56px;
     font-weight: 800;
   }
-  @media (max-width: 768px) {
-    .phone-search {
-      display: flex;
-      padding: 12px 0 8px;
-    }
-  }
   .search {
     padding-top: 24px;
-  }
-  section {
-    margin-bottom: 32px;
-    min-width: 0;
-  }
-  h2 {
-    font-size: 24px;
-    margin-bottom: 12px;
   }
   .top {
     display: grid;
     grid-template-columns: minmax(280px, 2fr) 3fr;
-    gap: 24px;
+    gap: 32px 24px;
+  }
+  .top > section {
+    min-width: 0;
   }
   .best-card {
     display: flex;
@@ -272,13 +259,15 @@
     height: 96px;
     border-radius: 50%;
     object-fit: cover;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   }
   .best-name {
+    font-family: var(--font-display);
     font-size: 32px;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: -0.03em;
     line-height: 1.1;
+    overflow-wrap: anywhere;
   }
   .best-kind {
     align-self: flex-start;
@@ -288,31 +277,7 @@
     font-size: 13px;
     font-weight: 600;
   }
-  .row-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    grid-auto-rows: min-content;
-    margin: 0 -12px;
-  }
   .recent {
-    padding-top: 8px;
-  }
-  .recent-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 8px;
-  }
-  .recent h2 {
-    font-size: 22px;
-  }
-  .clear-recent {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-dim);
-  }
-  .recent ul {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -323,7 +288,7 @@
   .recent li {
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
   }
   .recent li a {
     flex: 1;
@@ -347,16 +312,6 @@
     .recent li:hover {
       background: var(--bg-hover);
     }
-    .clear-recent:hover {
-      color: var(--text);
-    }
-  }
-  .genres {
-    margin-top: 32px;
-  }
-  .genres h2 {
-    font-size: 22px;
-    margin-bottom: 12px;
   }
   .tiles {
     display: grid;
@@ -368,7 +323,7 @@
     align-items: flex-start;
     aspect-ratio: 16 / 9;
     padding: 14px 16px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: hsl(var(--hue) 55% 42%);
     color: #fff;
     font-family: var(--font-display);
@@ -383,42 +338,25 @@
       filter: brightness(1.1);
     }
   }
+  @media (max-width: 1000px) {
+    .top {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
   @media (max-width: 768px) {
+    .phone-search {
+      display: flex;
+      padding: 0 0 8px;
+    }
+    .search {
+      padding-top: 16px;
+    }
     .tiles {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
     .tile {
       font-size: 16px;
-    }
-  }
-  .hint {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 12px;
-    padding: 80px 0;
-    color: var(--text-dim);
-  }
-  .hint h2 {
-    color: var(--text);
-  }
-  @media (max-width: 1000px) {
-    .top {
-      grid-template-columns: 1fr;
-    }
-  }
-  @media (max-width: 768px) {
-    .search {
-      padding-top: 16px;
-    }
-    h2 {
-      font-size: 20px;
-    }
-    .row-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
     }
     .best-card {
       min-height: 0;
@@ -430,8 +368,8 @@
       height: 64px;
     }
     .best-name {
-      font-size: 22px;
       flex: 1;
+      font-size: 22px;
     }
   }
 </style>

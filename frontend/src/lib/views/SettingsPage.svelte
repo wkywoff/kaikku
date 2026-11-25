@@ -11,6 +11,7 @@
   import { me as meStore } from '../stores/me.js';
   import { directAudio } from '../stores/player.js';
   import { navigate, paths } from '../stores/nav.js';
+  import PageHead from '../components/PageHead.svelte';
   import Switch from '../components/Switch.svelte';
   import Segmented from '../components/Segmented.svelte';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -18,7 +19,7 @@
 
   export let me = null;
 
-  pageTint().from(null);
+  pageTint().none();
 
   let version = '';
   api.health().then((h) => (version = /^\d/.test(h.version) ? `v${h.version}` : h.version)).catch(() => {});
@@ -134,7 +135,7 @@
 </script>
 
 <div class="page-pad settings">
-  <h1>{$t('settings.title')}</h1>
+  <PageHead title={$t('settings.title')} />
 
   <section>
     <h2>{$t('settings.language')}</h2>
@@ -307,13 +308,13 @@
     </div>
     {#if pwOpen}
       <form class="pw-form" on:submit|preventDefault={changePassword}>
-        <input type="password" bind:value={pwOld} placeholder={$t('settings.currentPassword')} autocomplete="current-password" aria-label={$t('settings.currentPassword')} />
-        <input type="password" bind:value={pwNew} placeholder={$t('login.newPassword')} autocomplete="new-password" aria-label={$t('login.newPassword')} />
-        <input type="password" bind:value={pwNew2} placeholder={$t('login.repeatPassword')} autocomplete="new-password" aria-label={$t('login.repeatPassword')} />
+        <input class="input" type="password" bind:value={pwOld} placeholder={$t('settings.currentPassword')} autocomplete="current-password" aria-label={$t('settings.currentPassword')} />
+        <input class="input" type="password" bind:value={pwNew} placeholder={$t('login.newPassword')} autocomplete="new-password" aria-label={$t('login.newPassword')} />
+        <input class="input" type="password" bind:value={pwNew2} placeholder={$t('login.repeatPassword')} autocomplete="new-password" aria-label={$t('login.repeatPassword')} />
         {#if pwError}<p class="error-text">{pwError}</p>{/if}
         <div class="pw-actions">
           <button type="button" class="pill outline" on:click={() => ((pwOpen = false), (pwError = ''))}>{$t('settings.cancel')}</button>
-          <button type="submit" class="pill save" disabled={pwBusy || !pwOld || !pwNew}>{$t('edit.save')}</button>
+          <button type="submit" class="pill primary" disabled={pwBusy || !pwOld || !pwNew}>{$t('edit.save')}</button>
         </div>
       </form>
     {/if}
@@ -324,12 +325,7 @@
 
 <style>
   .settings {
-    padding-top: 32px;
     max-width: 840px;
-  }
-  h1 {
-    font-size: 32px;
-    margin-bottom: 24px;
   }
   section {
     margin-bottom: 32px;
@@ -341,28 +337,10 @@
     max-width: 360px;
     padding: 8px 0 4px;
   }
-  .pw-form input {
-    height: 40px;
-    padding: 0 12px;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    background: #2a2a2a;
-    color: var(--text);
-    font: inherit;
-  }
-  .pw-form input:focus {
-    outline: none;
-    border-color: #6a6a6a;
-  }
   .pw-actions {
     display: flex;
     gap: 10px;
     justify-content: flex-end;
-  }
-  .save {
-    background: #fff;
-    color: #000;
-    font-weight: 700;
   }
   h2 {
     font-size: 18px;
@@ -384,11 +362,6 @@
       text-decoration: underline;
     }
   }
-  a.pill {
-    display: inline-flex;
-    align-items: center;
-    text-decoration: none;
-  }
   .version {
     margin: 24px 0 0;
     font-size: 13px;
@@ -405,21 +378,6 @@
     color: var(--text) !important;
     overflow-wrap: anywhere;
     user-select: all;
-  }
-  .icon-btn {
-    flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .icon-btn:hover {
-      color: var(--text);
-      background: #2a2a2a;
-    }
   }
   .apps-actions {
     display: flex;
@@ -463,12 +421,6 @@
     text-align: right;
   }
   @media (max-width: 768px) {
-    .settings {
-      padding-top: 20px;
-    }
-    h1 {
-      font-size: 26px;
-    }
     .range input {
       width: 120px;
     }

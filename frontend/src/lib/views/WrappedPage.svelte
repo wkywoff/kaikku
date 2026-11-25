@@ -11,9 +11,11 @@
   import { plural, longDate } from '../format.js';
   import { num, word, count, WRAPPED_TINT } from '../wrappedText.js';
   import { albumMenuItems } from '../cardMenu.js';
-  import { MAX_PER_ROW } from '../layout.js';
   import TrackList from '../components/TrackList.svelte';
   import MediaCard from '../components/MediaCard.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import PageHead from '../components/PageHead.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import PlayButton from '../components/PlayButton.svelte';
   import ShareCardDialog from '../components/ShareCardDialog.svelte';
   import Share2 from '@lucide/svelte/icons/share-2';
@@ -50,8 +52,7 @@
   $: bestMonth = data ? data.months.indexOf(Math.max(...data.months)) : -1;
   $: partial = !!data?.since && data.since > `${data.year}-01-15`;
 
-  let albumsWidth = 0;
-  $: perRow = albumsWidth < 560 ? 2 : Math.min(MAX_PER_ROW, Math.max(2, Math.floor(albumsWidth / 176)));
+  let perRow = 2;
   $: shownAlbums = (data?.top_albums || []).slice(0, perRow < 4 ? perRow * 2 : perRow);
   $: albumTotal = data?.albums ?? data?.top_albums?.length ?? 0;
 
@@ -99,21 +100,16 @@
   {#if error}
     <p class="error-text">{error}</p>
   {:else if data}
-    <div class="head">
-      <h1>{$t('wrapped.heading', { year: data.year })}</h1>
-      <div class="head-actions">
-        {#if data.years.length > 1}
-          <div class="years">
-            {#each data.years as y}
-              <a class="pill" class:active={y === data.year} href={paths.wrapped(y)} use:link>{y}</a>
-            {/each}
-          </div>
-        {/if}
-        {#if data.plays > 0}
-          <button class="pill share" on:click={() => (sharing = true)}><Share2 size={16} /> {$t('share.share')}</button>
-        {/if}
-      </div>
-    </div>
+    <PageHead title={$t('wrapped.heading', { year: data.year })}>
+      {#if data.years.length > 1}
+        {#each data.years as y}
+          <a class="pill" class:active={y === data.year} href={paths.wrapped(y)} use:link>{y}</a>
+        {/each}
+      {/if}
+      {#if data.plays > 0}
+        <button class="pill primary" on:click={() => (sharing = true)}><Share2 size={16} /> {$t('share.share')}</button>
+      {/if}
+    </PageHead>
 
     {#if data.plays === 0}
       <div class="card hero">
@@ -193,20 +189,22 @@
           <div class="panel-head">
             <h2>{$t('wrapped.topAlbums')}</h2>
             {#if albumTotal > shownAlbums.length}
-              <a class="show-all" href={paths.wrappedAlbums(data.year)} use:link>{$t('disc.showAll')}</a>
+              <a class="text-btn" href={paths.wrappedAlbums(data.year)} use:link>{$t('disc.showAll')}</a>
             {/if}
           </div>
-          <div class="grid" bind:clientWidth={albumsWidth}>
-            {#each shownAlbums as a (a.id)}
-              <MediaCard
-                href={paths.album(a.id)}
-                menu={() => albumMenuItems(a)}
-                image={a.cover_url}
-                title={a.title}
-                subtitle={[count(a.plays, 'plays', $lang), a.artist].filter(Boolean).join(' • ')}
-                onPlay={() => playAlbum(a.id)}
-              />
-            {/each}
+          <div class="albums">
+            <CardGrid bind:perRow>
+              {#each shownAlbums as a (a.id)}
+                <MediaCard
+                  href={paths.album(a.id)}
+                  menu={() => albumMenuItems(a)}
+                  image={a.cover_url}
+                  title={a.title}
+                  subtitle={[count(a.plays, 'plays', $lang), a.artist].filter(Boolean).join(' • ')}
+                  onPlay={() => playAlbum(a.id)}
+                />
+              {/each}
+            </CardGrid>
           </div>
         </section>
       {/if}
@@ -259,6 +257,8 @@
         {/if}
       </section>
     {/if}
+  {:else}
+    <Skeleton kind="bar" />
   {/if}
 </div>
 
@@ -268,10 +268,16 @@
 
 <style>
   .wrapped {
-    padding-top: 24px;
     display: flex;
     flex-direction: column;
     gap: 24px;
+  }
+  .wrapped :global(.page-head) {
+    margin-bottom: 0;
+  }
+  .albums {
+    margin-bottom: -12px;
+    --bg-card: var(--bg-hover);
   }
   .wrapped p {
     margin: 0;
@@ -279,41 +285,8 @@
   .card .num {
     color: inherit;
   }
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  h1 {
-    font-size: 40px;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-  }
   h2 {
-    font-size: clamp(20px, 2.6vw, 24px);
-    font-weight: 700;
-  }
-  .head-actions {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .years {
-    display: flex;
-    gap: 8px;
-  }
-  .share {
-    background: #fff;
-    color: #121212;
-    font-weight: 700;
-  }
-  @media (hover: hover) {
-    .share:hover:not(:disabled) {
-      background: #e6e6e6;
-    }
+    font-size: 24px;
   }
   .card {
     --pad: 32px;
@@ -429,6 +402,10 @@
     object-fit: cover;
   }
   .ranked a {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 600;
   }
   @media (hover: hover) {
@@ -437,6 +414,8 @@
     }
   }
   .muted-small {
+    flex-shrink: 0;
+    white-space: nowrap;
     margin-left: auto;
     font-size: 13px;
     opacity: 0.8;
@@ -489,26 +468,8 @@
     align-items: center;
     gap: 12px;
   }
-  .show-all {
-    flex-shrink: 0;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-dim);
-  }
-  @media (hover: hover) {
-    .show-all:hover {
-      color: var(--text);
-      text-decoration: underline;
-    }
-  }
   .rows {
     margin: 0 -12px;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px -12px;
-    --bg-card: var(--bg-hover);
   }
   .bars {
     display: flex;
@@ -558,8 +519,8 @@
     text-decoration: underline;
   }
   @media (max-width: 768px) {
-    h1 {
-      font-size: 28px;
+    h2 {
+      font-size: 20px;
     }
     .card {
       --pad: 20px;
@@ -576,9 +537,6 @@
     .song-hero .square {
       width: 140px;
       height: 140px;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .bars {
       height: 140px;

@@ -9,6 +9,10 @@
   import { albumMenuItems } from '../cardMenu.js';
   import { count, WRAPPED_TINT } from '../wrappedText.js';
   import MediaCard from '../components/MediaCard.svelte';
+  import CardGrid from '../components/CardGrid.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import StickyBar from '../components/StickyBar.svelte';
 
   let data = null;
   let error = '';
@@ -38,14 +42,14 @@
 {#if error}
   <p class="error-text page-pad">{error}</p>
 {:else if data}
-  <div class="bar page-pad">
-    <a class="name" href={paths.wrapped(data.year)} use:link>{$t('wrapped.heading', { year: data.year })}</a>
-    <span class="total">{count(data.albums.length, 'albums', $lang)}</span>
-  </div>
+  <StickyBar>
+    <a href={paths.wrapped(data.year)} use:link>{$t('wrapped.heading', { year: data.year })}</a>
+    <svelte:fragment slot="aside">{count(data.albums.length, 'albums', $lang)}</svelte:fragment>
+  </StickyBar>
 
   <div class="page-pad">
     {#if data.albums.length}
-      <div class="grid">
+      <CardGrid>
         {#each data.albums as a (a.id)}
           <MediaCard
             href={paths.album(a.id)}
@@ -57,77 +61,11 @@
             playing={isContext(playingCtx, 'album', a.id)}
           />
         {/each}
-      </div>
+      </CardGrid>
     {:else}
-      <p class="empty">{$t('wrapped.albumsEmpty')}</p>
+      <EmptyState title={$t('wrapped.albumsEmpty')} />
     {/if}
   </div>
 {:else}
-  <div class="page-pad">
-    <div class="sk-bar"></div>
-  </div>
+  <div class="page-pad"><Skeleton kind="bar" /></div>
 {/if}
-
-<style>
-  .bar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding-top: 20px;
-    padding-bottom: 16px;
-    background: var(--bg);
-    box-shadow: 0 0 0 100vmax var(--bg);
-    clip-path: inset(0 -100vmax);
-  }
-  .name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 24px;
-    font-weight: 700;
-  }
-  @media (hover: hover) {
-    .name:hover {
-      text-decoration: underline;
-    }
-  }
-  .total {
-    flex-shrink: 0;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-dim);
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(max(176px, 10%), 1fr));
-    margin: 0 -12px;
-  }
-  .empty {
-    margin-top: 8px;
-    color: var(--text-dim);
-  }
-  .sk-bar {
-    height: 32px;
-    width: 240px;
-    margin-top: 24px;
-    border-radius: 8px;
-    background: var(--bg-card);
-  }
-  @media (max-width: 768px) {
-    .bar {
-      padding-top: 12px;
-    }
-    .name {
-      font-size: 20px;
-    }
-    .grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin: 0 -8px;
-    }
-  }
-</style>
