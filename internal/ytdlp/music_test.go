@@ -12,15 +12,11 @@ import (
 	"testing"
 )
 
-// Остальные тесты пакета ходят только в поддельный yt-dlp: YouTube Music
-// включают лишь тесты ниже, на своём сервере.
 func TestMain(m *testing.M) {
 	musicSearchURL = ""
 	os.Exit(m.Run())
 }
 
-// Фикстуры — настоящие ответы music.youtube.com (21.10.2026, с DE) без
-// миниатюр, меню и служебных полей.
 func musicFixture(t *testing.T, name string) []candidate {
 	t.Helper()
 	f, err := os.Open("testdata/" + name)
@@ -68,7 +64,6 @@ func TestParseMusicSearch_SeveralArtists(t *testing.T) {
 		got.Album != "Random Access Memories" || got.DurationMs != 370000 {
 		t.Errorf("first song = %+v", got)
 	}
-	// Исполнитель без ссылки на страницу артиста — всё равно исполнитель.
 	if c := findCandidate(t, cs, cs[2].ID); !slices.Equal(c.Artists, []string{"Flash Mob Jazz"}) {
 		t.Errorf("third song artists = %q", c.Artists)
 	}
@@ -97,7 +92,6 @@ func TestParseClock(t *testing.T) {
 	}
 }
 
-// Тот случай, из-за которого всё затевалось: explicit-трек Deezer.
 func TestRankMusic_ExplicitLuhGeek(t *testing.T) {
 	cs := musicFixture(t, "ytmusic_yeat_luh_geek.json")
 	ranked, err := rankMusic(cs, Want{Artist: "Yeat", Title: "Luh gëek", Album: "2 Alivë (Geëk Pack)", DurationMs: 176000, Explicit: boolPtr(true)}, 4000)
@@ -144,8 +138,6 @@ func TestRankMusic_AlbumAndArtist(t *testing.T) {
 		t.Errorf("best = %+v", ranked[0])
 	}
 
-	// «Get Lucky» Flash Mob Jazz из трибьюта — чужой исполнитель, даже когда
-	// длина совпала бы.
 	tribute := findCandidate(t, cs, cs[2].ID)
 	want.DurationMs = tribute.DurationMs
 	ranked, _ = rankMusic([]candidate{tribute}, want, 4000)
@@ -164,8 +156,6 @@ func TestRankMusic_OtherVersionsAndDuration(t *testing.T) {
 	}
 }
 
-// musicServer serves body as the YouTube Music search answer and records
-// the request bodies.
 func musicServer(t *testing.T, status int, body string) *[]string {
 	t.Helper()
 	var requests []string

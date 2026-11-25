@@ -33,12 +33,12 @@ func TestBioText(t *testing.T) {
 }
 
 type bioFakes struct {
-	deezerBio map[string]string // lang → BIO у Deezer
-	lastfmBio map[string]string // lang → content на Last.fm
+	deezerBio map[string]string
+	lastfmBio map[string]string
 	fail      atomic.Bool
 	dzCalls   atomic.Int32
-	lfCalls   atomic.Int32 // описания (artist.getInfo)
-	tagCalls  atomic.Int32 // теги (artist.getTopTags)
+	lfCalls   atomic.Int32
+	tagCalls  atomic.Int32
 	srv       *Server
 }
 
@@ -108,7 +108,7 @@ func getBio(t *testing.T, router http.Handler, token, id, lang string) bioReply 
 func TestArtistBio_PicksLanguageAndCaches(t *testing.T) {
 	router, token, f := newBioTestServer(t)
 	f.deezerBio["en"] = "<p>A test artist.</p>"
-	f.deezerBio["ru"] = "<p>A test artist.</p>" // у Deezer нет русского — отдаёт английский
+	f.deezerBio["ru"] = "<p>A test artist.</p>"
 	f.lastfmBio["ru"] = `Тестовый артист. <a href="https://www.last.fm/music/Test+Artist">Читать дальше</a>. CC-BY-SA.`
 
 	if b := getBio(t, router, token, "1", "en"); b.Source != "deezer" || b.Text != "A test artist." || b.URL != "https://www.deezer.com/artist/1" {
@@ -127,7 +127,6 @@ func TestArtistBio_PicksLanguageAndCaches(t *testing.T) {
 		t.Fatal("a found bio is kept, not fetched again")
 	}
 
-	// Ни у кого нет русского — показываем английский Deezer.
 	f.lastfmBio["ru"] = ""
 	if b := getBio(t, router, token, "2", "ru"); b.Source != "deezer" || b.Text != "A test artist." {
 		t.Fatalf("fallback: %+v", b)
@@ -152,7 +151,6 @@ func TestArtistBio_CustomText(t *testing.T) {
 	f.deezerBio["en"] = "From Deezer."
 	user := invitedUser(t, router, admin, "bioplain")
 
-	// Артиста Deezer правит только админ.
 	call(t, router, "PUT", "/api/discover/artists/1/bio", user, `{"text":"mine"}`, http.StatusForbidden)
 	call(t, router, "PUT", "/api/discover/artists/1/bio", admin, `{"text":"  Own words.\r\n\r\n\r\nSecond.  "}`, http.StatusOK)
 	for _, lang := range []string{"en", "ru"} {
@@ -160,7 +158,6 @@ func TestArtistBio_CustomText(t *testing.T) {
 			t.Fatalf("custom (%s): %+v", lang, b)
 		}
 	}
-	// Пустой свой текст — описание скрыто.
 	call(t, router, "PUT", "/api/discover/artists/1/bio", admin, `{"text":""}`, http.StatusOK)
 	if b := getBio(t, router, user, "1", "en"); b.Text != "" || b.Source != "custom" {
 		t.Fatalf("hidden: %+v", b)
@@ -171,7 +168,6 @@ func TestArtistBio_CustomText(t *testing.T) {
 	}
 	call(t, router, "PUT", "/api/discover/artists/1/bio", admin, fmt.Sprintf(`{"text":%q}`, strings.Repeat("я", bioMaxRunes+1)), http.StatusBadRequest)
 
-	// Своего артиста — его создатель; чужой — нет. Внешние источники не спрашиваем.
 	var own struct{ ID string }
 	json.Unmarshal(call(t, router, "POST", "/api/uploads/artists", user, `{"name":"Mine"}`, http.StatusCreated), &own)
 	calls := f.dzCalls.Load() + f.lfCalls.Load()
@@ -190,8 +186,6 @@ func TestArtistBio_CustomText(t *testing.T) {
 	call(t, router, "PUT", "/api/discover/artists/k999999/bio", admin, `{"text":"x"}`, http.StatusNotFound)
 }
 
-// Теги приходят вместе с описанием: с Last.fm один раз, потом из базы; без
-// мусора («seen live», имя самого артиста) и случайных (малый вес).
 func TestArtistBio_Tags(t *testing.T) {
 	router, token, f := newBioTestServer(t)
 	b := getBio(t, router, token, "1", "en")
@@ -207,24 +201,20 @@ func TestArtistBio_Tags(t *testing.T) {
 	}
 }
 
-// Свои жанры: ставит админ (у своего артиста — владелец), Last.fm их не
-// перезаписывает; сброс — снова с Last.fm.
 func TestArtistTags_Custom(t *testing.T) {
 	router, admin, f := newBioTestServer(t)
 	user := invitedUser(t, router, admin, "tagsplain")
-	getBio(t, router, admin, "1", "en") // с Last.fm: hip-hop, phonk
+	getBio(t, router, admin, "1", "en")
 
 	call(t, router, "PUT", "/api/discover/artists/1/tags", user, `{"tags":["rock"]}`, http.StatusForbidden)
 	call(t, router, "PUT", "/api/discover/artists/1/tags", admin, `{"tags":[" Hip Hop ","Drill","drill",""]}`, http.StatusOK)
 	if b := getBio(t, router, user, "1", "en"); strings.Join(b.Tags, ",") != "hip-hop,drill" || !b.TagsCustom {
 		t.Fatalf("custom tags: %+v", b)
 	}
-	// Фоновый проход и повторный запрос к Last.fm их не трогают.
 	f.srv.fetchTags(context.Background(), "1", "Test Artist")
 	if b := getBio(t, router, user, "1", "en"); strings.Join(b.Tags, ",") != "hip-hop,drill" {
 		t.Fatalf("Last.fm overwrote custom tags: %v", b.Tags)
 	}
-	// Страница жанра видит артиста по своему жанру.
 	call(t, router, "GET", "/api/genres/drill", user, "", http.StatusOK)
 
 	call(t, router, "PUT", "/api/discover/artists/1/tags", admin, `{"tags":["a","b","c","d","e","f"]}`, http.StatusBadRequest)
@@ -239,7 +229,6 @@ func TestArtistTags_Custom(t *testing.T) {
 		t.Error("reset did not ask Last.fm again")
 	}
 
-	// Своего артиста — его создатель.
 	var own struct{ ID string }
 	json.Unmarshal(call(t, router, "POST", "/api/uploads/artists", user, `{"name":"Mine"}`, http.StatusCreated), &own)
 	call(t, router, "PUT", "/api/discover/artists/"+own.ID+"/tags", user, `{"tags":["shoegaze"]}`, http.StatusOK)

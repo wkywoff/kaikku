@@ -16,5 +16,5 @@ func TestRun(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	Go("goroutine", func() { defer wg.Done(); panic("in a goroutine") })
-	wg.Wait() // процесс жив — тест дошёл сюда
+	wg.Wait()
 }

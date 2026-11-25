@@ -14,34 +14,29 @@ import (
 	"time"
 )
 
-// Site — внутренний API сайта deezer.com (gw-light), которым пользуется
-// сам сайт. Официальный API не отдаёт описание артиста, а этот отдаёт —
-// без входа, с гостевым токеном. Он не документирован и может поменяться:
-// всё, что отсюда берётся, необязательно (нет — страница без описания).
 type Site struct {
 	baseURL string
 	http    *http.Client
 
 	mu    sync.Mutex
-	token string // гостевой api_token (checkForm); пусто — получить заново
+	token string
 }
 
 func NewSite() *Site { return NewSiteWithBaseURL("https://www.deezer.com") }
 
-// NewSiteWithBaseURL — для тестов.
 func NewSiteWithBaseURL(base string) *Site {
-	jar, _ := cookiejar.New(nil) // гостевая сессия (sid) живёт в куках
+	jar, _ := cookiejar.New(nil)
 	return &Site{baseURL: base, http: &http.Client{Timeout: 10 * time.Second, Jar: jar}}
 }
 
 type gwResponse struct {
-	Error   json.RawMessage `json:"error"` // [] — нет ошибки, иначе объект {КОД: текст}
+	Error   json.RawMessage `json:"error"`
 	Results json.RawMessage `json:"results"`
 }
 
 func (r *gwResponse) errorCodes() map[string]any {
 	var codes map[string]any
-	json.Unmarshal(r.Error, &codes) // [] не разбирается в map — ошибок нет
+	json.Unmarshal(r.Error, &codes)
 	return codes
 }
 
@@ -96,9 +91,6 @@ func (s *Site) dropToken(old string) {
 	s.mu.Unlock()
 }
 
-// ArtistBio — описание артиста на языке lang (ru, en…) или, если на нём
-// нет, на том, что есть у Deezer (обычно английский); HTML как есть.
-// Нет описания или артиста — "" без ошибки.
 func (s *Site) ArtistBio(ctx context.Context, id, lang string) (string, error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		token, err := s.apiToken(ctx)
@@ -111,13 +103,13 @@ func (s *Site) ArtistBio(ctx context.Context, id, lang string) (string, error) {
 		}
 		if codes := r.errorCodes(); len(codes) > 0 {
 			if _, ok := codes["VALID_TOKEN_REQUIRED"]; ok {
-				s.dropToken(token) // сессия истекла — новый токен и ещё раз
+				s.dropToken(token)
 				continue
 			}
-			return "", nil // DATA_ERROR и т.п.: такого артиста нет
+			return "", nil
 		}
 		var page struct {
-			Bio json.RawMessage `json:"BIO"` // объект или false
+			Bio json.RawMessage `json:"BIO"`
 		}
 		if json.Unmarshal(r.Results, &page) != nil {
 			return "", errors.New("deezer site: unexpected artist page")

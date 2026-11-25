@@ -10,7 +10,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Страница встраиваемого плеера Spotify — как она приходит (сокращённо).
 const spotifyEmbedPage = `<!DOCTYPE html><html><head></head><body><div id="__next"></div>
 <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"state":{"data":{"entity":{
 "type":"playlist","name":"Road &amp; Trip","trackList":[
@@ -77,7 +76,7 @@ func TestBestImportMatch(t *testing.T) {
 		name  string
 		want  importTrack
 		found []deezer.Track
-		id    string // "" — ничего не подошло
+		id    string
 	}{
 		{"Spotify's dash note is Deezer's brackets",
 			importTrack{Title: "Get Lucky - Radio Edit", Artists: []string{"Daft Punk", "Pharrell Williams"}, DurationMs: 248000},

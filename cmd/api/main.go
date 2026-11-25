@@ -43,8 +43,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("upload quota: %v", err)
 	}
-	// Адрес сайта — для полных ссылок в превью и картинок в приложениях.
-	// Треки играют и без него: ссылки на аудио относительные.
 	if os.Getenv("MEDIA_BASE_URL") == "" {
 		log.Printf("MEDIA_BASE_URL is not set: link previews and artwork in apps need the site's address")
 	}
@@ -55,8 +53,6 @@ func main() {
 	}
 	defer conn.Close()
 
-	// YouTube через прокси — до помощника yt-dlp (loadStreamHub): он берёт
-	// прокси при запуске.
 	if err := ytdlp.SetProxy(os.Getenv("YTDLP_PROXY")); err != nil {
 		log.Fatalf("YTDLP_PROXY: %v", err)
 	}
@@ -67,8 +63,6 @@ func main() {
 
 	deezerCache := deezer.NewPGStore(conn)
 	dz := deezer.NewClient().WithStore(deezerCache)
-	// Второй выход к Deezer (другой IP — вдвое больше лимит): прокси, например
-	// WARP как локальный SOCKS5.
 	if p := os.Getenv("DEEZER_PROXY"); p != "" {
 		u, err := url.Parse(p)
 		if err != nil || u.Host == "" {
@@ -77,28 +71,24 @@ func main() {
 		dz.WithProxy(u, 40, 5*time.Second)
 		log.Printf("deezer: second egress via %s", u.Host)
 	}
-	// Тот же каталог, что у воркера (и то же значение по умолчанию).
 	storageDir := os.Getenv("STORAGE_DIR")
 	if storageDir == "" {
 		storageDir = "./data/storage"
 	}
 	srv := &api.Server{
-		DB:          conn,
-		JWTSecret:   jwtSecret,
-		MediaSigner: signer,
-		Deezer:      dz,
-		DeezerCache: deezerCache,
-		DeezerSite:  deezer.NewSite(),
-		StorageDir:  storageDir,
-		Streams:     streams,
-		// Скробблинг: без ключа приложения Last.fm выключен.
-		Lastfm: lastfm.New(os.Getenv("LASTFM_API_KEY"), os.Getenv("LASTFM_API_SECRET")),
-		// Превью ссылок: index.html фронта (в Docker — /app/frontend/index.html).
+		DB:               conn,
+		JWTSecret:        jwtSecret,
+		MediaSigner:      signer,
+		Deezer:           dz,
+		DeezerCache:      deezerCache,
+		DeezerSite:       deezer.NewSite(),
+		StorageDir:       storageDir,
+		Streams:          streams,
+		Lastfm:           lastfm.New(os.Getenv("LASTFM_API_KEY"), os.Getenv("LASTFM_API_SECRET")),
 		FrontendIndex:    os.Getenv("FRONTEND_INDEX"),
 		PublicURL:        os.Getenv("MEDIA_BASE_URL"),
 		UploadQuotaBytes: uploadQuota,
 	}
-	// lrc.red просит email для связи в User-Agent; без него источник выключен.
 	srv.EnableLyrics(os.Getenv("LRCRED_CONTACT"))
 	srv.SweepUploads()
 	handler := api.NewRouter(srv)
@@ -107,11 +97,6 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-	// Ответ — до минуты, как ждёт nginx (proxy_read_timeout по умолчанию):
-	// добавление сотни треков в плейлист или страница при занятом лимите
-	// Deezer (40 запросов за 5 с) идут дольше 15 с, и раньше такой ответ
-	// обрывался, хотя всё уже сохранилось. Что идёт ещё дольше — поток и
-	// загрузка аудио — продлевает себе срок само.
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -121,9 +106,6 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	// Деплой перезапускает API (SIGTERM): начатые запросы доделываются, а
-	// не обрываются на полуслове. Потоки музыки длинные — через 5 с их
-	// закрываем, плеер перезапросит ссылку.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	dz.WatchRegions(ctx)
@@ -144,14 +126,10 @@ func main() {
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
-	<-stopped // ListenAndServe возвращается сразу, а Shutdown ещё ждёт запросы
+	<-stopped
 	log.Printf("stopped")
 }
 
-// loadStreamHub: STAGING_DIR — тот же, что у воркера (туда API кладёт
-// скачанное при потоковом воспроизведении); STREAM_DIR — рабочий каталог
-// API, по умолчанию рядом со staging (та же ФС — передача hard link'ом, и
-// он внутри ReadWritePaths юнита).
 func loadStreamHub() (*api.StreamHub, error) {
 	stagingDir := os.Getenv("STAGING_DIR")
 	if stagingDir == "" {
@@ -168,10 +146,7 @@ func loadStreamHub() (*api.StreamHub, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Куки YouTube, загруженные админом, — рядом со staging, общие с воркером.
 	ytdlp.SetCookiesFile(ytdlp.CookiesPath(stagingDir))
-	// Поиск и извлечение для потока — через постоянно запущенный yt-dlp
-	// (минус ~1 с до первого звука); воркер запускает yt-dlp как раньше.
 	ytdlp.EnableWarm()
 	return hub, nil
 }
@@ -194,13 +169,9 @@ func loadJWTSecret() ([]byte, error) {
 func loadMediaSigner() (*media.Signer, error) {
 	secret := os.Getenv("MEDIA_SECRET")
 	if secret == "" {
-		// Unlike JWT_SECRET, no ephemeral fallback makes sense here: this
-		// exact string also has to be hardcoded in nginx's secure_link_md5
-		// directive (docker/nginx.conf.template), so it must be stable and
-		// explicitly chosen, not regenerated per process restart.
 		return nil, fmt.Errorf("MEDIA_SECRET is required (must match nginx's secure_link_md5 secret, see docker/nginx.conf.template)")
 	}
-	ttlSeconds := 600 // 10 минут: ссылка на трек живёт, пока он играет, и перевыпускается плеером
+	ttlSeconds := 600
 	if v := os.Getenv("MEDIA_TTL_SECONDS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
@@ -211,8 +182,6 @@ func loadMediaSigner() (*media.Signer, error) {
 	return &media.Signer{Secret: secret, TTL: time.Duration(ttlSeconds) * time.Second}, nil
 }
 
-// loadUploadQuota — UPLOAD_QUOTA_MB: сколько своих файлов может лежать у
-// одного пользователя, по умолчанию 5 ГБ; 0 — без ограничения.
 func loadUploadQuota() (uint64, error) {
 	mb := uint64(5120)
 	if v := os.Getenv("UPLOAD_QUOTA_MB"); v != "" {

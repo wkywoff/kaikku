@@ -15,25 +15,17 @@ import (
 	"unicode/utf8"
 )
 
-// Описание артиста (миграция 0024) — блок «Об артисте» на его странице.
-//
-// Откуда: свой текст (у своего артиста — его владелец, у любого — админ)
-// главнее всего. Иначе ищем у Deezer (по ID — точно тот артист), потом на
-// Last.fm (по имени), и берём текст на языке интерфейса; если на нём нет
-// нигде — какой нашёлся. Найденное хранится месяц, «ничего нет» — неделю.
-
 const (
-	bioMaxRunes  = 20000
-	bioTTL       = 30 * 24 * time.Hour
-	bioEmptyTTL  = 7 * 24 * time.Hour
-	bioFetchTime = 15 * time.Second
-	// Жанров под описанием — не больше стольких.
+	bioMaxRunes    = 20000
+	bioTTL         = 30 * 24 * time.Hour
+	bioEmptyTTL    = 7 * 24 * time.Hour
+	bioFetchTime   = 15 * time.Second
 	artistPageTags = 5
 )
 
 type artistBio struct {
 	Text   string `json:"text"`
-	Source string `json:"source"` // custom | deezer | lastfm | none
+	Source string `json:"source"`
 	URL    string `json:"url,omitempty"`
 }
 
@@ -44,14 +36,12 @@ func bioLang(r *http.Request) string {
 	return "en"
 }
 
-// bioOwner — владелец своего артиста ("" — нет или артист Deezer).
 func (s *Server) bioOwner(id string) string {
 	var owner string
 	s.DB.QueryRow(`SELECT coalesce(owner_id::text, '') FROM artists WHERE deezer_id = $1`, id).Scan(&owner)
 	return owner
 }
 
-// GET /api/discover/artists/{id}/bio?lang=ru|en
 func (s *Server) handleArtistBio(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !validCatalogID(id) {
@@ -63,7 +53,6 @@ func (s *Server) handleArtistBio(w http.ResponseWriter, r *http.Request) {
 	if isLocalID(id) {
 		owner = s.bioOwner(id)
 	}
-	// Теги (tags.go) — заодно, параллельно с описанием: оба могут ждать Last.fm.
 	var tags []artistTag
 	var tagsCustom bool
 	tagsDone := make(chan struct{})
@@ -75,7 +64,6 @@ func (s *Server) handleArtistBio(w http.ResponseWriter, r *http.Request) {
 	<-tagsDone
 	writeJSON(w, http.StatusOK, map[string]any{
 		"text": bio.Text, "source": bio.Source, "url": bio.URL,
-		// Править: свой артист — владелец (и админ в режиме админа), Deezer — админ в режиме админа.
 		"editable":    v.editable(owner),
 		"tags":        tagNames(tags),
 		"tags_custom": tagsCustom,
@@ -100,14 +88,14 @@ func (s *Server) artistBio(ctx context.Context, id, lang string) artistBio {
 		log.Printf("bio of %s: %v", id, err)
 	}
 	if isLocalID(id) {
-		return artistBio{Source: "none"} // своего артиста нет ни у Deezer, ни на Last.fm
+		return artistBio{Source: "none"}
 	}
 	fresh, ok := s.fetchBio(ctx, id, lang)
 	if !ok && fresh.Text == "" {
 		if err == nil {
-			return b // источники не ответили — пусть будет старое
+			return b
 		}
-		return fresh // и не запоминаем «ничего нет»: это сбой, а не пустота
+		return fresh
 	}
 	if _, err := s.DB.Exec(
 		`INSERT INTO artist_bios (deezer_id, lang, text, source, url) VALUES ($1, $2, $3, $4, $5)
@@ -119,8 +107,6 @@ func (s *Server) artistBio(ctx context.Context, id, lang string) artistBio {
 	return fresh
 }
 
-// fetchBio спрашивает Deezer, а если у него нет текста на нужном языке —
-// и Last.fm. ok = false — какой-то источник не ответил.
 func (s *Server) fetchBio(ctx context.Context, id, lang string) (artistBio, bool) {
 	ctx, cancel := context.WithTimeout(ctx, bioFetchTime)
 	defer cancel()
@@ -159,7 +145,6 @@ func (s *Server) fetchBio(ctx context.Context, id, lang string) (artistBio, bool
 	return artistBio{Source: "none"}, ok
 }
 
-// PUT /api/discover/artists/{id}/bio {text} — свой текст; пустой — скрыть описание.
 func (s *Server) handlePutArtistBio(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.bioEditor(w, r)
 	if !ok {
@@ -183,7 +168,6 @@ func (s *Server) handlePutArtistBio(w http.ResponseWriter, r *http.Request) {
 	s.handleArtistBio(w, r)
 }
 
-// DELETE /api/discover/artists/{id}/bio — убрать свой текст: снова найденное.
 func (s *Server) handleDeleteArtistBio(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.bioEditor(w, r)
 	if !ok {
@@ -196,7 +180,6 @@ func (s *Server) handleDeleteArtistBio(w http.ResponseWriter, r *http.Request) {
 	s.handleArtistBio(w, r)
 }
 
-// bioEditor: описание своего артиста правят владелец и админ, артиста Deezer — админ.
 func (s *Server) bioEditor(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := r.PathValue("id")
 	if !validCatalogID(id) {
@@ -219,7 +202,6 @@ func (s *Server) bioEditor(w http.ResponseWriter, r *http.Request) (string, bool
 }
 
 var (
-	// «Read more on Last.fm. User-contributed text is available under…» в конце.
 	lastfmTail = regexp.MustCompile(`(?s)\s*<a href="https?://www\.last\.fm/[^"]*">[^<]*</a>\.?[^<]*$`)
 	bioBreak   = regexp.MustCompile(`(?i)<br\s*/?>`)
 	bioPara    = regexp.MustCompile(`(?i)</p\s*>`)
@@ -227,7 +209,6 @@ var (
 	bioBlank   = regexp.MustCompile(`\n{3,}`)
 )
 
-// bioText — HTML источника в простой текст: абзацы через пустую строку.
 func bioText(s string) string {
 	s = lastfmTail.ReplaceAllString(s, "")
 	s = bioBreak.ReplaceAllString(s, "\n")
@@ -249,7 +230,6 @@ func normalizeBio(s string) string {
 	return s
 }
 
-// inLang — текст в основном на этом языке (ru — кириллица, иначе латиница).
 func inLang(s, lang string) bool {
 	var cyr, lat int
 	for _, r := range s {

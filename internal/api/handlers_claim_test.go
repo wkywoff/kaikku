@@ -20,11 +20,8 @@ func claimID(t *testing.T, router http.Handler, path, token string) string {
 	return resp.ID
 }
 
-// Админ правит артиста и альбом, у которых ничего не скачано: claim заводит
-// строки по Deezer ID, повторный claim отдаёт те же, правка видна в Deezer-
-// ответах, а на главной пустой альбом не появляется.
 func TestClaimArtistAndAlbum(t *testing.T) {
-	db, router, token := newTestRouter(t) // первый пользователь — админ
+	db, router, token := newTestRouter(t)
 
 	artistID := claimID(t, router, "/api/artists/deezer/1/claim", token)
 	if again := claimID(t, router, "/api/artists/deezer/1/claim", token); again != artistID {
@@ -52,7 +49,6 @@ func TestClaimArtistAndAlbum(t *testing.T) {
 		t.Errorf("overlay: %+v", got.Album)
 	}
 
-	// Не админ — нельзя.
 	invite := newInvite(t, router, token)
 	var reg struct{ Token string }
 	json.Unmarshal(postJSON(router, "/api/register", `{"username":"plain-user","password":"testpass123","invite":"`+invite+`"}`, "").Body.Bytes(), &reg)
@@ -62,8 +58,6 @@ func TestClaimArtistAndAlbum(t *testing.T) {
 	}
 }
 
-// Нескачанный трек правится по Deezer ID без скачивания: правка видна на
-// странице альбома, сброс её убирает, а у скачанного правится его строка.
 func TestEditTrackByDeezerID(t *testing.T) {
 	db, router, token := newTestRouter(t)
 
@@ -99,7 +93,6 @@ func TestEditTrackByDeezerID(t *testing.T) {
 		t.Errorf("after reset: %+v", edit)
 	}
 
-	// Не скачался (задача упала) — окно правки даёт загрузить свой файл.
 	var missing struct{ Missing bool }
 	json.Unmarshal(call(t, router, "GET", "/api/tracks/deezer/501/edit", token, "", http.StatusOK), &missing)
 	if missing.Missing {
@@ -112,7 +105,6 @@ func TestEditTrackByDeezerID(t *testing.T) {
 		t.Error("a failed download must offer an audio upload")
 	}
 
-	// Скачанный — правится его строка.
 	var artistID, albumID, trackID string
 	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('Test Artist', '1') RETURNING id`).Scan(&artistID)
 	db.QueryRow(`INSERT INTO albums (artist_id, title, deezer_id) VALUES ($1, 'Test Album', '9') RETURNING id`, artistID).Scan(&albumID)
@@ -129,8 +121,6 @@ func TestEditTrackByDeezerID(t *testing.T) {
 	call(t, router, "PUT", "/api/tracks/deezer/501", user, `{"title":"x"}`, http.StatusForbidden)
 }
 
-// Окно правки показывает картинку, какую видят все: с Deezer (своих копий
-// не храним) или свою, если её загрузили.
 func TestEditImageURL(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	albumID := claimID(t, router, "/api/albums/deezer/9/claim", token)

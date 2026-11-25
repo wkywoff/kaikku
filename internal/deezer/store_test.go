@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// memStore — Store в памяти для тестов.
 type memStore struct {
 	mu sync.Mutex
 	m  map[string]memEntry
@@ -50,7 +49,6 @@ func (s *memStore) Forget(key string) {
 	}
 }
 
-// Второй клиент (перезапуск) на том же store не спрашивает Deezer.
 func TestClient_StoreSurvivesRestart(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,14 +91,12 @@ func TestClient_StoreSurvivesRestart(t *testing.T) {
 		t.Errorf("restarted client asked Deezer: %d calls", calls.Load())
 	}
 
-	// Устаревшее в store не берётся.
 	st.m["track:5"] = memEntry{st.m["track:5"].data, time.Now().Add(-time.Minute)}
 	if NewClientWithBaseURL(srv.URL).WithStore(st).HasTrack("5") {
 		t.Error("an expired track taken from the store")
 	}
 }
 
-// Свежий релиз и неполный треклист держатся в кеше часы, а не неделю.
 func TestClient_FreshReleaseShortTTL(t *testing.T) {
 	today := time.Now().Format("2006-01-02")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,14 +125,13 @@ func TestClient_FreshReleaseShortTTL(t *testing.T) {
 	if short("album:2") || short("tracklist:2:50") {
 		t.Error("an old complete release is kept for hours only")
 	}
-	old.NbTracks = 12 // в треклисте 1 трек из 12
+	old.NbTracks = 12
 	c.GetAlbumTracks(old, 100)
 	if !short("tracklist:2:100") {
 		t.Error("an incomplete tracklist is kept for long")
 	}
 }
 
-// Трек без обложки (релиз ещё не вышел) держится часы: к выходу она появится.
 func TestClient_CoverlessTrackShortTTL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -161,7 +156,6 @@ func TestClient_CoverlessTrackShortTTL(t *testing.T) {
 	}
 }
 
-// batchMem — memStore с GetMany; считает обращения.
 type batchMem struct {
 	memStore
 	gets, many atomic.Int32
@@ -183,15 +177,13 @@ func (s *batchMem) GetMany(keys []string) map[string]StoreEntry {
 	return out
 }
 
-// Фиты из кеша для многих треков — одним запросом к store; трек, которого
-// нет нигде, возвращается для фоновой догрузки.
 func TestEnrichContributorsCached_Batch(t *testing.T) {
 	st := &batchMem{}
 	exp := time.Now().Add(time.Hour)
 	st.Put("track:1", []byte(`{"id":"1","contributors":[{"id":"7","name":"A"},{"id":"8","name":"B"}]}`), exp)
 	st.Put("track:2", []byte(`{"id":"2","contributors":[{"id":"7","name":"A"}]}`), exp)
 	c := NewClientWithBaseURL("http://unused").WithStore(st)
-	c.GetTrack("2") // в памяти: в store за ним не ходят
+	c.GetTrack("2")
 	st.gets.Store(0)
 	tracks := []Track{{ID: "1"}, {ID: "2"}, {ID: "3"}, {ID: "4", Contributors: []ArtistRef{{ID: "9"}}}}
 	missing := c.EnrichContributorsCached(tracks)
@@ -210,8 +202,6 @@ func TestEnrichContributorsCached_Batch(t *testing.T) {
 	}
 }
 
-// Одновременные промахи по одному треку — один запрос к Deezer, и каждый
-// получает свою копию.
 func TestClient_ConcurrentMissesShareRequest(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

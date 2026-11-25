@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// Трек, скачанный API во время потокового воспроизведения, воркер берёт как
-// есть: без поиска и скачивания (yt-dlp в PATH нет — вызов провалил бы job).
 func TestProcessJob_UsesPrefetchedAudio(t *testing.T) {
 	db := openTestDB(t)
 	bin := t.TempDir()
@@ -30,7 +28,6 @@ func TestProcessJob_UsesPrefetchedAudio(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// DASH-MP4 с AAC — как формат 140 с YouTube.
 	prefetch := PrefetchPath(staging, jobID)
 	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
 		"-c:a", "aac", "-movflags", "+dash+global_sidx", "-f", "mp4", prefetch).CombinedOutput(); err != nil {
@@ -60,8 +57,6 @@ func TestProcessJob_UsesPrefetchedAudio(t *testing.T) {
 	}
 }
 
-// Та же запись на другом релизе (ISRC) уже в медиатеке: воркер заводит трек
-// на её файл, без поиска и скачивания (yt-dlp в PATH нет — вызов провалил бы job).
 func TestProcessJob_SharesFileOfSameRecording(t *testing.T) {
 	db := openTestDB(t)
 	t.Setenv("PATH", t.TempDir())
@@ -98,9 +93,6 @@ func TestProcessJob_SharesFileOfSameRecording(t *testing.T) {
 	}
 }
 
-// Перекачка (админ): трек уже в медиатеке — файл заменяется в той же строке
-// трека (лайки и плейлисты при нём) и у той же записи на другом релизе,
-// которая делила с ним файл; старый удаляется, чужие файлы не трогаются.
 func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	db := openTestDB(t)
 	staging, storage := t.TempDir(), t.TempDir()
@@ -159,8 +151,6 @@ func TestProcessJob_ReplaceAudioKeepsTheTrack(t *testing.T) {
 	}
 }
 
-// Трек удалили, пока шла перекачка: он заводится заново — на новый файл,
-// который при этом не должен пропасть.
 func TestProcessJob_ReplaceAudioOfDeletedTrack(t *testing.T) {
 	db := openTestDB(t)
 	staging, storage := t.TempDir(), t.TempDir()
@@ -184,9 +174,6 @@ func TestProcessJob_ReplaceAudioOfDeletedTrack(t *testing.T) {
 	}
 }
 
-// prefetchAudio puts a short DASH file where the API leaves a streamed
-// download for the job, so ProcessJob skips YouTube, and leaves only
-// ffmpeg/ffprobe in PATH.
 func prefetchAudio(t *testing.T, staging string, jobID int64) {
 	t.Helper()
 	bin := t.TempDir()

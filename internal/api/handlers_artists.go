@@ -19,7 +19,6 @@ func (s *Server) handleGetArtist(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "query failed", err)
 		return
 	}
-	// Фото — какое видят все: своё или с Deezer (через прокси, /api/img).
 	if a.PictureCustom && a.PictureKey != nil {
 		a.ImageURL = "/media/" + *a.PictureKey
 	} else if s.Deezer != nil && !isLocalID(a.DeezerID) {

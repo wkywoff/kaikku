@@ -10,13 +10,10 @@ import (
 	"kaikku/internal/flight"
 )
 
-// ttlCache — ответы Deezer, которые нет смысла спрашивать на каждый
-// запрос: страницы артистов, похожие артисты, дискографии для «Новых
-// релизов», чарт. Живёт в памяти API, нулевое значение готово к работе.
 type ttlCache struct {
 	mu    sync.Mutex
 	m     map[string]ttlEntry
-	loads flight.Group[any] // промахи с одним ключом в одно время — одной загрузкой
+	loads flight.Group[any]
 }
 
 type ttlEntry struct {
@@ -26,9 +23,6 @@ type ttlEntry struct {
 
 const ttlCacheMaxEntries = 2000
 
-// storedCached — cached, но промах сначала ищется в кеше Deezer в базе
-// (Server.DeezerCache): страницы артистов, дискографии и чарт переживают
-// выкатку. Значение из базы живёт в памяти до своего срока в базе.
 func storedCached[T any](s *Server, key string, ttl time.Duration, load func() (T, error)) (T, error) {
 	return cachedUntil(&s.cache, key, func() (T, time.Time, error) {
 		var v T
@@ -48,8 +42,6 @@ func storedCached[T any](s *Server, key string, ttl time.Duration, load func() (
 	})
 }
 
-// cached returns the value under key, loading (and remembering for ttl) it
-// on a miss. Errors are not cached. Concurrent misses share one load.
 func cached[T any](c *ttlCache, key string, ttl time.Duration, load func() (T, error)) (T, error) {
 	return cachedUntil(c, key, func() (T, time.Time, error) {
 		v, err := load()
@@ -57,8 +49,6 @@ func cached[T any](c *ttlCache, key string, ttl time.Duration, load func() (T, e
 	})
 }
 
-// peekCached — значение из кеша, если оно там есть и не истекло; ничего не
-// загружает.
 func peekCached[T any](c *ttlCache, key string) (T, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -70,7 +60,6 @@ func peekCached[T any](c *ttlCache, key string) (T, bool) {
 	return zero, false
 }
 
-// cachedUntil — cached, но срок записи называет сам load.
 func cachedUntil[T any](c *ttlCache, key string, load func() (T, time.Time, error)) (T, error) {
 	now := time.Now()
 	c.mu.Lock()
@@ -87,7 +76,7 @@ func cachedUntil[T any](c *ttlCache, key string, load func() (T, time.Time, erro
 		return v, err
 	})
 	v, _ := r.(T)
-	if err != nil || exp.IsZero() { // ошибка или чужая загрузка: она и запомнила
+	if err != nil || exp.IsZero() {
 		return v, err
 	}
 	c.mu.Lock()
@@ -109,8 +98,6 @@ func cachedUntil[T any](c *ttlCache, key string, load func() (T, time.Time, erro
 	return v, nil
 }
 
-// forget drops every entry whose key starts with prefix (the data behind
-// it changed: a like changes that person's mixes).
 func (c *ttlCache) forget(prefix string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -121,9 +108,6 @@ func (c *ttlCache) forget(prefix string) {
 	}
 }
 
-// Копии закешированных ответов Deezer: overlayFor накладывает правки админа
-// прямо на ответ, включая списки исполнителей, а кеш должен оставаться
-// ответом самого Deezer.
 func cloneAlbums(in []deezer.Album) []deezer.Album {
 	out := make([]deezer.Album, len(in))
 	for i, a := range in {

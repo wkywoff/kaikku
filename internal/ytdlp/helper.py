@@ -1,34 +1,3 @@
-# Долгоживущий yt-dlp для API (warm.go): модуль импортирован один раз, и
-# поиск/извлечение не платят за старт Python и загрузку экстракторов при
-# каждом клике.
-#
-# Протокол — JSON по строке в stdin и stdout:
-#   {"id": 1, "op": "search", "query": "ytsearch15:…"}
-#       → {"id": 1, "entries": [{"id", "title", "channel", "uploader", "duration"}, …]}
-#   {"id": 2, "op": "extract", "video": "<id>"}
-#       → {"id": 2, "url": "…", "protocol": "https", "http_headers": {…}}
-#   ошибка → {"id": N, "error": "…"}
-# Запросы выполняются параллельно, ответы — в порядке готовности.
-#
-# Ускорение (замер на сервере, 2026-10, yt-dlp 2026.08.19):
-#   - конфиг веб-клиента YouTube (ytcfg: версия клиента, visitorData) yt-dlp
-#     скачивает с главной страницы перед каждым поиском — ~0.3 с; здесь он
-#     живёт в памяти YTCFG_TTL. Поиск 0.75 → 0.45 с;
-#   - извлечение по умолчанию грузит страницу ролика (или /next) — ~0.9 с
-#     ответа YouTube ради метаданных, которые нам не нужны (они уже из
-#     Deezer). Быстрый путь — штатные настройки yt-dlp player_skip =
-#     webpage, configs, initial_data с visitor_data из того же конфига:
-#     1.35 → 0.45 с. Без visitor_data YouTube просит подтвердить, что это не
-#     бот, поэтому только вместе. Не вышло — обычное извлечение, как раньше.
-#   - клиент YouTube (замер 2026-10-22, yt-dlp 2026.10.21): штатные
-#     tv_samsung + visionos, и ради первого yt-dlp решает JS-проверку плеера
-#     в Deno — ~3 с на ролик на 1 vCPU, извлечение 4–6 с. visionos один
-#     отдаёт формат 140 без проверки: 1.0–1.5 с, быстрым путём 0.1–0.5 с;
-#     ссылки качаются так же. Не вышло — штатные клиенты.
-#
-# Куки админа (COOKIES) — только когда YouTube просит войти (не пускает
-# сервер, видео 18+, для спонсоров): с аккаунтом быстрые пути не работают,
-# извлечение 9–12 с вместо ~2 (замер 23.11.2026). Как в cookies.go.
 import copy
 import json
 import os
@@ -38,17 +7,16 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 out = sys.stdout
-sys.stdout = sys.stderr  # stdout — только для протокола
+sys.stdout = sys.stderr
 
 import yt_dlp  # noqa: E402
 
 YTCFG_TTL = 30 * 60
 QUICK_CLIENTS = ['visionos']
-PROXY = os.environ.get('KAIKKU_YTDLP_PROXY')  # YTDLP_PROXY (proxy.go)
-COOKIES = os.environ.get('KAIKKU_YTDLP_COOKIES')  # своя копия кук админа (cookies.go)
-COOKIES_FIRST_FOR = 30 * 60  # YouTube не пускает без кук — сколько начинать с них
+PROXY = os.environ.get('KAIKKU_YTDLP_PROXY')
+COOKIES = os.environ.get('KAIKKU_YTDLP_COOKIES')
+COOKIES_FIRST_FOR = 30 * 60
 
-# needsSignIn и isBlocked из blocked.go.
 SIGN_IN = ('--cookies', 'confirm your age', 'age-restricted', 'inappropriate for some users',
            'members-only', 'join this channel', 'granted access')
 REFUSED = ('not a bot', 'rate-limited by youtube')
@@ -66,7 +34,6 @@ def wants_sign_in(e):
 
 
 class Quiet:
-    # Молчит, но последнюю ошибку на этом потоке помнит (search).
     def debug(self, msg):
         pass
 
@@ -76,9 +43,7 @@ class Quiet:
         local.last_error = msg
 
 
-# --- конфиг клиента в памяти ---
-
-ytcfg_cache = {}  # client → (время, ytcfg)
+ytcfg_cache = {}
 ytcfg_lock = threading.Lock()
 
 
@@ -95,7 +60,7 @@ def patch_ytcfg_cache():
         return False
 
     def cached(self, client, video_id):
-        if client == 'web_embedded':  # адрес зависит от ролика
+        if client == 'web_embedded':
             return orig(self, client, video_id)
         with ytcfg_lock:
             hit = ytcfg_cache.get(client)
@@ -120,7 +85,6 @@ def forget_ytcfg():
 
 
 def visitor_data():
-    """visitorData веб-клиента — из конфига в памяти (или скачать его)."""
     if not patched:
         return None
     try:
@@ -130,8 +94,6 @@ def visitor_data():
         return None
     return cfg.get('VISITOR_DATA') or ((cfg.get('INNERTUBE_CONTEXT') or {}).get('client') or {}).get('visitorData')
 
-
-# --- YoutubeDL на поток ---
 
 local = threading.local()
 
@@ -143,9 +105,9 @@ def options(kind, visitor=None, signed_in=False):
         opts['proxy'] = PROXY
     if signed_in:
         opts['cookiefile'] = COOKIES
-    if kind == 'search':  # как `yt-dlp -j --flat-playlist --ignore-errors`
+    if kind == 'search':
         opts.update(extract_flat='in_playlist', ignoreerrors=True)
-    else:  # как `yt-dlp -j -f 140`
+    else:
         opts.update(format='140')
     args = {}
     if kind == 'quick':
@@ -159,10 +121,6 @@ def options(kind, visitor=None, signed_in=False):
 
 
 def ydl(kind, visitor=None, signed_in=False):
-    # Свой YoutubeDL на поток: объект не потокобезопасен, а повторное
-    # использование сохраняет загруженный JS плеера между запросами.
-    # kind: search, quick (QUICK_CLIENTS) или extract (штатные клиенты);
-    # signed_in — с куками админа.
     key = kind + (':fast' if visitor is not None else '') + (':signed-in' if signed_in else '')
     d = getattr(local, key, None)
     if d is None or (visitor is not None and local.__dict__.get(key + ':visitor') != visitor):
@@ -185,7 +143,7 @@ def extract(video):
                 return i
         except Exception as e:
             if 'bot' in str(e):
-                forget_ytcfg()  # сессия стала подозрительной — новый конфиг в следующий раз
+                forget_ytcfg()
             print('fast extract %s: %s' % (video, e), file=sys.stderr)
     try:
         i = ydl('quick').extract_info(url, download=False)
@@ -204,8 +162,6 @@ def extract(video):
 
 
 def extract_signed_in(video, url, why):
-    # YouTube просит войти. Не пускает сам сервер — куки идут первыми
-    # COOKIES_FIRST_FOR, чтобы не ждать отказа на каждом запросе.
     global cookies_first_until
     if refused(why):
         cookies_first_until = time.time() + COOKIES_FIRST_FOR
@@ -214,9 +170,6 @@ def extract_signed_in(video, url, why):
 
 
 def search(query, signed_in=False):
-    # ignoreerrors: о том, что YouTube не пускает, поиск не бросает
-    # исключение, а только пишет в логгер (Quiet запоминает) — пусто и
-    # просит войти: с куками, нет их — ошибкой, а не «ничего не нашлось».
     local.last_error = None
     r = ydl('search', signed_in=signed_in).extract_info(query, download=False) or {}
     err = local.last_error
@@ -249,7 +202,7 @@ def handle(req):
                    'http_headers': i.get('http_headers')})
         else:
             reply({'id': req['id'], 'error': 'unknown op ' + repr(req['op'])})
-    except Exception as e:  # ошибка запроса (ролик недоступен и т.п.), не процесса
+    except Exception as e:
         reply({'id': req['id'], 'error': str(e)})
 
 

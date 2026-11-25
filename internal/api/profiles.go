@@ -7,13 +7,6 @@ import (
 	"strings"
 )
 
-// Профили и подписки между людьми (миграция 0035): страница /user/<ник> с
-// публичными плейлистами. Взаимная подписка — «друзья»: только их владелец
-// зовёт в соавторы плейлиста (playlist_collab.go). Списка всех людей нет —
-// профиль находят по ссылке, по нику у плейлиста или по нику целиком в
-// поиске.
-
-// person — человек глазами текущего пользователя.
 type person struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
@@ -21,7 +14,6 @@ type person struct {
 	FollowsMe bool   `json:"follows_me"`
 }
 
-// personSelect — $1 — текущий пользователь.
 const personSelect = `
 	SELECT u.id, u.username,
 	       EXISTS (SELECT 1 FROM user_follows f WHERE f.follower_id = $1 AND f.followee_id = u.id),
@@ -41,7 +33,6 @@ func scanPeople(rows *sql.Rows) ([]person, error) {
 	return out, rows.Err()
 }
 
-// userByName — человек по нику (без учёта регистра).
 func (s *Server) userByName(me, name string) (person, error) {
 	var p person
 	err := s.DB.QueryRow(personSelect+` WHERE lower(u.username) = lower($2) ORDER BY u.username = $2 DESC LIMIT 1`, me, name).
@@ -49,8 +40,6 @@ func (s *Server) userByName(me, name string) (person, error) {
 	return p, err
 }
 
-// GET /api/users/{name} — профиль: человек, его публичные плейлисты; свой —
-// ещё и люди вокруг (друзья, подписчики, подписки).
 func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	me := currentUser(r)
 	p, err := s.userByName(me, r.PathValue("name"))
@@ -92,7 +81,6 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// people — на кого подписан и кто подписан на тебя.
 func (s *Server) people(me string) ([]person, error) {
 	rows, err := s.DB.Query(personSelect+`
 		 WHERE u.id IN (SELECT followee_id FROM user_follows WHERE follower_id = $1
@@ -104,8 +92,6 @@ func (s *Server) people(me string) ([]person, error) {
 	return scanPeople(rows)
 }
 
-// GET /api/me/people — люди вокруг: друзья (подписки в обе стороны),
-// подписчики и подписки. Окно плейлиста берёт отсюда друзей.
 func (s *Server) handlePeople(w http.ResponseWriter, r *http.Request) {
 	people, err := s.people(currentUser(r))
 	if err != nil {
@@ -115,8 +101,6 @@ func (s *Server) handlePeople(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"people": people})
 }
 
-// PUT /api/users/{id}/follow — подписаться; DELETE — отписаться. Ответ —
-// человек с новым состоянием.
 func (s *Server) handleFollowUser(w http.ResponseWriter, r *http.Request) {
 	me, other := currentUser(r), r.PathValue("id")
 	if other == me {
@@ -155,7 +139,6 @@ func (s *Server) writePerson(w http.ResponseWriter, r *http.Request, me, id stri
 	writeJSON(w, http.StatusOK, p)
 }
 
-// friends — подписаны друг на друга.
 func (s *Server) friends(a, b string) bool {
 	var ok bool
 	s.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM user_follows WHERE follower_id::text = $1 AND followee_id::text = $2)
@@ -163,8 +146,6 @@ func (s *Server) friends(a, b string) bool {
 	return ok
 }
 
-// searchPeople — человек для поиска: только по нику целиком, чтобы по
-// первым буквам нельзя было перебрать всех.
 func (s *Server) searchPeople(me, q string) []person {
 	q = strings.TrimPrefix(strings.TrimSpace(q), "@")
 	if q == "" {

@@ -22,9 +22,6 @@ import (
 	"kaikku/internal/ytdlp"
 )
 
-// dashFile builds a file shaped like YouTube's format 140 (ftyp, moov,
-// sidx listing the segments, moof+mdat segments) — what yt-dlp streams.
-// headerLen is where the first segment starts.
 func dashFile(segments ...int) (file []byte, headerLen int) {
 	box := func(typ string, payload []byte) []byte {
 		b := binary.BigEndian.AppendUint32(nil, uint32(8+len(payload)))
@@ -33,7 +30,7 @@ func dashFile(segments ...int) (file []byte, headerLen int) {
 	sidx := []byte{0, 0, 0, 0}
 	sidx = binary.BigEndian.AppendUint32(sidx, 1)
 	sidx = binary.BigEndian.AppendUint32(sidx, 44100)
-	sidx = binary.BigEndian.AppendUint64(sidx, 0) // earliest_presentation_time + first_offset
+	sidx = binary.BigEndian.AppendUint64(sidx, 0)
 	sidx = binary.BigEndian.AppendUint32(sidx, uint32(len(segments)))
 	for _, n := range segments {
 		sidx = binary.BigEndian.AppendUint32(sidx, uint32(n))
@@ -51,8 +48,6 @@ func dashFile(segments ...int) (file []byte, headerLen int) {
 	return f.Bytes(), headerLen
 }
 
-// fakeSource is a StreamSource whose audio the test feeds by hand, to see
-// what the listener gets while the "download" is still going.
 type fakeSource struct {
 	calls atomic.Int32
 	want  chan ytdlp.Want
@@ -83,9 +78,9 @@ func newStreamTestServer(t *testing.T) (*Server, *httptest.Server, string, *fake
 	deezerSrv := mockDeezerServer(t)
 	t.Cleanup(deezerSrv.Close)
 	src := newFakeSource()
-	freeSpace = func(string) (uint64, error) { return 50 << 30, nil } // /tmp тестов может быть меньше гигабайта
+	freeSpace = func(string) (uint64, error) { return 50 << 30, nil }
 	t.Cleanup(func() { freeSpace = statFree })
-	t.Cleanup(func() { // скачивание, которое тест так и не докормил
+	t.Cleanup(func() {
 		select {
 		case <-src.ready:
 			src.pipe.CloseWithError(errors.New("test is over"))
@@ -175,7 +170,6 @@ func TestDeezerStream_PlaysWhileDownloadingThenHandsOffToWorker(t *testing.T) {
 	if !held {
 		t.Fatal("job is not held from the worker while the client starts the stream")
 	}
-	// Воркер придержанный job не берёт.
 	if job, err := ingest.ClaimNextJob(srv.DB); err != nil || job != nil {
 		t.Fatalf("ClaimNextJob on a held job = %+v, %v; want nothing", job, err)
 	}
@@ -187,8 +181,6 @@ func TestDeezerStream_PlaysWhileDownloadingThenHandsOffToWorker(t *testing.T) {
 		t.Errorf("matching data = %+v", want)
 	}
 	<-src.ready
-	// Ответ уходит, как только из заголовка файла известен размер, — скачано
-	// лишь начало.
 	go src.pipe.Write(file[:headerLen+5000])
 	res := <-resCh
 	if res.StatusCode != http.StatusOK || res.ContentLength != int64(len(file)) ||
@@ -200,7 +192,6 @@ func TestDeezerStream_PlaysWhileDownloadingThenHandsOffToWorker(t *testing.T) {
 		t.Fatalf("first segment before the download finished: %v", err)
 	}
 
-	// Перемотка в уже скачанное — 206, пока трек ещё качается.
 	part := getAudio(t, ts.URL+link.URL, "bytes=100-199")
 	body, _ := io.ReadAll(part.Body)
 	if part.StatusCode != http.StatusPartialContent || !bytes.Equal(body, file[100:200]) ||
@@ -208,7 +199,6 @@ func TestDeezerStream_PlaysWhileDownloadingThenHandsOffToWorker(t *testing.T) {
 		t.Fatalf("range: %d %q, %d bytes", part.StatusCode, part.Header.Get("Content-Range"), len(body))
 	}
 
-	// Перемотка вперёд, в ещё не скачанное, ждёт свои байты.
 	tailDone := make(chan []byte)
 	go func() {
 		tail := getAudio(t, ts.URL+link.URL, "bytes=-10")
@@ -227,7 +217,6 @@ func TestDeezerStream_PlaysWhileDownloadingThenHandsOffToWorker(t *testing.T) {
 		t.Errorf("tail range = %q", tail)
 	}
 
-	// Скачанное — воркеру: файл в staging, video_id записан, hold снят.
 	prefetch := ingest.PrefetchPath(srv.Streams.StagingDir, link.JobID)
 	waitFor(t, "hand-off to the worker", func() bool {
 		var released bool
@@ -246,7 +235,6 @@ func TestDeezerStream_PlaysWhileDownloadingThenHandsOffToWorker(t *testing.T) {
 		t.Fatalf("ClaimNextJob after the hand-off = %+v, %v", job, err)
 	}
 
-	// Повторный запрос (перемотка после конца скачивания) — из того же файла.
 	again := getAudio(t, ts.URL+link.URL, "bytes=0-")
 	if b, _ := io.ReadAll(again.Body); again.StatusCode != http.StatusPartialContent || !bytes.Equal(b, file) {
 		t.Errorf("request after download: %d, %d bytes", again.StatusCode, len(b))
@@ -291,7 +279,6 @@ func TestDeezerStream_LibraryTrackUsesMedia(t *testing.T) {
 		t.Fatalf("stream url for a library track: %d %+v", code, link)
 	}
 
-	// Старая ссылка на поток, а трек тем временем попал в медиатеку.
 	streamLink, _ := srv.MediaSigner.PathURL("/api/stream/deezer/12345")
 	res := getAudio(t, ts.URL+streamLink, "")
 	if res.StatusCode != http.StatusFound || !strings.HasPrefix(res.Header.Get("Location"), "/media/abc.m4a?st=") {
@@ -311,7 +298,6 @@ func TestDeezerStream_NotFoundOnYouTubeReleasesJob(t *testing.T) {
 	if res.StatusCode != http.StatusBadGateway {
 		t.Errorf("status %d, want 502", res.StatusCode)
 	}
-	// Job — воркеру как обычно (он попробует сам и при неудаче запишет ошибку).
 	waitFor(t, "job release", func() bool {
 		var released bool
 		srv.DB.QueryRow(`SELECT hold_until IS NULL FROM ingest_jobs WHERE id = $1`, link.JobID).Scan(&released)
@@ -322,8 +308,6 @@ func TestDeezerStream_NotFoundOnYouTubeReleasesJob(t *testing.T) {
 	}
 }
 
-// Не нашлось на YouTube — несколько минут следующие запросы трека сразу
-// получают 404 с причиной: плеер говорит, почему пропускает, а не ищет снова.
 func TestDeezerStream_NotFoundIsRemembered(t *testing.T) {
 	srv, ts, token, src := newStreamTestServer(t)
 	src.err = fmt.Errorf("match: %w", ytdlp.ErrNoMatch)
@@ -346,14 +330,12 @@ func TestDeezerStream_NotFoundIsRemembered(t *testing.T) {
 	if res.StatusCode != http.StatusNotFound || body.Reason != "not_found" {
 		t.Fatalf("second request: %d %+v", res.StatusCode, body)
 	}
-	// Админ указал видео — снова можно пробовать.
 	srv.Streams.clearNotFound("12345")
 	if srv.Streams.recentlyNotFound("12345") {
 		t.Fatal("cleared")
 	}
 }
 
-// Трек играют — его аудио не удалят как неслушаемое (не чаще раза в час).
 func TestStreamURL_TouchesLastPlayed(t *testing.T) {
 	db, router, token, srv := newTestServer(t)
 	srv.MediaSigner = &media.Signer{Secret: "s3cret", TTL: time.Minute}
@@ -395,8 +377,6 @@ func TestParseRange(t *testing.T) {
 	}
 }
 
-// Та же запись на другом релизе (ISRC) уже в медиатеке: трек играет её файл
-// сразу, без YouTube.
 func TestDeezerStream_SameRecordingPlaysFromLibrary(t *testing.T) {
 	srv, ts, token, src := newStreamTestServer(t)
 	var artistID, albumID, twinID string
@@ -405,7 +385,7 @@ func TestDeezerStream_SameRecordingPlaysFromLibrary(t *testing.T) {
 	srv.DB.QueryRow(`INSERT INTO tracks (album_id, artist_id, title, duration_ms, storage_key, gain_db, deezer_id, isrc)
 	                 VALUES ($1, $2, 'Test Song', 200000, 'single.m4a', -1.5, '999', 'TEST00000001') RETURNING id`, albumID, artistID).Scan(&twinID)
 
-	code, r := getStreamURL(t, ts, token, "12345") // тот же ISRC, другой релиз
+	code, r := getStreamURL(t, ts, token, "12345")
 	if code != http.StatusAccepted && code != http.StatusOK {
 		t.Fatalf("status %d", code)
 	}
@@ -443,8 +423,6 @@ func TestStreamStartLimit(t *testing.T) {
 	}
 }
 
-// Места меньше минимума — новое не качаем, иначе прослушивания доедали бы
-// диск, пока воркер ждёт места. Задание остаётся воркеру.
 func TestDeezerStream_RefusedWhenDiskIsLow(t *testing.T) {
 	srv, ts, token, src := newStreamTestServer(t)
 	freeSpace = func(string) (uint64, error) { return minFreeSpace - 1, nil }

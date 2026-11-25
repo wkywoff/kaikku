@@ -8,16 +8,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Версии релиза (админ, миграция 0021): Deezer держит делюкс, clean и
-// переиздания отдельными релизами, и в дискографии торчат дубли. Версия
-// привязывается к основному релизу: пропадает из дискографии, поиска и
-// новинок (visibleAlbums) и показывается на странице основного — и на
-// страницах других его версий — в «Других версиях». Свой релиз (загрузка,
-// k…) тоже бывает версией — Deezer или своего — и основным.
-
-// albumVersions returns the other releases of the same group as a: its main
-// release and the main's versions, a itself left out. a must be overlaid
-// (VersionOf set).
 func (s *Server) albumVersions(r *http.Request, a *deezer.Album) []deezer.Album {
 	root := a.ID
 	if a.VersionOf != "" {
@@ -45,7 +35,7 @@ func (s *Server) albumVersions(r *http.Request, a *deezer.Album) []deezer.Album 
 			byID[id] = *v
 		}
 	}
-	cards, _ := s.localAlbumCards(own) // уже с правками; черновик — скрытый
+	cards, _ := s.localAlbumCards(own)
 	for _, c := range cards {
 		byID[c.ID] = c
 	}
@@ -62,11 +52,6 @@ func (s *Server) albumVersions(r *http.Request, a *deezer.Album) []deezer.Album 
 	return out
 }
 
-// saveVersionOf makes the library album albumID a version of the release
-// main (Deezer or own ID, one v can see); "" unlinks it. Linking to a
-// version links to its main release; linking to one of the album's own
-// versions makes that one the main release of the group. The album's
-// versions follow it.
 func (s *Server) saveVersionOf(v viewer, albumID, main string) error {
 	var self string
 	if err := s.DB.QueryRow(`SELECT deezer_id FROM albums WHERE id = $1`, albumID).Scan(&self); err != nil {
@@ -101,7 +86,6 @@ func (s *Server) saveVersionOf(v viewer, albumID, main string) error {
 		return err
 	}
 	defer tx.Rollback()
-	// Был версией этого — теперь основной; версии этого — к новому основному; сам — версия.
 	if _, err := tx.Exec(`UPDATE albums SET version_of = NULL WHERE deezer_id = $1`, main); err != nil {
 		return err
 	}

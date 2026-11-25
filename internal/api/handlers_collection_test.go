@@ -39,7 +39,7 @@ func TestLikesAndSavedAlbums(t *testing.T) {
 	db, router, token := newTestRouter(t)
 
 	call(t, router, "PUT", "/api/me/liked/12345", token, "", http.StatusNoContent)
-	call(t, router, "PUT", "/api/me/liked/12345", token, "", http.StatusNoContent) // повторно — не ошибка
+	call(t, router, "PUT", "/api/me/liked/12345", token, "", http.StatusNoContent)
 	var liked struct {
 		Tracks []struct {
 			ID    string `json:"id"`
@@ -68,7 +68,6 @@ func TestLikesAndSavedAlbums(t *testing.T) {
 		t.Errorf("a saved album should be queued whole, jobs: %d", queued)
 	}
 
-	// У другого пользователя своя медиатека.
 	other := invitedUser(t, router, token, "collection-other")
 	json.Unmarshal(call(t, router, "GET", "/api/me/collection", other, "", http.StatusOK), &ids)
 	if len(ids.Liked) != 0 || len(ids.Albums) != 0 {
@@ -115,12 +114,10 @@ func TestPlaylists(t *testing.T) {
 		t.Fatalf("playlist: %+v", got)
 	}
 
-	// Приватный чужой — как будто его нет; добавлять в чужой нельзя.
 	call(t, router, "GET", "/api/playlists/"+p.ID, other, "", http.StatusNotFound)
 	call(t, router, "POST", "/api/playlists/"+p.ID+"/tracks", other, `{"deezer_ids":["12345"]}`, http.StatusNotFound)
 	call(t, router, "GET", "/api/playlists/not-a-uuid", token, "", http.StatusNotFound)
 
-	// Публичный видят все, но меняет только владелец.
 	call(t, router, "PUT", "/api/playlists/"+p.ID, token, `{"is_public":true,"description":"for the car"}`, http.StatusOK)
 	var lists struct {
 		Mine, Others []struct {
@@ -128,8 +125,6 @@ func TestPlaylists(t *testing.T) {
 			Owner struct{ Username string }
 		}
 	}
-	// В списке (главная, приложения) — только плейлисты друзей; по ссылке
-	// публичный открывается и так.
 	json.Unmarshal(call(t, router, "GET", "/api/playlists", other, "", http.StatusOK), &lists)
 	if len(lists.Mine) != 0 || len(lists.Others) != 0 {
 		t.Fatalf("not friends yet, other's list: %+v", lists)
@@ -163,7 +158,6 @@ func itoa(n int64) string {
 	return string(b)
 }
 
-// playlistOrder returns the Deezer IDs and item IDs of a playlist, in order.
 func playlistOrder(t *testing.T, router http.Handler, token, id string) ([]string, []int64) {
 	t.Helper()
 	var got struct {
@@ -201,19 +195,17 @@ func TestPlaylistReorder(t *testing.T) {
 		}
 	}
 
-	move(c, a, http.StatusNoContent) // в начало
+	move(c, a, http.StatusNoContent)
 	expect("501", "12345", "888")
-	move(c, "null", http.StatusNoContent) // в конец
+	move(c, "null", http.StatusNoContent)
 	expect("12345", "888", "501")
-	move(a, c, http.StatusNoContent) // в середину
+	move(a, c, http.StatusNoContent)
 	expect("888", "12345", "501")
 
 	move(a, a, http.StatusBadRequest)
 	move(a, "999999", http.StatusNotFound)
 	call(t, router, "PUT", "/api/playlists/"+p.ID+"/tracks/"+a+"/position", other, `{"before":null}`, http.StatusNotFound)
 
-	// Раз за разом в одну и ту же щель: позиции сходятся, и плейлист
-	// перенумеровывается, а порядок остаётся верным.
 	for i := 0; i < 40; i++ {
 		move(c, a, http.StatusNoContent)
 		move(a, c, http.StatusNoContent)
@@ -327,7 +319,6 @@ func TestBackgroundDownloadsStopAtUserQueueLimit(t *testing.T) {
 	}
 }
 
-// Кто вернул в очередь чужой убранный трек, тому он и идёт в лимит.
 func TestBackgroundDownloads_RequeuedJobCountsForRequester(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	first := invitedUser(t, router, admin, "queue-first")
@@ -340,7 +331,6 @@ func TestBackgroundDownloads_RequeuedJobCountsForRequester(t *testing.T) {
 	for _, track := range tracks {
 		call(t, router, "PUT", "/api/me/liked/"+track, first, "", http.StatusNoContent)
 	}
-	// Как после Housekeep: файл убран как неслушаемый, задание готово без трека.
 	if _, err := db.Exec(`UPDATE ingest_jobs SET status = 'done', result_track_id = NULL`); err != nil {
 		t.Fatal(err)
 	}

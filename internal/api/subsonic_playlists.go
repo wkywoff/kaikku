@@ -6,10 +6,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Плейлисты для приложений — те же, что на сайте: свои, совместные и
-// чужие публичные. Права — как на сайте: треки меняют владелец и
-// соавторы, название и удаление — только владелец.
-
 func init() {
 	subsonicRoute("getPlaylists", subsonicGetPlaylists)
 	subsonicRoute("getPlaylist", subsonicGetPlaylist)
@@ -29,7 +25,7 @@ type subPlaylistInfo struct {
 	Created   string    `xml:"created,attr" json:"created"`
 	Changed   string    `xml:"changed,attr" json:"changed"`
 	CoverArt  string    `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
-	Readonly  bool      `xml:"readonly,attr" json:"readonly"` // OpenSubsonic: менять треки нельзя
+	Readonly  bool      `xml:"readonly,attr" json:"readonly"`
 	Entries   []subSong `xml:"entry" json:"entry,omitempty"`
 }
 
@@ -62,8 +58,6 @@ func subsonicGetPlaylists(c *subCtx) error {
 	}{list})
 }
 
-// playlist — плейлист и треки, которые видит приложение (без скрытых):
-// по ним же считаются номера в updatePlaylist.
 func (c *subCtx) playlist(id string) (playlistInfo, []collectionTrack, error) {
 	var out struct {
 		Playlist playlistInfo      `json:"playlist"`
@@ -108,7 +102,6 @@ func subsonicGetPlaylist(c *subCtx) error {
 	return c.ok("playlist", p)
 }
 
-// songIDs — Deezer ID треков из параметра name (t…).
 func (c *subCtx) songIDs(name string) ([]string, error) {
 	var out []string
 	for _, id := range c.params(name) {
@@ -121,7 +114,6 @@ func (c *subCtx) songIDs(name string) ([]string, error) {
 	return out, nil
 }
 
-// addSongs — в конец плейлиста, порциями, как разрешает сайт.
 func (c *subCtx) addSongs(playlistID string, ids []string) error {
 	for len(ids) > 0 {
 		n := min(len(ids), maxPlaylistAdd)
@@ -134,7 +126,6 @@ func (c *subCtx) addSongs(playlistID string, ids []string) error {
 	return nil
 }
 
-// createPlaylist: name — новый; playlistId — заменить треки существующего.
 func subsonicCreatePlaylist(c *subCtx) error {
 	songs, err := c.songIDs("songId")
 	if err != nil {
@@ -180,8 +171,6 @@ func (c *subCtx) removeItem(playlistID string, item int64) error {
 		map[string]string{"id": playlistID, "item": strconv.FormatInt(item, 10)}, nil, nil)
 }
 
-// updatePlaylist: название, описание и доступ (владелец), треки — добавить
-// в конец и убрать по номерам (владелец и соавторы).
 func subsonicUpdatePlaylist(c *subCtx) error {
 	id, err := c.catalogParam("playlistId", subPlaylist)
 	if err != nil {

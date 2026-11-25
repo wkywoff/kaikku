@@ -20,7 +20,7 @@ const ogIndex = `<!doctype html><html><head><title>kaikku</title><!--og--><meta 
 func ogPage(t *testing.T, router http.Handler, path string) (int, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil)) // без токена: бот превью не входит
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	body, _ := io.ReadAll(rec.Body)
 	return rec.Code, string(body)
 }
@@ -41,12 +41,10 @@ func TestOG_LinkPreviews(t *testing.T) {
 	if _, body := ogPage(t, router, "/artist/1"); !strings.Contains(body, `og:title" content="Test Artist"`) {
 		t.Fatalf("artist: %s", body)
 	}
-	// Неизвестное — страница как есть, без подробностей.
 	if code, body := ogPage(t, router, "/album/not-an-id"); code != http.StatusOK || !strings.Contains(body, `og:title" content="kaikku"`) {
 		t.Fatalf("unknown: %d %s", code, body)
 	}
 
-	// Плейлист: публичный — с названием (экранированным), приватный — нет.
 	me := userIDOf(t, router, admin)
 	var pub, priv string
 	db.QueryRow(`INSERT INTO playlists (user_id, title, is_public) VALUES ($1, 'Rock "<b>"', true) RETURNING id`, me).Scan(&pub)
@@ -59,7 +57,6 @@ func TestOG_LinkPreviews(t *testing.T) {
 		t.Fatalf("private playlist leaked: %s", body)
 	}
 
-	// Новая сборка фронта — новый index.html.
 	os.WriteFile(srv.FrontendIndex, []byte(strings.Replace(ogIndex, "<body>", "<body>v2", 1)+" "), 0o644)
 	if _, body := ogPage(t, router, "/album/9"); !strings.Contains(body, "v2") {
 		t.Fatal("index.html is re-read after a deploy")
@@ -84,7 +81,6 @@ func ogFloodServer(t *testing.T) (http.Handler, *Server) {
 	return NewRouter(srv), srv
 }
 
-// Перебор ID в превью не вытесняет общий кеш страниц.
 func TestOG_FloodKeepsSharedCache(t *testing.T) {
 	router, srv := ogFloodServer(t)
 	loads := 0
@@ -101,7 +97,6 @@ func TestOG_FloodKeepsSharedCache(t *testing.T) {
 	}
 }
 
-// Промахи превью ограничены, а страница без подробностей всё равно отдаётся.
 func TestOG_MissesSpendLimitedDeezer(t *testing.T) {
 	router, srv := ogFloodServer(t)
 	var hits atomic.Int32
@@ -121,7 +116,6 @@ func TestOG_MissesSpendLimitedDeezer(t *testing.T) {
 	}
 }
 
-// Обложка снятого с публикации релиза не попадает в превью публичного плейлиста.
 func TestOG_PlaylistSkipsDraftCover(t *testing.T) {
 	router, srv := ogFloodServer(t)
 	rel := seedOwnRelease(t, srv.DB, "", false)
@@ -149,8 +143,6 @@ func TestOG_PlaylistSkipsDraftCover(t *testing.T) {
 	}
 }
 
-// Ссылка «Поделиться» на трек (/album/<id>?track=<id>) — превью трека, а не
-// всего альбома.
 func TestOG_TrackLinkPreviewsTheTrack(t *testing.T) {
 	db, _, admin, srv := newTestServer(t)
 	srv.FrontendIndex = filepath.Join(t.TempDir(), "index.html")
@@ -176,7 +168,6 @@ func TestOG_TrackLinkPreviewsTheTrack(t *testing.T) {
 		t.Errorf("a song with a guest names every artist: %s", body)
 	}
 
-	// Трека на этом релизе нет или в ссылке мусор — превью альбома.
 	album := func(path, why string) {
 		t.Helper()
 		if _, body := ogPage(t, router, path); !strings.Contains(body, `og:title" content="Test Album"`) ||
@@ -191,7 +182,6 @@ func TestOG_TrackLinkPreviewsTheTrack(t *testing.T) {
 		t.Errorf("a malformed song id stays out of og:url: %s", body)
 	}
 
-	// Трек с другого релиза, подставленный в треклист этого, — тоже трек.
 	if rec := postJSON(router, "/api/albums/deezer/9/claim", "", admin); rec.Code != http.StatusOK {
 		t.Fatalf("claim: %d %s", rec.Code, rec.Body.String())
 	}
@@ -205,7 +195,6 @@ func TestOG_TrackLinkPreviewsTheTrack(t *testing.T) {
 	}
 }
 
-// Трек чужого черновика в превью не попадает.
 func TestOG_TrackOfDraftStaysPrivate(t *testing.T) {
 	router, srv := ogFloodServer(t)
 	rel := seedOwnRelease(t, srv.DB, "", false)

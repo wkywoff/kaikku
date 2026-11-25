@@ -26,9 +26,6 @@ func (s *Server) handleGetAlbum(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "query failed", err)
 		return
 	}
-	// Исполнители и обложка — какими их видят все (Deezer с правкой): окно
-	// правки показывает и меняет именно их.
-	// Deezer недоступен — без исполнителей: окно правки их тогда не трогает.
 	a.Edited = a.Edited || credited
 	a.Artists = []deezer.ArtistRef{}
 	if a.CoverCustom && a.CoverKey != nil {
@@ -45,8 +42,6 @@ func (s *Server) handleGetAlbum(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
-// handleDeleteAlbum removes the album, its tracks (FK cascade) and their
-// files, including the cover.
 func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -95,7 +90,6 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "delete failed", err)
 		return
 	}
-	// Файл трека может быть общим с тем же треком другого релиза (ISRC).
 	s.removeStorageFiles(append(keys, s.unreferencedAudio(audio...)...)...)
 	w.WriteHeader(http.StatusNoContent)
 }

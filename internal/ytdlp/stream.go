@@ -12,21 +12,6 @@ import (
 	"sync"
 )
 
-// Stream starts `yt-dlp -f 140 -o -` for videoID and returns its stdout as
-// soon as the first byte has arrived, so a failure that happens before any
-// audio (unavailable video, 403, no format 140) is returned here rather than
-// in the middle of the response. Measured on the server: the first byte
-// comes ~1.6–1.9 s after start (extraction), the rest of a 4 MB track
-// ~0.2 s later.
-//
-// Only format 140 (AAC in DASH MP4): it plays everywhere, including iOS
-// Safari, and its sidx box gives the file size upfront (media.DashFileSize).
-//
-// Read returns yt-dlp's exit error (with its stderr) at the end of a failed
-// download instead of io.EOF. Close kills the process if it's still running.
-//
-// Without the cookies first, and again with them when YouTube wants a
-// sign-in (cookies.go).
 func Stream(ctx context.Context, videoID string) (io.ReadCloser, error) {
 	signIn := cookiesFirst()
 	for {
@@ -70,7 +55,7 @@ type streamReader struct {
 	cmd    *exec.Cmd
 	r      *bufio.Reader
 	stderr *tailBuffer
-	done   func() // убирает копию кук (command)
+	done   func()
 	wait   sync.Once
 	err    error
 }
@@ -86,12 +71,11 @@ func (s *streamReader) Read(p []byte) (int, error) {
 }
 
 func (s *streamReader) Close() error {
-	_ = s.cmd.Process.Kill() // уже вышедшему процессу — безвредная ошибка
+	_ = s.cmd.Process.Kill()
 	_ = s.finish()
 	return nil
 }
 
-// finish waits for the process once; the error carries yt-dlp's stderr.
 func (s *streamReader) finish() error {
 	s.wait.Do(func() {
 		err := s.cmd.Wait()
@@ -104,10 +88,6 @@ func (s *streamReader) finish() error {
 	return s.err
 }
 
-// OpenStream is FindMatches + opening the audio: the best-ranked video
-// that actually starts (up to maxTries candidates; each gets a second
-// attempt, since YouTube periodically answers 403 on the first try — see
-// Download — unless it wants a sign-in for it: that won't change).
 func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTries int) (videoID string, body io.ReadCloser, err error) {
 	if want.VideoID != "" {
 		for attempt := 0; attempt < 2; attempt++ {
@@ -140,10 +120,10 @@ func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTri
 				return id, body, nil
 			}
 			log.Printf("stream %s: %v", id, err)
-			if ctx.Err() != nil || errors.Is(err, ErrBlocked) { // другие видео YouTube не отдаст так же
+			if ctx.Err() != nil || errors.Is(err, ErrBlocked) {
 				return "", nil, err
 			}
-			if errors.Is(err, ErrSignIn) { // это видео — только вошедшим, пробуем следующее
+			if errors.Is(err, ErrSignIn) {
 				break
 			}
 		}
@@ -154,8 +134,6 @@ func OpenStream(ctx context.Context, want Want, resultCount, toleranceMs, maxTri
 	return "", nil, err
 }
 
-// tailBuffer keeps the last max bytes written — enough of yt-dlp's stderr
-// for an error message without growing on a long progress log.
 type tailBuffer struct {
 	mu  sync.Mutex
 	buf []byte
@@ -178,8 +156,6 @@ func (b *tailBuffer) String() string {
 	return string(b.buf)
 }
 
-// openVideo fetches the audio directly (Resolve + Fetch, the fast path);
-// if that isn't possible for this video, yt-dlp downloads it itself (Stream).
 func openVideo(ctx context.Context, videoID string) (io.ReadCloser, error) {
 	m, err := Resolve(ctx, videoID)
 	if err == nil {
@@ -189,7 +165,7 @@ func openVideo(ctx context.Context, videoID string) (io.ReadCloser, error) {
 		}
 	}
 	if !errors.Is(err, errNotPlainFile) && !errors.Is(err, errFetch) {
-		return nil, err // ролик недоступен — yt-dlp -o - упадёт так же
+		return nil, err
 	}
 	log.Printf("stream %s: %v, falling back to yt-dlp's downloader", videoID, err)
 	return Stream(ctx, videoID)

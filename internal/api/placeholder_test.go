@@ -2,8 +2,6 @@ package api
 
 import "testing"
 
-// Оттенок совпадает с превью в окне правки (frontend: lib/placeholder.js,
-// test/placeholder.test.js — те же значения).
 func TestPlaceholderHue(t *testing.T) {
 	for id, want := range map[string]float64{"k123": 200, "k7": 36} {
 		if got := placeholderHue(id); got != want {

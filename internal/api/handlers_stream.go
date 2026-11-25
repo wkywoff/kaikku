@@ -17,7 +17,7 @@ func (s *Server) handleStreamURL(w http.ResponseWriter, r *http.Request) {
 		   FROM tracks t LEFT JOIN albums a ON a.id = t.album_id WHERE t.id = $1`, id).
 		Scan(&storageKey, &gainDB, &draft, &owner)
 	if err == nil && !viewerOf(r).sees(draft, owner) {
-		err = sql.ErrNoRows // чужой черновик (загрузка)
+		err = sql.ErrNoRows
 	}
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "track not found")
@@ -32,6 +32,6 @@ func (s *Server) handleStreamURL(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"url":        url,
 		"expires_at": time.Unix(expires, 0).UTC().Format(time.RFC3339),
-		"gain_db":    gainDB, // плеер выравнивает громкость: gain = 10^(gain_db/20)
+		"gain_db":    gainDB,
 	})
 }

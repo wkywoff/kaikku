@@ -17,7 +17,6 @@ func cookiesUploadedForTest(t *testing.T) {
 	t.Cleanup(func() { cookiesFirstUntil.Store(0) })
 }
 
-// withCookies — какие из запусков yt-dlp были с куками.
 func withCookies(calls []string) []bool {
 	out := make([]bool, len(calls))
 	for i, c := range calls {
@@ -38,8 +37,6 @@ func equalBools(a, b []bool) bool {
 	return true
 }
 
-// С куками yt-dlp медленнее (~10 с вместо ~2): они идут в дело, только
-// когда YouTube просит войти.
 func TestSignIn_CookiesOnlyWhenYouTubeAsks(t *testing.T) {
 	calls := fakeYtDlp(t, "")
 	cookiesUploadedForTest(t)
@@ -63,8 +60,6 @@ func TestSignIn_CookiesOnlyWhenYouTubeAsks(t *testing.T) {
 	if string(data) != "audio:ageD" {
 		t.Errorf("stream read %q", data)
 	}
-	// okA: быстрый клиент; ageB: быстрый без кук, штатные с куками; ageC и
-	// ageD: без кук, затем с ними.
 	want := []bool{false, false, true, false, true, false, true}
 	if got := withCookies(*calls); !equalBools(got, want) {
 		t.Errorf("cookies per run %v, want %v: %q", got, want, *calls)
@@ -74,7 +69,6 @@ func TestSignIn_CookiesOnlyWhenYouTubeAsks(t *testing.T) {
 	}
 }
 
-// YouTube не пускает сервер без кук — дальше они идут первыми.
 func TestSignIn_RefusedServerPutsCookiesFirst(t *testing.T) {
 	calls := fakeYtDlp(t, "")
 	cookiesUploadedForTest(t)
@@ -97,8 +91,6 @@ func TestSignIn_RefusedServerPutsCookiesFirst(t *testing.T) {
 	}
 }
 
-// Кук нет — без них YouTube не отдаст, лишних попыток нет; 18+ — ошибка
-// этого видео, а не всего сервера.
 func TestSignIn_WithoutCookies(t *testing.T) {
 	calls := fakeYtDlp(t, "")
 	ctx := context.Background()
@@ -143,7 +135,6 @@ func TestCheck_AlwaysWithCookies(t *testing.T) {
 	}
 }
 
-// Вход ради одного видео — ErrSignIn, а не отказ всему серверу.
 func TestClassify_SignInIsAboutTheVideo(t *testing.T) {
 	for _, out := range []string{
 		"ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication.",
@@ -168,8 +159,6 @@ func TestClassify_SignInIsAboutTheVideo(t *testing.T) {
 	}
 }
 
-// Видео, которое YouTube отдаёт только вошедшим, второй раз не пробуется:
-// сразу следующее.
 func TestOpenStream_SignInVideoIsNotRetried(t *testing.T) {
 	calls := fakeYtDlp(t, searchLine("ageA", "Song", 200)+searchLine("okB", "Song", 200))
 	id, body, err := OpenStream(context.Background(), Want{Artist: "Artist", Title: "Song", DurationMs: 200000}, 15, 4000, 3)

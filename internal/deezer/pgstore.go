@@ -9,9 +9,6 @@ import (
 	"github.com/lib/pq"
 )
 
-// PGStore — Store в таблице deezer_cache (миграция 0033). Ошибки базы —
-// только в лог: без кеша Deezer всё равно ответит. Чтение ждёт базу
-// недолго: тормозит база — значит, промах, а не зависший запрос.
 type PGStore struct{ db *sql.DB }
 
 func NewPGStore(db *sql.DB) *PGStore { return &PGStore{db} }

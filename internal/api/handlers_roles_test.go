@@ -13,7 +13,6 @@ type listedUser struct {
 	IsAdmin bool   `json:"is_admin"`
 }
 
-// usersByName — список пользователей для админа, по имени.
 func usersByName(t *testing.T, router http.Handler, adminToken string) map[string]listedUser {
 	t.Helper()
 	var list struct {
@@ -41,10 +40,8 @@ func adminCount(t *testing.T, db *sql.DB) int {
 	return n
 }
 
-// Админ выдаёт и снимает права; и то и другое действует на следующем же
-// запросе с тем же токеном.
 func TestSetUserAdmin(t *testing.T) {
-	_, router, owner, _ := newTestServer(t) // первый пользователь — админ
+	_, router, owner, _ := newTestServer(t)
 	friend := invitedUser(t, router, owner, "friend")
 	users := usersByName(t, router, owner)
 	friendID := users["friend"].ID
@@ -53,7 +50,6 @@ func TestSetUserAdmin(t *testing.T) {
 	}
 	path := "/api/admin/users/" + friendID + "/admin"
 
-	// Не админ прав не выдаёт — ни себе, ни другим.
 	call(t, router, "PUT", path, friend, `{"admin":true}`, http.StatusForbidden)
 	call(t, router, "PUT", path, "", `{"admin":true}`, http.StatusUnauthorized)
 	call(t, router, "PUT", path, owner, `{}`, http.StatusBadRequest)
@@ -71,9 +67,7 @@ func TestSetUserAdmin(t *testing.T) {
 	if resp.ID != friendID || resp.Username != "friend" || !resp.IsAdmin {
 		t.Errorf("grant response: %+v", resp)
 	}
-	// Повторно — не ошибка.
 	call(t, router, "PUT", path, owner, `{"admin":true}`, http.StatusOK)
-	// Список теперь открыт и самому friend.
 	if !usersByName(t, router, friend)["friend"].IsAdmin {
 		t.Error("the list must show the new admin")
 	}
@@ -88,15 +82,13 @@ func TestSetUserAdmin(t *testing.T) {
 	call(t, router, "PUT", path, owner, `{"admin":false}`, http.StatusOK)
 	call(t, router, "GET", "/api/admin/users", friend, "", http.StatusForbidden)
 	call(t, router, "POST", "/api/invites", friend, "", http.StatusForbidden)
-	call(t, router, "PUT", path, friend, `{"admin":true}`, http.StatusForbidden) // сам себе права не вернёт
+	call(t, router, "PUT", path, friend, `{"admin":true}`, http.StatusForbidden)
 	json.Unmarshal(call(t, router, "GET", "/api/me", friend, "", http.StatusOK), &me)
 	if me.IsAdmin || usersByName(t, router, owner)["friend"].IsAdmin {
 		t.Error("revoked rights must be gone")
 	}
 }
 
-// Последнего админа снять нельзя, себя — тоже; пока есть другой админ, с
-// себя права снять можно.
 func TestSetUserAdmin_LastAdminStays(t *testing.T) {
 	db, router, owner, _ := newTestServer(t)
 	friend := invitedUser(t, router, owner, "friend")
@@ -109,23 +101,20 @@ func TestSetUserAdmin_LastAdminStays(t *testing.T) {
 	}
 
 	call(t, router, "PUT", ownerPath, owner, `{"admin":false}`, http.StatusConflict)
-	call(t, router, "GET", "/api/admin/users", owner, "", http.StatusOK) // всё ещё админ
+	call(t, router, "GET", "/api/admin/users", owner, "", http.StatusOK)
 
 	call(t, router, "PUT", friendPath, owner, `{"admin":true}`, http.StatusOK)
-	call(t, router, "PUT", ownerPath, owner, `{"admin":false}`, http.StatusOK) // есть другой админ — можно и с себя
+	call(t, router, "PUT", ownerPath, owner, `{"admin":false}`, http.StatusOK)
 	call(t, router, "GET", "/api/admin/users", owner, "", http.StatusForbidden)
 
-	// Теперь последний — friend: ни сам с себя, ни повторным запросом.
 	call(t, router, "PUT", friendPath, friend, `{"admin":false}`, http.StatusConflict)
-	call(t, router, "PUT", ownerPath, friend, `{"admin":false}`, http.StatusOK) // уже не админ — не ошибка
+	call(t, router, "PUT", ownerPath, friend, `{"admin":false}`, http.StatusOK)
 	if n := adminCount(t, db); n != 1 {
 		t.Errorf("%d admins, want 1", n)
 	}
 	call(t, router, "GET", "/api/admin/users", friend, "", http.StatusOK)
 }
 
-// Два админа снимают права друг с друга одновременно: проходит один запрос,
-// и админ остаётся.
 func TestSetUserAdmin_ConcurrentRevokesKeepOneAdmin(t *testing.T) {
 	db, router, owner, _ := newTestServer(t)
 	friend := invitedUser(t, router, owner, "friend")
@@ -151,7 +140,6 @@ func TestSetUserAdmin_ConcurrentRevokesKeepOneAdmin(t *testing.T) {
 			}()
 		}
 		wg.Wait()
-		// Опоздавший уже не админ: ему 403.
 		if !(codes[0] == http.StatusOK && codes[1] == http.StatusForbidden) && !(codes[0] == http.StatusForbidden && codes[1] == http.StatusOK) {
 			t.Fatalf("round %d: statuses %v, want one 200 and one 403", round, codes)
 		}

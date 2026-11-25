@@ -12,25 +12,12 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Наложение ручных правок админа на ответы Deezer. Страницы артиста/альбома,
-// поиск и подборки строятся из ответов Deezer, а правки лежат у нас:
-//   - имя и фото артиста, название/дата/тип/обложка альбома, название и
-//     номер трека — строки artists/albums/tracks (флаги edited/*_custom,
-//     миграция 0006) и track_edits (0010);
-//   - исполнители релиза и его скрытие — albums.artist_ids/hidden (0018);
-//   - версия другого релиза — albums.version_of (0021, versions.go);
-//   - исполнители трека и метка explicit — track_overrides (0018).
-//
-// Свои релизы (загрузка, local.go) идут тем же путём: их строки помечены
-// edited/cover_custom/picture_custom, исполнители — в artist_ids и
-// track_overrides, а черновик для списков — то же, что скрытый релиз.
-
 type artistOverride struct {
 	libraryID  string
-	name       string // "" — не правилось
-	picture    string // "" — своей картинки нет
-	fullName   string // имя всегда — для исполнителей, подставленных правкой
-	refPicture string // картинка для подставленных: своя, скачанная или Deezer
+	name       string
+	picture    string
+	fullName   string
+	refPicture string
 }
 
 type albumOverride struct {
@@ -40,15 +27,15 @@ type albumOverride struct {
 	releaseDate string
 	recordType  string
 	cover       string
-	artists     []string // nil — исполнители как у Deezer
-	from        []string // исполнители Deezer на момент правки
+	artists     []string
+	from        []string
 	hidden      bool
 	versionOf   string
 }
 
 type trackOverride struct {
 	title           string
-	trackNo, discNo int // 0 — не меняли
+	trackNo, discNo int
 }
 
 type trackCredits struct {
@@ -61,11 +48,9 @@ type overlay struct {
 	albums  map[string]albumOverride
 	tracks  map[string]trackOverride
 	credits map[string]trackCredits
-	home    map[string]string // свой трек → релиз, где он лежит на самом деле
+	home    map[string]string
 }
 
-// loadOverlay reads library rows for the given Deezer IDs. Errors leave an
-// empty overlay: правки — украшение, страница без них всё равно рабочая.
 func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 	o := &overlay{
 		artists: map[string]artistOverride{},
@@ -75,9 +60,6 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 		home:    map[string]string{},
 	}
 
-	// Свой трек, добавленный в треклист чужого релиза и прослушанный там,
-	// записан в снимке под тем релизом (asTracklistOf), а исполнители у него —
-	// от своего: исполнители релиза переходят только на его собственные треки.
 	var local []string
 	for _, id := range trackIDs {
 		if isLocalID(id) {
@@ -126,7 +108,6 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 		log.Printf("overlay: albums: %v", err)
 	}
 
-	// Правки скачанных треков — в их строках, нескачанных — в track_edits.
 	if rows, err := s.DB.Query(
 		`SELECT deezer_id, title, track_no, disc_no FROM tracks WHERE edited AND deezer_id = ANY($1)
 		 UNION ALL
@@ -165,7 +146,6 @@ func (s *Server) loadOverlay(artistIDs, albumIDs, trackIDs []string) *overlay {
 		log.Printf("overlay: track credits: %v", err)
 	}
 
-	// Артисты — последними: правки исполнителей выше добавили своих.
 	if rows, err := s.DB.Query(
 		`SELECT deezer_id, id, edited, name, picture_custom, picture_key, coalesce(picture_url, '') FROM artists WHERE deezer_id = ANY($1)`,
 		pq.Array(artistIDs)); err == nil {
@@ -222,8 +202,6 @@ func (o *overlay) refs(refs []deezer.ArtistRef) {
 	}
 }
 
-// creditRefs builds the artist list a credit edit names: who Deezer already
-// listed keeps their name and photo, the rest come from the artists table.
 func (o *overlay) creditRefs(ids []string, known []deezer.ArtistRef) []deezer.ArtistRef {
 	out := make([]deezer.ArtistRef, 0, len(ids))
 	for _, id := range ids {
@@ -244,11 +222,6 @@ func (o *overlay) creditRefs(ids []string, known []deezer.ArtistRef) []deezer.Ar
 	return out
 }
 
-// replaceCredits carries a release's credit edit over to one of its
-// tracks: artists removed from the release are replaced by the added ones
-// (in the place of the first removed, once); everyone else on the track
-// stays. A release by A, B, C changed to A, B, D: a track by C becomes by D,
-// a track by A (feat. X) is left alone. nil — nothing to change.
 func replaceCredits(cur, from, to []string) []string {
 	removed := slices.DeleteFunc(slices.Clone(from), func(id string) bool { return slices.Contains(to, id) })
 	added := slices.DeleteFunc(slices.Clone(to), func(id string) bool { return slices.Contains(from, id) })
@@ -274,7 +247,7 @@ func replaceCredits(cur, from, to []string) []string {
 		return dup
 	})
 	if len(out) == 0 {
-		return nil // убрали единственного, никого не добавив, — оставить как у Deezer
+		return nil
 	}
 	return out
 }
@@ -337,8 +310,6 @@ func (o *overlay) track(t *deezer.Track) {
 	al, hasAlbum := o.albums[t.AlbumID]
 	ids := tc.artists
 	if home, ok := o.home[t.ID]; ok && len(ids) == 0 {
-		// Свой трек: исполнители — как у его релиза, а не у того, под чьим
-		// названием он показан.
 		ids = o.albums[home].artists
 	} else if len(ids) == 0 && hasAlbum && len(al.artists) > 0 && !isLocalID(t.AlbumID) {
 		ids = replaceCredits(refIDs(trackRefs(t)), al.from, al.artists)
@@ -371,8 +342,6 @@ func (o *overlay) track(t *deezer.Track) {
 	}
 }
 
-// overlayFor collects every Deezer ID mentioned in the response and applies
-// the library's manual edits to all of them.
 func (s *Server) overlayFor(artists []*deezer.Artist, albums []*deezer.Album, tracks []deezer.Track) {
 	var artistIDs, albumIDs, trackIDs []string
 	for _, a := range artists {
@@ -405,17 +374,6 @@ func (s *Server) overlayFor(artists []*deezer.Artist, albums []*deezer.Album, tr
 	}
 }
 
-// --- перенесённые релизы в дискографии ---
-
-// creditedDiscography adjusts an artist's Deezer discography for credit
-// edits: releases moved to the artist are added, releases moved away are
-// dropped. Added ones come from Deezer (its album cache), own uploads from
-// the database, newest first like the rest. For an own artist albums is nil
-// and everything comes from the database.
-//
-// Сюда же попадают релизы, которых в списке Deezer ещё нет, но которые уже
-// открывали (discography_extras, noteReleaseOutsideDiscography): первая
-// половина запроса, у релиза без правки исполнителей artist_ids — NULL.
 func (s *Server) creditedDiscography(artistID string, albums []deezer.Album) []deezer.Album {
 	ids := make([]string, len(albums))
 	for i, a := range albums {
@@ -468,20 +426,11 @@ func (s *Server) creditedDiscography(artistID string, albums []deezer.Album) []d
 	return out
 }
 
-// --- скрытые релизы ---
-
-// showHidden — показывать ли скрытые релизы: только админу в режиме админа
-// (фронт присылает заголовок, пока режим включён).
 func showHidden(r *http.Request) bool {
 	admin, _ := r.Context().Value(isAdminCtxKey).(bool)
 	return admin && r.Header.Get("X-Admin-Mode") == "1"
 }
 
-// visibleAlbums / visibleTracks drop hidden releases and their tracks from
-// catalogue lists (after overlayFor marked them). Personal lists — liked,
-// playlists, saved albums — keep them: they show greyed out. Versions of
-// another release (versions.go) are dropped from catalogue lists even for
-// the admin: they are on the main release's page.
 func visibleAlbums(r *http.Request, albums []deezer.Album) []deezer.Album {
 	show := showHidden(r)
 	return slices.DeleteFunc(albums, func(a deezer.Album) bool { return a.VersionOf != "" || a.Hidden && !show })

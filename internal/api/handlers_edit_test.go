@@ -25,10 +25,8 @@ func adminRequest(router http.Handler, method, path, token string, body []byte, 
 	return rec
 }
 
-// Правки альбома/трека/артиста в медиатеке видны на странице альбома,
-// которая строится из ответа Deezer (mock: альбом 77, треки 501/502).
 func TestEditsOverlayDeezerAlbum(t *testing.T) {
-	db, router, token := newTestRouter(t) // первый пользователь — админ
+	db, router, token := newTestRouter(t)
 
 	var artistID, albumID, trackID string
 	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('Other Artist', '2') RETURNING id`).Scan(&artistID)
@@ -91,16 +89,13 @@ func TestUploadAlbumCover(t *testing.T) {
 		t.Errorf("garbage upload: %d, want 400", rec.Code)
 	}
 
-	// «JPEG-бомба»: маленький файл, а в заголовке — огромная картинка.
-	// Больше 2048 по стороне не берём: фронт шлёт до 1000, а уменьшение
-	// (covers.go) распаковало бы её целиком.
 	for _, side := range []uint16{5000, 2049} {
 		var bomb bytes.Buffer
 		jpeg.Encode(&bomb, image.NewRGBA(image.Rect(0, 0, 64, 64)), nil)
 		b := bomb.Bytes()
 		if i := bytes.Index(b, []byte{0xFF, 0xC0}); i >= 0 {
-			binary.BigEndian.PutUint16(b[i+5:], side) // высота
-			binary.BigEndian.PutUint16(b[i+7:], side) // ширина
+			binary.BigEndian.PutUint16(b[i+5:], side)
+			binary.BigEndian.PutUint16(b[i+7:], side)
 		}
 		if rec := adminRequest(router, "PUT", "/api/albums/"+albumID+"/cover", token, b, "image/jpeg"); rec.Code != http.StatusBadRequest {
 			t.Errorf("%d×%d upload: %d, want 400", side, side, rec.Code)
@@ -123,7 +118,6 @@ func TestUploadAlbumCover(t *testing.T) {
 		t.Errorf("uploaded cover not on disk: %v", err)
 	}
 
-	// Убрать свою обложку — снова обложка Deezer, файл удалён.
 	if rec := adminRequest(router, "DELETE", "/api/albums/"+albumID+"/cover", token, nil, ""); rec.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}

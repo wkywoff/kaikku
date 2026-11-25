@@ -11,26 +11,14 @@ import (
 	"strings"
 )
 
-// Громкость не «запекается» в файл: исходный AAC с YouTube просто
-// перепаковывается, а поправка до targetLUFS хранится в tracks.gain_db и
-// применяется плеером через GainNode. Перекодирование с loudnorm занимало
-// ~35 с на трек на 1 vCPU (фильтр внутри передискретизирует в 192 кГц),
-// перепаковка + замер — ~1.5 с, и без повторного сжатия с потерями.
 const (
-	targetLUFS = -14.0
-	maxPeakDB  = -1.0 // поправка не поднимает пик выше этого — без клиппинга
-	minGainDB  = -30.0
-	maxGainDB  = 12.0
-	// Битрейт, если YouTube не отдал AAC (формат 140) и пришлось кодировать.
+	targetLUFS      = -14.0
+	maxPeakDB       = -1.0
+	minGainDB       = -30.0
+	maxGainDB       = 12.0
 	fallbackBitrate = "192k"
 )
 
-// PrepareAudio writes srcPath's audio to dstPath as AAC in .m4a — remuxed
-// as-is when it already is AAC, encoded otherwise — and returns the
-// measured integrated loudness and the gain to apply on playback.
-//
-// The output goes to a temporary file renamed into place on success, so a
-// killed or failed ffmpeg never leaves a truncated .m4a in storage.
 func PrepareAudio(ctx context.Context, srcPath, dstPath string) (lufs, gainDB float64, err error) {
 	codec, err := probeCodec(ctx, srcPath)
 	if err != nil {
@@ -52,13 +40,12 @@ func PrepareAudio(ctx context.Context, srcPath, dstPath string) (lufs, gainDB fl
 		args = append(args, "-af", clipOversFilter)
 	}
 	tmpPath := dstPath + ".part"
-	defer os.Remove(tmpPath) // no-op после успешного rename
-	// -f ipod — то, что ffmpeg выбирает для .m4a; по расширению .part сам не выведет.
+	defer os.Remove(tmpPath)
 	args = append(args, "-movflags", "+faststart", "-f", "ipod", tmpPath)
 	if out, err := exec.CommandContext(ctx, "ffmpeg", args...).CombinedOutput(); err != nil {
 		return 0, 0, fmt.Errorf("ffmpeg: %w (output: %s)", err, truncate(string(out), 2000))
 	}
-	if clipped { // громкость теперь у среза, а не у исходника
+	if clipped {
 		if lufs, peak, err = measureLoudness(ctx, tmpPath); err != nil {
 			return 0, 0, err
 		}
@@ -69,9 +56,6 @@ func PrepareAudio(ctx context.Context, srcPath, dstPath string) (lufs, gainDB fl
 	return lufs, playbackGain(lufs, peak), nil
 }
 
-// playbackGain brings lufs to targetLUFS. Raising a quiet track is limited
-// so the sample peak stays below maxPeakDB; the limit never turns a track
-// down by itself (a quiet master with 0 dBFS peaks stays as it is).
 func playbackGain(lufs, peakDB float64) float64 {
 	gain := targetLUFS - lufs
 	if gain > 0 {
@@ -81,13 +65,6 @@ func playbackGain(lufs, peakDB float64) float64 {
 	return math.Round(gain*10) / 10
 }
 
-// clipOversFilter goes before the AAC encoder when the peak is over full
-// scale. MP3, Opus and float WAV decode to floats that can go past 0 dBFS
-// (an overdriven master reaches +8), and ffmpeg's encoder loses 3–6 dB on
-// such passages, by a different amount every second. Any player cuts those
-// peaks at 0 dBFS anyway, so the file gets the same cut, as loud as the
-// track has always sounded, and 1 dB of room the encoder needs to stay
-// accurate.
 const clipOversFilter = "asoftclip=type=hard,volume=-1dB"
 
 func probeCodec(ctx context.Context, path string) (string, error) {
@@ -108,8 +85,6 @@ var (
 	samplePeakRe = regexp.MustCompile(`Peak:\s+(-?[0-9.]+|-inf) dBFS`)
 )
 
-// measureLoudness runs ffmpeg's ebur128 filter (EBU R128 integrated
-// loudness + sample peak); ~1 s for a 3-minute track.
 func measureLoudness(ctx context.Context, path string) (lufs, peakDB float64, err error) {
 	out, err := exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-v", "info", "-i", path,
 		"-map", "0:a:0", "-af", "ebur128=peak=sample:framelog=quiet", "-f", "null", "-").CombinedOutput()
@@ -119,8 +94,6 @@ func measureLoudness(ctx context.Context, path string) (lufs, peakDB float64, er
 	return parseEBUR128(string(out))
 }
 
-// parseEBUR128 reads the filter's final summary (the last "I:" / "Peak:"
-// values in the output). Silence reports -inf; treat it as very quiet.
 func parseEBUR128(out string) (lufs, peakDB float64, err error) {
 	if i := strings.LastIndex(out, "Summary:"); i >= 0 {
 		out = out[i:]

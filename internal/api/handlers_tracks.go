@@ -7,10 +7,6 @@ import (
 	"github.com/lib/pq"
 )
 
-// handleDeleteTrack removes the track and its audio file (unless another
-// release of the same recording shares it). The ingest job that produced it
-// keeps its row (result_track_id becomes NULL), so adding the track again
-// re-queues it.
 func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var storageKey string
@@ -26,12 +22,10 @@ func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// unreferencedAudio drops the audio files still used by other tracks: one
-// recording on several releases (same ISRC) shares one file (worker.go).
 func (s *Server) unreferencedAudio(keys ...string) []string {
 	rows, err := s.DB.Query(`SELECT DISTINCT storage_key FROM tracks WHERE storage_key = ANY($1)`, pq.Array(keys))
 	if err != nil {
-		return nil // не знаем наверняка — лучше оставить файл, чем удалить чужой
+		return nil
 	}
 	defer rows.Close()
 	used := map[string]bool{}

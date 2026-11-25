@@ -13,8 +13,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// ID в Subsonic — строка с типом впереди: getCoverArt и getMusicDirectory
-// получают ID без указания, чей он.
 const (
 	subTrack    = "t"
 	subAlbum    = "al"
@@ -22,7 +20,6 @@ const (
 	subPlaylist = "pl"
 )
 
-// parseSubID splits "al123" into ("al", "123"); kind "" — not ours.
 func parseSubID(id string) (kind, raw string) {
 	for _, k := range []string{subAlbum, subArtist, subPlaylist, subTrack} {
 		if rest, ok := strings.CutPrefix(id, k); ok && rest != "" {
@@ -32,8 +29,6 @@ func parseSubID(id string) (kind, raw string) {
 	return "", ""
 }
 
-// catalogParam — Deezer ID (или свой k…) из параметра name с ожидаемым
-// типом kind.
 func (c *subCtx) catalogParam(name, kind string) (string, error) {
 	v := c.param(name)
 	if v == "" {
@@ -55,8 +50,6 @@ type subReplayGain struct {
 	TrackGain float64 `xml:"trackGain,attr" json:"trackGain"`
 }
 
-// subSong — Child: трек, а с isDir — альбом в «папках» (getMusicDirectory,
-// getAlbumList, search2).
 type subSong struct {
 	ID             string         `xml:"id,attr" json:"id"`
 	Parent         string         `xml:"parent,attr,omitempty" json:"parent,omitempty"`
@@ -86,7 +79,6 @@ type subSong struct {
 	Artists        []subArtistRef `xml:"artists,omitempty" json:"artists,omitempty"`
 }
 
-// subAlbumID3 — AlbumID3 (с песнями — AlbumWithSongsID3).
 type subAlbumID3 struct {
 	ID             string         `xml:"id,attr" json:"id"`
 	Name           string         `xml:"name,attr" json:"name"`
@@ -106,7 +98,6 @@ type subAlbumID3 struct {
 	Songs          []subSong      `xml:"song" json:"song,omitempty"`
 }
 
-// subArtistID3 — ArtistID3 (с альбомами — ArtistWithAlbumsID3).
 type subArtistID3 struct {
 	ID             string        `xml:"id,attr" json:"id"`
 	Name           string        `xml:"name,attr" json:"name"`
@@ -117,7 +108,6 @@ type subArtistID3 struct {
 	Albums         []subAlbumID3 `xml:"album" json:"album,omitempty"`
 }
 
-// subArtistPlain — Artist (без ID3: getIndexes, getStarred, search2).
 type subArtistPlain struct {
 	ID      string `xml:"id,attr" json:"id"`
 	Name    string `xml:"name,attr" json:"name"`
@@ -126,8 +116,6 @@ type subArtistPlain struct {
 
 func subTime(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z") }
 
-// releaseCreated — дата выхода как created (клиенты сортируют по ней
-// «новое»); без даты — сейчас.
 func releaseCreated(date string) string {
 	if t, err := time.Parse("2006-01-02", date); err == nil && t.Year() > 1 {
 		return subTime(t)
@@ -158,14 +146,10 @@ func subRefs(refs []deezer.ArtistRef) []subArtistRef {
 	return out
 }
 
-// pathPart — кусок пути без «/»: клиенты раскладывают офлайн-копии по нему.
 func pathPart(s string) string {
 	return strings.NewReplacer("/", "_", `\`, "_").Replace(strings.TrimSpace(s))
 }
 
-// --- что из этого есть у человека и на сервере ---
-
-// libInfo — скачанный трек: размер файла и громкость.
 type libInfo struct {
 	size int64
 	gain float64
@@ -198,8 +182,6 @@ func (c *subCtx) libraryInfo(ids []string) map[string]libInfo {
 	return out
 }
 
-// starred — когда человек добавил ids в table (liked_tracks, saved_albums,
-// followed_artists).
 func (c *subCtx) starred(table string, ids []string) map[string]time.Time {
 	out := map[string]time.Time{}
 	if len(ids) == 0 {
@@ -229,9 +211,6 @@ func starredAt(m map[string]time.Time, id string) string {
 	return ""
 }
 
-// --- перевод ---
-
-// Наш звук — AAC около 128 кбит/с; размер нескачанного — по длительности.
 const subBitRate = 128
 
 func (c *subCtx) songs(tracks []deezer.Track) []subSong {
@@ -271,7 +250,6 @@ func (c *subCtx) songs(tracks []deezer.Track) []subSong {
 			if info.size > 0 {
 				s.Size = info.size
 			}
-			// Наш уровень — −14 LUFS, ReplayGain считает от −18.
 			s.ReplayGain = &subReplayGain{TrackGain: info.gain - 4}
 		}
 		out = append(out, s)
@@ -324,7 +302,6 @@ func (c *subCtx) album(a deezer.Album, saved map[string]time.Time) subAlbumID3 {
 	return out
 }
 
-// albumDirs — альбомы как папки (Child с isDir).
 func (c *subCtx) albumDirs(albums []deezer.Album) []subSong {
 	var out []subSong
 	for _, a := range c.albums(albums) {
@@ -363,8 +340,6 @@ func artistsPlain(in []subArtistID3) []subArtistPlain {
 
 var deezerCDNRe = regexp.MustCompile(`^https://(?:cdn-images|e-cdns-images)\.dzcdn\.net/images/`)
 
-// publicImageURL — картинка по полному адресу нашего сайта: приложения
-// берут artistImageUrl без входа, а CDN Deezer открывается не у всех.
 func (s *Server) publicImageURL(u string) string {
 	switch {
 	case u == "":
@@ -377,11 +352,6 @@ func (s *Server) publicImageURL(u string) string {
 	return strings.TrimRight(s.PublicURL, "/") + u
 }
 
-// coverID — ID для getCoverArt. Картинка Deezer — прямо её путь
-// (img_<вид>_<хеш>_<файл>), своя — ключ файла (med_<папка>_<имя>): так
-// getCoverArt отдаёт её без запросов к Deezer (приложения просят обложки
-// десятками разом). Без картинки — ID объекта (al…, ar…): getCoverArt
-// найдёт её сам.
 func coverID(u, fallback string) string {
 	if m := deezerImageRe.FindStringSubmatch(u); m != nil {
 		return "img_" + m[1] + "_" + m[2] + "_" + m[3]
@@ -396,7 +366,6 @@ func coverID(u, fallback string) string {
 	return fallback
 }
 
-// coverFromID — адрес картинки из ID coverID; ok=false — это ID объекта.
 func coverFromID(id string) (string, bool) {
 	if rest, ok := strings.CutPrefix(id, "img_"); ok {
 		parts := strings.SplitN(rest, "_", 3)

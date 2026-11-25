@@ -10,16 +10,11 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Жанры — по тегам Last.fm (tags.go): плитки на пустой странице поиска и
-// страница жанра /genre/<slug>. Знаем только тех артистов, которых на
-// сервисе кто-то слушал, лайкал или на кого подписан, — зато страница
-// жанра сразу показывает, что тут слушают другие.
-
 const (
-	genreTiles       = 20 // плиток на странице поиска
+	genreTiles       = 20
 	genreOwnTracks   = 20
 	genreArtists     = 12
-	genreTopArtists  = 8 // чьи хиты Deezer — в «Ещё в жанре»
+	genreTopArtists  = 8
 	genrePerArtist   = 5
 	genreMaxTracks   = 40
 	genresTTL        = 10 * time.Minute
@@ -33,8 +28,6 @@ type genre struct {
 	Name string `json:"name"`
 }
 
-// GET /api/genres — жанры для плиток: сначала твои (по весу, как миксы),
-// потом самые частые на сервисе.
 func (s *Server) handleGenres(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	list, err := cached(&s.cache, "genres:"+userID, genresTTL, func() ([]genre, error) {
@@ -91,13 +84,12 @@ func (s *Server) handleGenres(w http.ResponseWriter, r *http.Request) {
 
 type genrePage struct {
 	Genre   genre           `json:"genre"`
-	Own     []deezer.Track  `json:"own"`     // твои треки жанра — что слушал и лайкал
-	Artists []deezer.Artist `json:"artists"` // другие артисты жанра на сервисе
-	Tracks  []deezer.Track  `json:"tracks"`  // их хиты на Deezer, вперемешку
+	Own     []deezer.Track  `json:"own"`
+	Artists []deezer.Artist `json:"artists"`
+	Tracks  []deezer.Track  `json:"tracks"`
 	MixID   string          `json:"mix_id,omitempty"`
 }
 
-// GET /api/genres/{slug}
 func (s *Server) handleGenre(w http.ResponseWriter, r *http.Request) {
 	userID, slug := currentUser(r), r.PathValue("slug")
 	page, err := cached(&s.cache, "genre:"+userID+":"+slug, genrePageTTL, func() (*genrePage, error) { return s.genrePage(r, userID, slug) })
@@ -109,7 +101,6 @@ func (s *Server) handleGenre(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "genre not found")
 		return
 	}
-	// Копии: правки админа накладываются на месте, а страница — в кеше.
 	out := *page
 	out.Own, out.Tracks, out.Artists = cloneTracks(page.Own), cloneTracks(page.Tracks), slices.Clone(page.Artists)
 	s.overlayFor(artistPtrs(out.Artists), nil, append(out.Own, out.Tracks...))
@@ -117,7 +108,6 @@ func (s *Server) handleGenre(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// genrePage — nil, если такого жанра нет ни у одного артиста.
 func (s *Server) genrePage(r *http.Request, userID, slug string) (*genrePage, error) {
 	names, err := s.idList(`SELECT DISTINCT t->>'name' FROM artist_tags, jsonb_array_elements(tags) t`)
 	if err != nil {
@@ -129,7 +119,6 @@ func (s *Server) genrePage(r *http.Request, userID, slug string) (*genrePage, er
 	}
 	name := names[i]
 
-	// Артисты жанра: самые «жанровые» (вес тега) первыми.
 	rows, err := s.DB.Query(`
 		SELECT a.deezer_id, COALESCE(a.name, '') FROM artist_tags a, jsonb_array_elements(a.tags) t
 		 WHERE a.tags @> jsonb_build_array(jsonb_build_object('name', $1::text))
@@ -160,7 +149,6 @@ func (s *Server) genrePage(r *http.Request, userID, slug string) (*genrePage, er
 
 	page := &genrePage{Genre: genre{Slug: slug, Name: name}, Own: []deezer.Track{}, Artists: []deezer.Artist{}, Tracks: []deezer.Track{}}
 
-	// Своё: треки артистов жанра из истории и лайков, частые первыми.
 	taste, err := s.tasteOf(r, userID)
 	if err != nil {
 		return nil, err
@@ -181,7 +169,6 @@ func (s *Server) genrePage(r *http.Request, userID, slug string) (*genrePage, er
 		}
 	}
 
-	// Другие артисты жанра — с фото (Deezer, в кеше страниц артистов).
 	var others []string
 	for _, id := range ids {
 		if !mine[id] && !isLocalID(id) && len(others) < genreArtists {

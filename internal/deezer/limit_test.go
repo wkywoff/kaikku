@@ -18,13 +18,12 @@ func TestRateLimiter_HoldsTheWindow(t *testing.T) {
 	if d := time.Since(start); d > 50*time.Millisecond {
 		t.Fatalf("the first 3 requests should not wait, took %v", d)
 	}
-	l.wait() // четвёртый — только когда первый выйдет из окна
+	l.wait()
 	if d := time.Since(start); d < 140*time.Millisecond {
 		t.Errorf("the 4th request went through after %v, before the window passed", d)
 	}
 }
 
-// Deezer отвечает на превышение лимита HTTP 200 с {"error":{"code":4}}.
 func quotaServer(t *testing.T, failures int32) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var calls atomic.Int32
@@ -70,7 +69,6 @@ func TestClient_GetTrackIsCachedAndCopied(t *testing.T) {
 	if err != nil || len(first.Contributors) != 2 {
 		t.Fatalf("GetTrack: %+v, %v", first, err)
 	}
-	// Вызывающий правит ответ на месте (правки админа) — кеш не должен это запомнить.
 	first.Title = "changed"
 	first.Contributors[0].Name = "changed"
 
@@ -100,8 +98,6 @@ func TestClient_GetTracksKeepsOrder(t *testing.T) {
 	}
 }
 
-// Треклист альбома — из кеша; поля альбома каждый раз из переданного (он
-// может быть с правками админа), а правка вызывающим не портит кеш.
 func TestClient_AlbumTracksCached(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +124,6 @@ func TestClient_AlbumTracksCached(t *testing.T) {
 	}
 }
 
-// Короткое ожидание не считается; сводка обнуляет счёт.
 func TestLimitStats(t *testing.T) {
 	var s limitStats
 	s.waited(10 * time.Millisecond)
@@ -147,7 +142,6 @@ func TestLimitStats(t *testing.T) {
 	}
 }
 
-// Брошенный запрос уходит из очереди, не заняв места в окне.
 func TestRateLimiter_WaitContextGivesUp(t *testing.T) {
 	l := newRateLimiter(1, time.Second)
 	l.wait()

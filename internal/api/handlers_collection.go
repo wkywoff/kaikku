@@ -16,21 +16,8 @@ import (
 	"kaikku/internal/safe"
 )
 
-// Личная медиатека (миграция 0009): лайкнутые треки, сохранённые альбомы и
-// плейлисты. Клиент присылает только Deezer ID — метаданные сервер берёт
-// у Deezer сам и хранит снимком (meta), так что лайкнуть и добавить в
-// плейлист можно и нескачанное. Всё добавленное заодно ставится на
-// скачивание в фоне: когда человек это включит, оно уже будет на сервере.
-//
-// Плейлист видит и слушает владелец, а публичный — все пользователи
-// сервиса; менять может только владелец. Чужой приватный плейлист — 404,
-// как будто его нет.
-
 const maxPlaylistAdd = 200
 
-// --- фоновое скачивание ---
-
-// inBackground runs f off the request; tests replace it to run f inline.
 func (s *Server) inBackground(f func()) {
 	if s.Background != nil {
 		s.Background(f)
@@ -39,9 +26,6 @@ func (s *Server) inBackground(f func()) {
 	safe.Go("background", f)
 }
 
-// maxQueuedPerUser — сколько незавершённых заданий ставят лайки и сохранения
-// одного человека (кроме админа). Сверх этого трек скачается при первом
-// прослушивании: один человек не занимает очередь и диск всем.
 var maxQueuedPerUser = 500
 
 func (s *Server) queueFull(userID string) bool {
@@ -61,7 +45,7 @@ func (s *Server) downloadTracks(userID string, deezerIDs ...string) {
 	s.inBackground(func() {
 		for _, id := range deezerIDs {
 			if isLocalID(id) {
-				continue // свой трек: файл уже есть
+				continue
 			}
 			if s.queueFull(userID) {
 				log.Printf("background downloads of %s: queue is full", userID)
@@ -91,8 +75,6 @@ func (s *Server) downloadAlbum(userID string, album *deezer.Album) {
 			if t.AlbumID == album.ID {
 				_, err = s.enqueueResolved(userID, t, album)
 			} else {
-				// Подставлен в треклист с другого релиза (tracklist.go) —
-				// качается как трек своего релиза.
 				_, err = s.enqueueTrack(userID, t.ID)
 			}
 			if err != nil {
@@ -101,8 +83,6 @@ func (s *Server) downloadAlbum(userID string, album *deezer.Album) {
 		}
 	})
 }
-
-// --- что у меня есть (для кнопок «лайк» и «сохранить» во всех списках) ---
 
 func (s *Server) handleCollectionIDs(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
@@ -141,8 +121,6 @@ func (s *Server) idList(query string, args ...any) ([]string, error) {
 	return ids, rows.Err()
 }
 
-// --- лайки ---
-
 func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
@@ -155,7 +133,7 @@ func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
 	if isLocalID(id) {
 		track, err = s.catalogTrack(viewerOf(r), id)
 	} else {
-		track, err = s.Deezer.GetTrack(id) // снимок — как у Deezer, правки накладываются при чтении
+		track, err = s.Deezer.GetTrack(id)
 	}
 	if err != nil {
 		writeCatalogError(w, "track lookup failed", err)
@@ -194,8 +172,8 @@ func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request) {
 type collectionTrack struct {
 	deezer.Track
 	AddedAt time.Time      `json:"added_at"`
-	ItemID  int64          `json:"item_id,omitempty"`  // позиция в плейлисте — для удаления
-	AddedBy *playlistOwner `json:"added_by,omitempty"` // в плейлисте — кто добавил (совместные)
+	ItemID  int64          `json:"item_id,omitempty"`
+	AddedBy *playlistOwner `json:"added_by,omitempty"`
 }
 
 func (s *Server) handleLikedTracks(w http.ResponseWriter, r *http.Request) {
@@ -209,8 +187,6 @@ func (s *Server) handleLikedTracks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": tracks})
 }
 
-// collectionTracks reads (item id, meta, added_at) rows and applies the
-// admin's edits to the stored snapshots.
 func (s *Server) collectionTracks(query string, args ...any) ([]collectionTrack, error) {
 	rows, err := s.DB.Query(query, args...)
 	if err != nil {
@@ -236,7 +212,6 @@ func (s *Server) collectionTracks(query string, args ...any) ([]collectionTrack,
 	return out, nil
 }
 
-// overlayCollection applies the admin's edits to the stored snapshots.
 func (s *Server) overlayCollection(out []collectionTrack) {
 	tracks := make([]deezer.Track, len(out))
 	for i := range out {
@@ -247,8 +222,6 @@ func (s *Server) overlayCollection(out []collectionTrack) {
 		out[i].Track = tracks[i]
 	}
 }
-
-// --- сохранённые альбомы ---
 
 func (s *Server) handleSaveAlbum(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
@@ -315,35 +288,30 @@ func (s *Server) handleSavedAlbums(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"albums": albums})
 }
 
-// --- плейлисты ---
-
 type playlistOwner struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
 }
 
 type playlistInfo struct {
-	ID          string        `json:"id"`
-	Title       string        `json:"title"`
-	Description string        `json:"description"`
-	IsPublic    bool          `json:"is_public"`
-	Owner       playlistOwner `json:"owner"`
-	Mine        bool          `json:"mine"`
-	TrackCount  int           `json:"track_count"`
-	DurationMs  int64         `json:"duration_ms"`
-	// CanEdit — может добавлять, убирать и переставлять треки: владелец или
-	// соавтор (playlist_collab.go). Collaborative — у плейлиста есть соавторы.
+	ID            string          `json:"id"`
+	Title         string          `json:"title"`
+	Description   string          `json:"description"`
+	IsPublic      bool            `json:"is_public"`
+	Owner         playlistOwner   `json:"owner"`
+	Mine          bool            `json:"mine"`
+	TrackCount    int             `json:"track_count"`
+	DurationMs    int64           `json:"duration_ms"`
 	CanEdit       bool            `json:"can_edit"`
 	Collaborative bool            `json:"collaborative"`
-	Collaborators []playlistOwner `json:"collaborators,omitempty"` // только у одного плейлиста (handleGetPlaylist)
+	Collaborators []playlistOwner `json:"collaborators,omitempty"`
 	CreatedAt     time.Time       `json:"created_at"`
-	Covers        []string        `json:"covers"`       // своя обложка или мозаика (Mosaic)
-	Mosaic        []string        `json:"mosaic"`       // до 4 разных обложек треков
-	CustomCover   bool            `json:"custom_cover"` // владелец загрузил свою
+	Covers        []string        `json:"covers"`
+	Mosaic        []string        `json:"mosaic"`
+	CustomCover   bool            `json:"custom_cover"`
 	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
-// playlistSelect — общая часть списка и одного плейлиста ($1 — текущий пользователь).
 const playlistSelect = `
 	SELECT p.id, p.title, p.description, p.is_public, u.id, u.username, p.user_id = $1,
 	       (SELECT count(*) FROM playlist_items i WHERE i.playlist_id = p.id),
@@ -359,7 +327,6 @@ const playlistSelect = `
 	       EXISTS (SELECT 1 FROM playlist_collaborators c WHERE c.playlist_id = p.id)
 	  FROM playlists p JOIN users u ON u.id = p.user_id`
 
-// playlistVisibleTo — условие «плейлист виден $1»: свой, публичный или он в соавторах.
 const playlistVisibleTo = `(p.user_id = $1 OR p.is_public OR EXISTS (SELECT 1 FROM playlist_collaborators c WHERE c.playlist_id = p.id AND c.user_id = $1))`
 
 func scanPlaylist(row interface{ Scan(...any) error }) (playlistInfo, error) {
@@ -373,22 +340,17 @@ func scanPlaylist(row interface{ Scan(...any) error }) (playlistInfo, error) {
 	p.Covers = p.Mosaic
 	if coverKey.Valid {
 		p.CustomCover = true
-		p.Covers = []string{"/media/" + coverKey.String} // как скачанные обложки: nginx отдаёт /media/covers/ без подписи
+		p.Covers = []string{"/media/" + coverKey.String}
 	}
 	return p, err
 }
 
-// playlistListedFor — плейлисты в списке человека: свои, соавторские и
-// публичные плейлисты друзей (подписаны друг на друга). Публичный плейлист
-// не-друга по-прежнему открывается по ссылке и виден в профиле
-// (playlistVisibleTo), но в списке — на главной и в приложениях — его нет.
 const playlistListedFor = `(p.user_id = $1
 	OR EXISTS (SELECT 1 FROM playlist_collaborators c WHERE c.playlist_id = p.id AND c.user_id = $1)
 	OR (p.is_public
 	    AND EXISTS (SELECT 1 FROM user_follows f WHERE f.follower_id = $1 AND f.followee_id = p.user_id)
 	    AND EXISTS (SELECT 1 FROM user_follows f WHERE f.follower_id = p.user_id AND f.followee_id = $1)))`
 
-// handlePlaylists lists my playlists and my friends' public ones.
 func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	rows, err := s.DB.Query(playlistSelect+` WHERE `+playlistListedFor+` ORDER BY p.updated_at DESC`, userID)
@@ -404,7 +366,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 			serverError(w, r, "scan failed", err)
 			return
 		}
-		if p.Mine || p.CanEdit { // совместный — тоже «мой»: в него добавляют из меню трека
+		if p.Mine || p.CanEdit {
 			mine = append(mine, p)
 		} else {
 			others = append(others, p)
@@ -417,8 +379,6 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"mine": mine, "others": others})
 }
 
-// visiblePlaylist loads a playlist the user may see (own, public or one
-// they collaborate on).
 func (s *Server) visiblePlaylist(userID, id string) (playlistInfo, error) {
 	return scanPlaylist(s.DB.QueryRow(playlistSelect+` WHERE p.id::text = $2 AND `+playlistVisibleTo, userID, id))
 }
@@ -484,15 +444,10 @@ func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, p)
 }
 
-// ownPlaylist answers false (and writes an error) unless the playlist is the
-// user's: renaming, the cover and deleting are the owner's alone. A
-// collaborator gets 403, anyone else 404 — as if there were no playlist.
 func (s *Server) ownPlaylist(w http.ResponseWriter, r *http.Request, userID, id string) bool {
 	return s.playlistAccess(w, r, userID, id, false)
 }
 
-// editablePlaylist — the user may add, remove and reorder songs: the owner
-// or a collaborator (playlist_collab.go).
 func (s *Server) editablePlaylist(w http.ResponseWriter, r *http.Request, userID, id string) bool {
 	return s.playlistAccess(w, r, userID, id, true)
 }
@@ -563,9 +518,6 @@ func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- своя обложка ---
-
-// handleUploadPlaylistCover: JPEG, как у картинок админа (saveUploadedImage).
 func (s *Server) handleUploadPlaylistCover(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
@@ -588,8 +540,6 @@ func (s *Server) handleDeletePlaylistCover(w http.ResponseWriter, r *http.Reques
 	s.setPlaylistCover(w, r, userID, id, nil)
 }
 
-// setPlaylistCover stores the new cover (nil — back to the mosaic), deletes
-// the previous file and answers with the playlist.
 func (s *Server) setPlaylistCover(w http.ResponseWriter, r *http.Request, userID, id string, key *string) {
 	var old sql.NullString
 	err := s.DB.QueryRow(
@@ -615,9 +565,6 @@ func (s *Server) setPlaylistCover(w http.ResponseWriter, r *http.Request, userID
 	writeJSON(w, http.StatusOK, p)
 }
 
-// handleAddToPlaylist appends songs ({"deezer_ids": [...]}) in the given
-// order and queues them for download, unless "download": false (an import
-// of a whole playlist — those download when played).
 func (s *Server) handleAddToPlaylist(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
@@ -638,7 +585,6 @@ func (s *Server) handleAddToPlaylist(w http.ResponseWriter, r *http.Request) {
 	if !s.editablePlaylist(w, r, userID, id) {
 		return
 	}
-	// Deezer — параллельно, до 200 треков за раз; свои — из базы.
 	tracks, err := s.catalogTracks(viewerOf(r), req.DeezerIDs)
 	if err == nil && len(tracks) != len(req.DeezerIDs) {
 		err = errNotFound
@@ -658,7 +604,6 @@ func (s *Server) handleAddToPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	var last float64
-	// FOR UPDATE: два одновременных добавления не получат одни и те же позиции.
 	if err := tx.QueryRow(`SELECT 1 FROM playlists WHERE id = $1 FOR UPDATE`, id).Scan(new(int)); err != nil {
 		serverError(w, r, "could not add the songs", err)
 		return
@@ -682,14 +627,8 @@ func (s *Server) handleAddToPlaylist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"added": len(req.DeezerIDs)})
 }
 
-// --- порядок треков ---
-
 var errPositionsTooClose = errors.New("positions too close")
 
-// handleMovePlaylistItem puts a song before another one ({"before": item id})
-// or at the end ({"before": null}). Positions are floats: the song gets the
-// midpoint between its new neighbours, so one move is one UPDATE; when the
-// neighbours are too close to split, the playlist is renumbered 1…n first.
 func (s *Server) handleMovePlaylistItem(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	id := r.PathValue("id")
@@ -714,7 +653,6 @@ func (s *Server) handleMovePlaylistItem(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback()
-	// Как при добавлении: перестановки одного плейлиста идут по очереди.
 	if err := tx.QueryRow(`SELECT 1 FROM playlists WHERE id = $1 FOR UPDATE`, id).Scan(new(int)); err != nil {
 		serverError(w, r, "could not move the song", err)
 		return
@@ -754,9 +692,6 @@ func (s *Server) handleMovePlaylistItem(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// newItemPosition is the position for an item placed before `before` (nil —
-// at the end), not counting the item itself. The list is ordered by
-// (position, id). sql.ErrNoRows — `before` is not in this playlist.
 func newItemPosition(tx *sql.Tx, playlistID string, itemID int64, before *int64) (float64, error) {
 	if before == nil {
 		var last float64
@@ -776,7 +711,7 @@ func newItemPosition(tx *sql.Tx, playlistID string, itemID int64, before *int64)
 		  ORDER BY position DESC, id DESC LIMIT 1`, playlistID, itemID, next, *before,
 	).Scan(&prev)
 	if errors.Is(err, sql.ErrNoRows) {
-		return next - 1, nil // в самое начало
+		return next - 1, nil
 	} else if err != nil {
 		return 0, err
 	}

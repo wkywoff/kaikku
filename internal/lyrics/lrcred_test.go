@@ -40,7 +40,6 @@ func TestParseTTML_WordsSyllablesBackingVoices(t *testing.T) {
 	if len(first.BG) != 2 || first.BG[0].Text != "(эхо" || first.BG[1].Start != 2.8 {
 		t.Errorf("backing vocals: %+v", first.BG)
 	}
-	// Второй голос — справа, «все вместе» — нет.
 	if l.Lines[1].Start != 64 || !l.Lines[1].Right || l.Lines[2].Right {
 		t.Errorf("voices: %+v / %+v", l.Lines[1], l.Lines[2])
 	}
@@ -89,7 +88,6 @@ func TestLRCRed_FindsByISRCWithContact(t *testing.T) {
 	if l, err := p.Find(ctx, Track{ISRC: "GBAAA0000002"}); l != nil || err != nil {
 		t.Errorf("missing: %+v %v", l, err)
 	}
-	// Без ISRC или с мусором вместо него — не спрашиваем.
 	for _, isrc := range []string{"", "GB/../../x1", "short"} {
 		if l, err := p.Find(ctx, Track{ISRC: isrc}); l != nil || err != nil {
 			t.Errorf("%q: %+v %v", isrc, l, err)

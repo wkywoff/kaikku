@@ -44,7 +44,7 @@ func TestSizedCover(t *testing.T) {
 		return rec
 	}
 
-	for i := 0; i < 2; i++ { // второй раз — из кеша
+	for i := 0; i < 2; i++ {
 		rec := get("/api/cover/64/" + key)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status %d", rec.Code)
@@ -64,14 +64,12 @@ func TestSizedCover(t *testing.T) {
 	if _, err := os.Stat(cached); err != nil {
 		t.Fatalf("no cached copy: %v", err)
 	}
-	// 200 — карточки на обычном экране (srcset фронта).
 	if rec := get("/api/cover/200/" + key); rec.Code != http.StatusOK {
 		t.Errorf("200 px: status %d", rec.Code)
 	} else if img, err := jpeg.Decode(rec.Body); err != nil || img.Bounds().Dx() != 200 {
 		t.Errorf("200 px: want a 200×200 JPEG (%v)", err)
 	}
 
-	// Картинка меньше запрошенного — отдаётся как есть.
 	if rec := get("/api/cover/300/" + small); rec.Code != http.StatusOK {
 		t.Errorf("small original: status %d", rec.Code)
 	} else if img, _ := jpeg.Decode(rec.Body); img == nil || img.Bounds().Dx() != 50 {
@@ -79,18 +77,16 @@ func TestSizedCover(t *testing.T) {
 	}
 
 	for _, bad := range []string{
-		"/api/cover/100/" + key,              // не наш размер
-		"/api/cover/64/covers/../../etc.jpg", // выход из covers
+		"/api/cover/100/" + key,
+		"/api/cover/64/covers/../../etc.jpg",
 		"/api/cover/64/tracks/3007dedab68318ab6e68b09ca79f17f7.jpg",
-		"/api/cover/64/covers/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg", // нет файла
+		"/api/cover/64/covers/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
 	} {
-		// ".." роутер чистит сам (301 на другой путь) — главное, файла нет.
 		if rec := get(bad); rec.Code == http.StatusOK {
 			t.Errorf("%s: served a file", bad)
 		}
 	}
 
-	// Удаление обложки удаляет и её копии.
 	srv.removeStorageFiles(key)
 	if _, err := os.Stat(cached); !os.IsNotExist(err) {
 		t.Errorf("cached copy left after removing the cover: %v", err)

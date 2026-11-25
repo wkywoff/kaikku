@@ -12,16 +12,6 @@ import (
 	"time"
 )
 
-// Обложки и фото артистов из каталога Deezer браузер берёт не с
-// cdn-images.dzcdn.net, а через нас (/api/img/...): у части людей CDN
-// Deezer недоступен (блокировки, «белые списки» мобильного интернета),
-// а наш домен открывается. Фронт сам переписывает такие ссылки в ответах
-// API (frontend/src/lib/api.js).
-//
-// Без авторизации — <img> не шлёт Bearer, а картинки и так публичные.
-// Открытым прокси это не становится: пропускаются только пути вида
-// images/<cover|artist|misc>/<md5>/<WxH>-….jpg на одном хосте.
-
 var deezerImageHost = "https://cdn-images.dzcdn.net/images/"
 
 var (
@@ -30,9 +20,6 @@ var (
 	imageFileRe = regexp.MustCompile(`^([0-9]{2,4})x([0-9]{2,4})-[0-9a-z.-]{1,40}\.(jpg|png)$`)
 )
 
-// Квадраты, которые приходят в ответах Deezer (56/250/500/1000) и которые
-// просит фронт (imageproxy.js → sized, srcsetOf: 64/200/300/320/640). Другие
-// размеры не нужны — и через нас нельзя гонять картинки Deezer любого размера.
 var imageSizes = map[string]bool{"56": true, "64": true, "200": true, "250": true, "300": true, "320": true, "500": true, "640": true, "1000": true}
 
 var imageClient = &http.Client{Timeout: 20 * time.Second}
@@ -56,12 +43,10 @@ func (s *Server) handleDeezerImage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", img.contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(img.data)))
-	// Хеш в пути — от содержимого картинки, так что её можно кешировать навсегда.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Write(img.data)
 }
 
-// Картинка больше этого — не обложка.
 const maxImageBytes = 4 << 20
 
 func fetchDeezerImage(ctx context.Context, path string) (cachedImage, error) {
@@ -88,10 +73,6 @@ func fetchDeezerImage(ctx context.Context, path string) (cachedImage, error) {
 	return cachedImage{contentType: ct, data: data}, nil
 }
 
-// imageCache — последние картинки Deezer в памяти сервера. Приложения
-// (Subsonic) просят одни и те же обложки снова и снова, а адрес запроса у
-// них каждый раз свой (соль входа в параметрах) — их кеш не помогает, и
-// без этого каждая обложка шла бы заново с CDN Deezer.
 var imageCache = &byteCache{max: 48 << 20}
 
 type cachedImage struct {
@@ -99,13 +80,12 @@ type cachedImage struct {
 	data        []byte
 }
 
-// byteCache — LRU по суммарному размеру.
 type byteCache struct {
 	max int
 
 	mu    sync.Mutex
 	size  int
-	order list.List // *list.Element.Value — *byteCacheEntry, свежие спереди
+	order list.List
 	m     map[string]*list.Element
 }
 

@@ -11,17 +11,13 @@ import (
 	"time"
 )
 
-// Deezer — тексты самого Deezer (лицензия LyricFind): у части песен тайминг
-// по словам или по строкам, у остальных — текст. Ищется точно по Deezer ID
-// трека. Метод закрытый (GraphQL веб-плеера), но анонимный: короткий токен
-// выдаёт auth.deezer.com любому гостю сайта.
 type Deezer struct {
 	mu  sync.Mutex
 	jwt string
 	exp time.Time
 }
 
-var ( // переменные — для тестов
+var (
 	deezerAuth = "https://auth.deezer.com/login/anonymous?jo=p&rto=c"
 	deezerPipe = "https://pipe.deezer.com/api"
 )
@@ -36,7 +32,7 @@ func (d *Deezer) Name() string { return "deezer" }
 
 func (d *Deezer) Find(ctx context.Context, t Track) (*Lyrics, error) {
 	if t.DeezerID == "" || strings.Trim(t.DeezerID, "0123456789") != "" {
-		return nil, nil // не трек Deezer (свой, загруженный — k…)
+		return nil, nil
 	}
 	var r struct {
 		Data struct {
@@ -74,7 +70,7 @@ func (d *Deezer) Find(ctx context.Context, t Track) (*Lyrics, error) {
 		err = postJSON(ctx, deezerPipe, map[string]string{"Authorization": "Bearer " + jwt}, body, &r)
 		var se *statusError
 		if errors.As(err, &se) && se.Code == 401 && attempt == 0 {
-			continue // токен истёк раньше срока — новый
+			continue
 		}
 		if err != nil {
 			return nil, err
@@ -128,7 +124,6 @@ func (d *Deezer) Find(ctx context.Context, t Track) (*Lyrics, error) {
 
 func ms(v int) float64 { return float64(v) / 1000 }
 
-// token — анонимный токен Deezer (живёт несколько минут).
 func (d *Deezer) token(ctx context.Context, renew bool) (string, error) {
 	d.mu.Lock()
 	if !renew && d.jwt != "" && time.Now().Before(d.exp) {

@@ -12,23 +12,10 @@ import (
 	"kaikku/internal/ytdlp"
 )
 
-// Куки YouTube (админ, страница «Не нашлось»): если YouTube не пускает
-// сервер («Sign in to confirm you're not a bot»), а прокси нет, обычно
-// помогает cookies.txt от аккаунта YouTube. Сами куки сервер не отдаёт
-// никогда — только сколько их и есть ли среди них вход (ytdlp.CookiesInfo).
-
 const maxCookiesUpload = 1 << 20
 
-// youtubeCheck — проверка, пускает ли YouTube (подменяют тесты).
 var youtubeCheck = ytdlp.Check
 
-// PUT /api/admin/youtube/cookies (тело — cookies.txt) — сохранить и сразу
-// проверить. Ответ: {cookies, check, signin, requeued}: check — пускает ли
-// YouTube сервер с ними: ok, blocked, error или skipped (не на чем
-// проверить); signin — отдаёт ли с ними видео песни, которой нужен вход
-// (18+, для спонсоров): ok, age (аккаунт не подтвердил возраст), refused,
-// error или "" (таких песен нет); requeued — сколько песен снова в
-// очереди. Загружать можно и заранее, пока YouTube пускает.
 func (s *Server) handleUploadYouTubeCookies(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCookiesUpload))
 	if err != nil {
@@ -56,7 +43,6 @@ func (s *Server) handleUploadYouTubeCookies(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"cookies": info, "check": check, "signin": signIn, "requeued": requeued})
 }
 
-// DELETE /api/admin/youtube/cookies
 func (s *Server) handleDeleteYouTubeCookies(w http.ResponseWriter, r *http.Request) {
 	if err := ytdlp.RemoveCookies(); err != nil {
 		serverError(w, r, "removing cookies failed", err)
@@ -65,13 +51,8 @@ func (s *Server) handleDeleteYouTubeCookies(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// youtubeCheckTimeout — на обе проверки, меньше минуты, которую ждёт nginx.
 const youtubeCheckTimeout = 50 * time.Second
 
-// checkYouTube asks YouTube with the new cookies, the way the worker does:
-// for a video it refused lately, or else one that downloaded before — does
-// it let the server in — and for the video of a song that waits for a
-// sign-in, if any. What works goes back to the queue at once (requeued).
 func (s *Server) checkYouTube(ctx context.Context) (check, signIn string, requeued int64) {
 	ctx, cancel := context.WithTimeout(ctx, youtubeCheckTimeout)
 	defer cancel()
@@ -96,7 +77,7 @@ func (s *Server) checkYouTube(ctx context.Context) (check, signIn string, requeu
 			}
 			requeued += n
 		case errors.Is(err, ytdlp.ErrBlocked):
-			return "blocked", "", 0 // и песни, которым нужен вход, не скачаются
+			return "blocked", "", 0
 		default:
 			log.Printf("youtube cookies: checking %s: %v", videoID, err)
 			check = "error"

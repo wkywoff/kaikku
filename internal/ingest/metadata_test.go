@@ -9,7 +9,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Фото артистов воркер больше не качает: Deezer о них не спрашивается.
 func TestFillMetadata_DoesNotFetchArtistPictures(t *testing.T) {
 	db := openTestDB(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,8 +20,6 @@ func TestFillMetadata_DoesNotFetchArtistPictures(t *testing.T) {
 	FillMetadata(context.Background(), db, deezer.NewClientWithBaseURL(srv.URL))
 }
 
-// Свои артисты и треки (k…, загрузка) в Deezer не ищутся: их там нет, и
-// без этой проверки они перезапрашивались бы после каждого трека.
 func TestFillMetadata_SkipsOwnUploads(t *testing.T) {
 	db := openTestDB(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

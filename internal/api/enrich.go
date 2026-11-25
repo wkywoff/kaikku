@@ -10,32 +10,18 @@ import (
 	"kaikku/internal/safe"
 )
 
-// Фиты треков для приложений (Subsonic) и поиска. Треклист альбома и
-// выдача поиска у Deezer — без исполнителей, за ними нужен запрос на
-// каждый трек; Feishin открывает разом всю дискографию артиста, поиск
-// печатают на ходу, и это съедало лимит Deezer. Поэтому там фиты — из
-// кеша (у альбома, если трека там нет, — исполнители альбома,
-// guessContributors), а трек догружается фоном малой долей лимита: со
-// следующего раза — точно.
-
-// Фоновая догрузка — 3 запроса за 5 с: сайту и приложениям остаётся своё.
 var (
-	enrichLimit atomic.Pointer[deezer.Limiter] // тесты ставят свой
+	enrichLimit atomic.Pointer[deezer.Limiter]
 	enrichMu    sync.Mutex
-	enrichQueue = map[string]*deezer.Client{} // ждут догрузки: трек → чей клиент
+	enrichQueue = map[string]*deezer.Client{}
 	enrichWake  = make(chan struct{}, 1)
 	enrichOnce  sync.Once
 )
 
 func init() { enrichLimit.Store(deezer.NewLimiter(3, 5*time.Second)) }
 
-// enrichQueueMax — не больше стольких треков в очереди: остальные
-// догрузятся в следующий раз.
 const enrichQueueMax = 5000
 
-// guessContributors — исполнители альбома тем трекам, чьих исполнителей
-// нет в кеше: у совместного релиза (несколько главных исполнителей)
-// трек, чей исполнитель среди них, почти всегда — всех их.
 func guessContributors(album *deezer.Album, tracks []deezer.Track) {
 	if len(album.Contributors) < 2 {
 		return
@@ -54,8 +40,6 @@ func guessContributors(album *deezer.Album, tracks []deezer.Track) {
 	}
 }
 
-// enrichLater ставит треки, которых нет в кеше (их вернул
-// EnrichContributorsCached), на фоновую догрузку.
 func (s *Server) enrichLater(ids []string) {
 	if len(ids) == 0 {
 		return

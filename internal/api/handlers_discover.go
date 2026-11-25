@@ -11,13 +11,8 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// maxDiscography caps how many releases an artist page loads (Deezer pages
-// them by 100, so this is at most 5 requests).
 const maxDiscography = 500
 
-// Артист и его топ меняются редко, а открываются часто и подряд:
-// страница артиста → «Показать все» → альбом → «Ещё альбомы». Дискография
-// — чаще: новый релиз должен появиться на странице в пределах часа.
 const (
 	artistTTL      = 24 * time.Hour
 	discographyTTL = time.Hour
@@ -39,17 +34,8 @@ func (s *Server) artistDiscography(id string) ([]deezer.Album, error) {
 	})
 }
 
-// maxNotedArtists — у скольких исполнителей одного альбома сверяем список
-// релизов: у сборника с десятком главных исполнителей это десятки запросов.
 const maxNotedArtists = 4
 
-// noteReleaseOutsideDiscography запоминает релиз, которого нет в списке
-// релизов его артиста у Deezer: альбом уже открывается и находится поиском,
-// а в /artist/{id}/albums попадает на дни позже. Запомненное дискография
-// добавляет сама (creditedDiscography). Сверяем у всех главных исполнителей
-// (совместный релиз Deezer показывает у каждого), фиты не в счёт. Список
-// основного артиста тут почти всегда в кеше — его же грузит «Ещё альбомы».
-// album — ответ Deezer до наложения правок.
 func (s *Server) noteReleaseOutsideDiscography(album *deezer.Album) {
 	var artists []string
 	for _, id := range append([]string{album.ArtistID}, album.MainArtistIDs...) {
@@ -61,7 +47,6 @@ func (s *Server) noteReleaseOutsideDiscography(album *deezer.Album) {
 	s.inBackground(func() {
 		for _, artistID := range artists {
 			list, err := s.artistDiscography(artistID)
-			// Обрезанный список (Various Artists) ничего не говорит о том, чего в нём нет.
 			if err != nil || len(list) >= maxDiscography {
 				continue
 			}
@@ -83,9 +68,6 @@ func (s *Server) artistTop(id string) ([]deezer.Track, error) {
 	})
 }
 
-// «Популярное» у артиста — по прослушиваниям на нашем сервисе за месяц
-// (топ Deezer — старые фиты и не то, что тут слушают): треки, где он
-// исполнитель, основной или фит. Не набралось — дальше топ Deezer.
 const (
 	topLimit  = 10
 	topWindow = "30 days"
@@ -97,13 +79,11 @@ func (s *Server) artistTopByPlays(id string) ([]deezer.Track, error) {
 		  FROM plays
 		 WHERE played_at > now() - $3::interval
 		   AND (meta->>'artist_id' = $1 OR meta->'contributors' @> jsonb_build_array(jsonb_build_object('id', $1::text)))
-		   -- В снимке альбом может быть чужим (трек слушали в треклисте другого
-		   -- релиза), поэтому черновик смотрим по самому треку.
 		   AND NOT EXISTS (SELECT 1 FROM tracks t JOIN albums a ON a.id = t.album_id
 		                    WHERE t.deezer_id = plays.deezer_id AND a.draft)
 		 GROUP BY deezer_id
 		 ORDER BY count(*) DESC, max(played_at) DESC
-		 LIMIT $2`, id, 2*topLimit, topWindow) // с запасом: часть отсеется ниже
+		 LIMIT $2`, id, 2*topLimit, topWindow)
 	if err != nil {
 		return nil, err
 	}
@@ -119,24 +99,17 @@ func (s *Server) artistTopByPlays(id string) ([]deezer.Track, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Снимок — каким трек был, когда его слушали; исполнителей с тех пор
-	// могли поменять (правка админа, автор своего релиза убрал фит).
-	// Остаются треки, где артист есть сейчас.
 	s.overlayFor(nil, nil, out)
 	out = creditedTo(id, out)
 	return out[:min(len(out), topLimit)], nil
 }
 
-// creditedTo keeps the tracks the artist is credited on after the overlay
-// was applied: трек, перенесённый правкой к другому артисту, из «Популярного»
-// прежнего уходит.
 func creditedTo(id string, tracks []deezer.Track) []deezer.Track {
 	return slices.DeleteFunc(tracks, func(t deezer.Track) bool {
 		return t.ArtistID != id && !slices.ContainsFunc(t.Contributors, func(c deezer.ArtistRef) bool { return c.ID == id })
 	})
 }
 
-// popularTracks: сначала слушаемое здесь, потом топ Deezer без повторов.
 func popularTracks(played, deezerTop []deezer.Track) []deezer.Track {
 	out := played
 	for _, t := range deezerTop {
@@ -150,9 +123,6 @@ func popularTracks(played, deezerTop []deezer.Track) []deezer.Track {
 	return out
 }
 
-// handleDiscoverArtist returns one Deezer artist, their top tracks and
-// discography in one response — one round-trip per artist page; the three
-// Deezer requests run in parallel.
 func (s *Server) handleDiscoverArtist(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if isLocalID(id) {
@@ -194,8 +164,6 @@ func (s *Server) handleDiscoverArtist(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("artist %s: top by plays: %v", id, err)
 	}
-	// Топ Deezer — по его исполнителям; правка могла перенести трек к
-	// другому артисту, такие отсеиваем так же, как в топе по прослушиваниям.
 	top = cloneTracks(top)
 	s.overlayFor(nil, nil, top)
 	albums, top = s.creditedDiscography(id, cloneAlbums(albums)), popularTracks(played, creditedTo(id, top))
@@ -203,8 +171,6 @@ func (s *Server) handleDiscoverArtist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"artist": artist, "albums": visibleAlbums(r, albums), "top": visibleTracks(r, top)})
 }
 
-// handleDiscoverArtistAlbums is the artist's discography alone — for the
-// "More albums by …" rows on an album page, without the top tracks.
 func (s *Server) handleDiscoverArtistAlbums(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !validCatalogID(id) {
@@ -212,7 +178,7 @@ func (s *Server) handleDiscoverArtistAlbums(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var albums []deezer.Album
-	if !isLocalID(id) { // у своего артиста всё — из базы (creditedDiscography)
+	if !isLocalID(id) {
 		var err error
 		if albums, err = s.artistDiscography(id); err != nil {
 			writeDeezerError(w, "deezer artist albums lookup failed", err)
@@ -227,8 +193,6 @@ func (s *Server) handleDiscoverArtistAlbums(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"albums": visibleAlbums(r, albums)})
 }
 
-// handleDiscoverAlbum returns one Deezer album plus its full, correctly
-// ordered tracklist — same one-round-trip reasoning as the artist endpoint.
 func (s *Server) handleDiscoverAlbum(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if isLocalID(id) {
@@ -240,8 +204,6 @@ func (s *Server) handleDiscoverAlbum(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"album": album, "tracks": tracks, "versions": s.albumVersions(r, album),
-			// Карандаш на странице релиза — только в режиме админа (как вся
-			// правка на страницах); автор правит свои релизы из медиатеки.
 			"draft": rel.draft, "editable": v.adminMode,
 		})
 		return
@@ -261,7 +223,7 @@ func (s *Server) handleDiscoverAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.noteReleaseOutsideDiscography(album)
-	if fromApp(r) { // enrich.go
+	if fromApp(r) {
 		s.enrichLater(s.Deezer.EnrichContributorsCached(tracks))
 		guessContributors(album, tracks)
 	} else {
@@ -269,18 +231,15 @@ func (s *Server) handleDiscoverAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	s.overlayFor(nil, []*deezer.Album{album}, tracks)
 	if arranged {
-		renumber(tracks, album.ID) // свой треклист (tracklist.go) — номера по новому порядку
+		renumber(tracks, album.ID)
 	}
-	for i := range tracks { // треклист берёт название и обложку альбома из album
+	for i := range tracks {
 		tracks[i].Album = album.Title
 		tracks[i].CoverURL = album.CoverURL
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"album": album, "tracks": tracks, "versions": s.albumVersions(r, album)})
 }
 
-// handleDiscoverTrack — один трек со всеми исполнителями. Радио, чарт и
-// поиск Deezer отдают только основного; плеер дозапрашивает фиты для
-// трека, который начал играть (по запросу на трек, а не на весь список).
 func (s *Server) handleDiscoverTrack(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !validCatalogID(id) {
@@ -295,7 +254,6 @@ func (s *Server) handleDiscoverTrack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, track)
 }
 
-// Похожие артисты меняются редко — спрашиваем Deezer не чаще раза в 12 часов.
 const relatedTTL = 12 * time.Hour
 
 func (s *Server) relatedArtists(id string) ([]deezer.Artist, error) {
@@ -304,10 +262,9 @@ func (s *Server) relatedArtists(id string) ([]deezer.Artist, error) {
 	})
 }
 
-// handleDiscoverRelated — «Похожие исполнители» на странице артиста.
 func (s *Server) handleDiscoverRelated(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if isLocalID(id) { // похожих на своего артиста никто не знает
+	if isLocalID(id) {
 		writeJSON(w, http.StatusOK, map[string]any{"artists": []deezer.Artist{}})
 		return
 	}
@@ -320,17 +277,12 @@ func (s *Server) handleDiscoverRelated(w http.ResponseWriter, r *http.Request) {
 		writeDeezerError(w, "deezer related artists lookup failed", err)
 		return
 	}
-	// Копия: правки накладываются на месте, а кеш — ответ Deezer. make, а не
-	// append к nil: у артиста без похожих иначе ушло бы null, и страница падала.
 	artists := make([]deezer.Artist, len(related))
 	copy(artists, related)
 	s.overlayFor(artistPtrs(artists), nil, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"artists": artists})
 }
 
-// handleDiscoverRadio — радио артиста: его треки вперемешку с похожими.
-// Каждый раз новая подборка, поэтому без кеша. Им же продолжается музыка,
-// когда очередь кончилась и включено автовоспроизведение.
 func (s *Server) handleDiscoverRadio(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if isLocalID(id) {

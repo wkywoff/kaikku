@@ -17,20 +17,10 @@ import (
 	"kaikku/internal/ingest"
 )
 
-// Аудио своих релизов (uploads.go): файл трека загружается сырым телом
-// запроса (POST …/releases/{id}/audio?name=<имя файла>), проверяется
-// ffprobe и перекодируется в .m4a (ingest.PrepareUpload). Сервер — 1 vCPU
-// и предел памяти у API, поэтому обработка идёт по одной (audioSlot, общий
-// с заменой аудио трека Deezer), а файл ждёт своей очереди на диске.
-
-// audioSlot — одна обработка аудио за раз на весь API.
 var audioSlot = make(chan struct{}, 1)
 
-// slotWait — сколько запрос ждёт своей очереди. Дольше — 503 и повтор с
-// фронта: иначе загрузка висела бы без ответа до таймаута nginx.
 var slotWait = 45 * time.Second
 
-// acquireAudioSlot ждёт очереди на обработку; false — не дождался (ответ уже дан).
 func acquireAudioSlot(w http.ResponseWriter, r *http.Request) bool {
 	select {
 	case audioSlot <- struct{}{}:
@@ -45,8 +35,6 @@ func acquireAudioSlot(w http.ResponseWriter, r *http.Request) bool {
 
 func releaseAudioSlot() { <-audioSlot }
 
-// Место на диске: файл, его временная копия и результат не должны забить
-// диск, на котором ещё база и всё остальное. freeSpace подменяют тесты.
 const minFreeSpace = 1 << 30
 
 var freeSpace = statFree
@@ -59,37 +47,28 @@ func statFree(dir string) (uint64, error) {
 	return st.Bavail * uint64(st.Bsize), nil
 }
 
-// Тесты подменяют обработку.
 var (
 	probeUpload   = ingest.ProbeUpload
 	prepareUpload = ingest.PrepareUpload
 	extractCover  = ingest.ExtractCover
 )
 
-// receivedAudio — загруженный и перекодированный файл, ещё без строки в базе.
 type receivedAudio struct {
-	key        string // uploads/<hex>.m4a
+	key        string
 	info       *ingest.UploadInfo
 	lufs, gain float64
 	durationMs int
-	src        string // исходник (временный файл) — для обложки из тегов
+	src        string
 }
 
-// receiveAudio принимает тело запроса во временный файл на диске, ждёт
-// очереди и перекодирует. Ответ при ошибке даёт сам. Вызвавший удаляет
-// a.src (os.Remove) и отпускает слот (releaseAudioSlot), если ok.
 const maxLyricsFromTag = 60 << 10
 
-// uploadReserve — место, обещанное загрузкам, что ещё идут. Свободное место
-// видит только уже записанное: без резерва параллельные запросы прошли бы
-// проверку все разом. Нулевое значение готово к работе.
 type uploadReserve struct {
 	mu     sync.Mutex
 	total  uint64
 	byUser map[string]uint64
 }
 
-// uploadedBytes — сколько занимают файлы релизов пользователя.
 func (s *Server) uploadedBytes(ctx context.Context, userID string) (uint64, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT DISTINCT t.storage_key FROM tracks t JOIN albums a ON a.id = t.album_id
@@ -111,10 +90,8 @@ func (s *Server) uploadedBytes(ctx context.Context, userID string) (uint64, erro
 	return total, rows.Err()
 }
 
-// reserveUpload проверяет свободное место и квоту пользователя и занимает
-// место под этот файл; false — нельзя (ответ уже дан).
 func (s *Server) reserveUpload(w http.ResponseWriter, r *http.Request) (release func(), ok bool) {
-	size := uint64(maxAudioUpload) // размер неизвестен заранее — худший случай
+	size := uint64(maxAudioUpload)
 	if r.ContentLength >= 0 {
 		size = uint64(r.ContentLength)
 	}
@@ -172,9 +149,7 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 	if !ok {
 		return a, false
 	}
-	defer release() // дальше файл уже на диске и виден в свободном месте
-	// Файл в сотни МБ, очередь и перекодирование — дольше общих таймаутов
-	// сервера (cmd/api); nginx ждёт /api/uploads/ 420 с.
+	defer release()
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Now().Add(audioBodyTimeout))
 	_ = rc.SetWriteDeadline(time.Now().Add(audioBodyTimeout))
@@ -229,9 +204,6 @@ func (s *Server) receiveAudio(w http.ResponseWriter, r *http.Request) (a receive
 	return a, true
 }
 
-// handleAddReleaseAudio — новый трек релиза из файла. Название — из тега
-// или имени файла, номер — следующий; остальное правится в окне загрузки.
-// Если у релиза ещё нет обложки, берётся картинка из файла.
 func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 	rel, ok := s.releaseFor(w, r)
 	if !ok {
@@ -257,7 +229,6 @@ func (s *Server) handleAddReleaseAudio(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "could not save the track", err)
 		return
 	}
-	// Текст из тегов файла, с тем же пределом, что и у правки вручную.
 	if l := a.info.Tags.Lyrics; l != "" && len(l) <= maxLyricsFromTag && s.Lyrics != nil {
 		if err := s.saveOwnLyrics(r.Context(), trackID, a.info.Tags.Lyrics); err != nil {
 			log.Printf("lyrics of %s from tags: %v", trackID, err)
@@ -279,12 +250,9 @@ func (s *Server) insertOwnTrack(rel releaseRow, title string, a receivedAudio) (
 		return "", 0, err
 	}
 	defer tx.Rollback()
-	// FOR UPDATE: два файла, загруженные разом, не получат один номер.
 	if err := tx.QueryRow(`SELECT 1 FROM albums WHERE id = $1 FOR UPDATE`, rel.libraryID).Scan(new(int)); err != nil {
 		return "", 0, err
 	}
-	// Новый трек — в конец последнего диска (своего или из треклиста с
-	// добавленными треками, local.go: arrangeOwn).
 	var id string
 	var disc int
 	if err := tx.QueryRow(
@@ -302,8 +270,6 @@ func (s *Server) insertOwnTrack(rel releaseRow, title string, a receivedAudio) (
 	return id, disc, tx.Commit()
 }
 
-// coverFromFile ставит картинку из файла обложкой релиза, если своей у
-// него ещё нет; "" — не поставили.
 func (s *Server) coverFromFile(r *http.Request, rel releaseRow, a receivedAudio) string {
 	if !a.info.HasCover {
 		return ""
@@ -322,15 +288,13 @@ func (s *Server) coverFromFile(r *http.Request, rel releaseRow, a receivedAudio)
 		log.Printf("cover from %q: %v", r.URL.Query().Get("name"), err)
 		return ""
 	}
-	if err := s.setReleaseCover(rel, key, false); err != nil { // своя появилась раньше — она главнее
+	if err := s.setReleaseCover(rel, key, false); err != nil {
 		s.removeStorageFiles(key)
 		return ""
 	}
 	return "/media/" + key
 }
 
-// handleReplaceTrackAudio — другой файл того же трека: ID, лайки, плейлисты и
-// история остаются.
 func (s *Server) handleReplaceTrackAudio(w http.ResponseWriter, r *http.Request) {
 	rel, trackID, ok := s.ownTrackFor(w, r)
 	if !ok {
@@ -358,10 +322,6 @@ func (s *Server) handleReplaceTrackAudio(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"duration_ms": a.durationMs, "tags": a.info.Tags})
 }
 
-// handleDeleteOwnTrack убирает трек из релиза (и из медиатеки слушателей).
-// Последний трек опубликованного релиза удалить нельзя — релиз без треков
-// был бы пустой страницей; удаляется весь релиз. Треки с других релизов в
-// его треклисте тоже считаются: свой можно заменить официальным.
 func (s *Server) handleDeleteOwnTrack(w http.ResponseWriter, r *http.Request) {
 	rel, trackID, ok := s.ownTrackFor(w, r)
 	if !ok {
@@ -387,7 +347,6 @@ func (s *Server) handleDeleteOwnTrack(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ownTrackFor — свой трек и его релиз, если зритель вправе его править.
 func (s *Server) ownTrackFor(w http.ResponseWriter, r *http.Request) (releaseRow, string, bool) {
 	trackID := r.PathValue("id")
 	var albumID string
@@ -400,8 +359,6 @@ func (s *Server) ownTrackFor(w http.ResponseWriter, r *http.Request) (releaseRow
 	return rel, trackID, ok
 }
 
-// titleFromFilename — название трека из имени файла: без расширения, без
-// номера впереди («01 - », «07. », «3_») и с пробелами вместо «_».
 var leadingNumber = regexp.MustCompile(`^\d{1,3}(\s*[-._)\]]\s*|\s+)`)
 
 func titleFromFilename(name string) string {
@@ -419,10 +376,6 @@ func titleFromFilename(name string) string {
 	return title
 }
 
-// SweepUploads убирает при старте API то, что оставили оборванные загрузки:
-// временные файлы и перекодированные треки без строки в базе (рестарт
-// между обработкой и записью). Свежие (младше часа) не трогает — их могла
-// оставить ещё идущая загрузка в другом процессе.
 func (s *Server) SweepUploads() {
 	if s.StorageDir == "" {
 		return

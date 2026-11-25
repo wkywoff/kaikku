@@ -19,22 +19,13 @@ import (
 	"kaikku/internal/safe"
 )
 
-// Теги артистов с Last.fm (миграция 0025): жанры на странице артиста и
-// основа миксов (mixes.go). Ищутся по имени, как описание (bio.go). Фоновый
-// проход раз в 15 минут подтягивает теги всех, кого слушают, лайкают и на
-// кого подписаны; страница артиста спрашивает сама, если тегов ещё нет.
-// Владелец своего артиста и админ ставят жанры сами (custom, миграция
-// 0034): их Last.fm уже не перезаписывает.
-
 const (
-	// Сроки — в запросе tagListenedArtists: 30 дней, «тегов нет» — 7.
 	tagsPerArtist = 6
-	// Ниже этого веса тег — случайный (поставили пару человек).
-	tagMinCount = 10
-	tagsEvery   = 15 * time.Minute
-	tagsBatch   = 40
-	tagsPasses  = 10
-	tagsPause   = 250 * time.Millisecond // Last.fm просит не больше 5 запросов в секунду
+	tagMinCount   = 10
+	tagsEvery     = 15 * time.Minute
+	tagsBatch     = 40
+	tagsPasses    = 10
+	tagsPause     = 250 * time.Millisecond
 )
 
 type artistTag struct {
@@ -42,7 +33,6 @@ type artistTag struct {
 	Count int    `json:"count"`
 }
 
-// Теги, которые ничего не говорят о музыке: оценки, «видел вживую», страна.
 var junkTags = map[string]bool{
 	"seen live": true, "favorites": true, "favourites": true, "favorite": true, "favourite": true,
 	"my favorite": true, "love": true, "awesome": true, "beautiful": true, "cool": true, "amazing": true,
@@ -57,7 +47,6 @@ var junkTags = map[string]bool{
 
 var tagSpaces = regexp.MustCompile(`[\s_]+`)
 
-// normalizeTag: «Hip Hop», «hiphop» и «hip-hop» — один тег.
 func normalizeTag(s string) string {
 	s = strings.ToLower(strings.TrimSpace(tagSpaces.ReplaceAllString(s, " ")))
 	switch s {
@@ -69,7 +58,6 @@ func normalizeTag(s string) string {
 	return s
 }
 
-// cleanTags — теги артиста без мусора и повторов, самые весомые сначала.
 func cleanTags(raw []lastfm.Tag, artist string) []artistTag {
 	name := normalizeTag(artist)
 	seen := map[string]bool{}
@@ -88,7 +76,6 @@ func cleanTags(raw []lastfm.Tag, artist string) []artistTag {
 	return out
 }
 
-// tagsOf — сохранённые теги артистов (кого нет — того нет в ответе).
 func (s *Server) tagsOf(ids []string) (map[string][]artistTag, error) {
 	out := map[string][]artistTag{}
 	if len(ids) == 0 {
@@ -110,7 +97,6 @@ func (s *Server) tagsOf(ids []string) (map[string][]artistTag, error) {
 	return out, rows.Err()
 }
 
-// fetchTags спрашивает Last.fm и запоминает ответ (пустой — тоже).
 func (s *Server) fetchTags(ctx context.Context, id, name string) ([]artistTag, error) {
 	raw, err := s.Lastfm.ArtistTopTags(ctx, name)
 	if err != nil {
@@ -127,14 +113,11 @@ func (s *Server) fetchTags(ctx context.Context, id, name string) ([]artistTag, e
 	return tags, nil
 }
 
-// artistTags — теги для страницы артиста: сохранённые, а если их ещё нет —
-// сразу с Last.fm. Свои артисты (k…) на Last.fm не ищутся. custom — жанры
-// поставлены вручную.
 func (s *Server) artistTags(ctx context.Context, id string) (tags []artistTag, custom bool) {
 	var raw []byte
 	err := s.DB.QueryRow(`SELECT tags, custom FROM artist_tags WHERE deezer_id = $1`, id).Scan(&raw, &custom)
 	if err == nil && json.Unmarshal(raw, &tags) == nil {
-		return tags, custom // устаревшие обновит фоновый проход
+		return tags, custom
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Printf("tags of %s: %v", id, err)
@@ -156,7 +139,6 @@ func (s *Server) artistTags(ctx context.Context, id string) (tags []artistTag, c
 	return tags, false
 }
 
-// tagNames — названия тегов для страницы артиста.
 func tagNames(tags []artistTag) []string {
 	out := []string{}
 	for _, t := range tags {
@@ -167,9 +149,6 @@ func tagNames(tags []artistTag) []string {
 	return out
 }
 
-// PUT /api/discover/artists/{id}/tags {"tags": [...]} — свои жанры (права —
-// как у описания, bio.go). Порядок — важность: первый весит больше всех.
-// Пустой список — жанров нет.
 func (s *Server) handlePutArtistTags(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.bioEditor(w, r)
 	if !ok {
@@ -216,7 +195,6 @@ func (s *Server) handlePutArtistTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tags": tagNames(tags), "tags_custom": true})
 }
 
-// DELETE /api/discover/artists/{id}/tags — снова жанры с Last.fm.
 func (s *Server) handleDeleteArtistTags(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.bioEditor(w, r)
 	if !ok {
@@ -231,19 +209,17 @@ func (s *Server) handleDeleteArtistTags(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"tags": tagNames(tags), "tags_custom": false})
 }
 
-// forgetGenres — жанры артиста поменялись: плитки и страницы жанров заново.
 func (s *Server) forgetGenres() {
 	s.cache.forget("genres:")
 	s.cache.forget("genre:")
 }
 
-// StartTagger — фоновый проход по артистам, которых слушают: теги для миксов.
 func (s *Server) StartTagger(ctx context.Context) {
 	if s.Lastfm == nil {
 		return
 	}
 	go func() {
-		t := time.NewTimer(30 * time.Second) // не мешать старту
+		t := time.NewTimer(30 * time.Second)
 		defer t.Stop()
 		for {
 			select {
@@ -257,10 +233,6 @@ func (s *Server) StartTagger(ctx context.Context) {
 	}()
 }
 
-// tagListenedArtists подтягивает теги артистов без них (или с устаревшими):
-// из истории за полгода, лайков и подписок — пачками по tagsBatch, за один
-// проход не больше tagsPasses пачек (кого Last.fm не отдал — снова в
-// следующей пачке, так что бесконечно не крутимся).
 func (s *Server) tagListenedArtists(ctx context.Context) {
 	for range tagsPasses {
 		if full := s.tagBatch(ctx); !full {
@@ -269,8 +241,6 @@ func (s *Server) tagListenedArtists(ctx context.Context) {
 	}
 }
 
-// tagBatch — одна пачка; true — пачка была полной, может быть, есть ещё.
-// Имя — из снимка, то есть как у Deezer: под ним артиста знает и Last.fm.
 func (s *Server) tagBatch(ctx context.Context) bool {
 	rows, err := s.DB.Query(`
 		SELECT id, max(name) FROM (

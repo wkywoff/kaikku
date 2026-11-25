@@ -16,7 +16,6 @@ import (
 	"kaikku/internal/lastfm"
 )
 
-// fakeLastfm — Last.fm, который записывает запросы и отвечает reply(method).
 type fakeLastfm struct {
 	mu    sync.Mutex
 	calls []url.Values
@@ -74,7 +73,6 @@ func TestLastfm_OffWithoutKey(t *testing.T) {
 		t.Fatalf("status = %v", st)
 	}
 	call(t, router, "POST", "/api/me/lastfm", token, `{"token":"t"}`, http.StatusNotFound)
-	// Плеер шлёт всегда — без привязки это ничего не делает.
 	call(t, router, "POST", "/api/me/scrobbles", token, fmt.Sprintf(`{"deezer_id":"12345","started_at":%d}`, time.Now().Unix()), http.StatusNoContent)
 }
 
@@ -108,7 +106,6 @@ func TestLastfm_LinkSettingsUnlink(t *testing.T) {
 	}
 	call(t, router, "PATCH", "/api/me/lastfm", token, `{"love":true}`, http.StatusNotFound)
 
-	// Неверный токен — 400, а не «Last.fm недоступен».
 	f.reply = func(string) string { return `{"error":4,"message":"Invalid authentication token"}` }
 	call(t, router, "POST", "/api/me/lastfm", token, `{"token":"bad"}`, http.StatusBadRequest)
 }
@@ -119,7 +116,6 @@ func TestLastfm_ScrobbleQueuedAndSent(t *testing.T) {
 
 	started := time.Now().Add(-3 * time.Minute).Unix()
 	call(t, router, "POST", "/api/me/scrobbles", token, fmt.Sprintf(`{"deezer_id":"12345","started_at":%d}`, started), http.StatusNoContent)
-	// Старше двух недель и из будущего Last.fm не примет.
 	call(t, router, "POST", "/api/me/scrobbles", token, fmt.Sprintf(`{"deezer_id":"12345","started_at":%d}`, time.Now().Add(-15*24*time.Hour).Unix()), http.StatusBadRequest)
 	call(t, router, "POST", "/api/me/scrobbles", token, fmt.Sprintf(`{"deezer_id":"12345","started_at":%d}`, time.Now().Add(time.Hour).Unix()), http.StatusBadRequest)
 
@@ -135,7 +131,6 @@ func TestLastfm_ScrobbleQueuedAndSent(t *testing.T) {
 		t.Fatalf("queue = %d after a successful send", n)
 	}
 
-	// Скробблинг выключен — ничего не копится.
 	call(t, router, "PATCH", "/api/me/lastfm", token, `{"scrobble":false}`, http.StatusOK)
 	call(t, router, "POST", "/api/me/scrobbles", token, fmt.Sprintf(`{"deezer_id":"12345","started_at":%d}`, started), http.StatusNoContent)
 	db.QueryRow(`SELECT count(*) FROM lastfm_queue`).Scan(&n)
@@ -156,7 +151,6 @@ func TestLastfm_RetryThenRevoked(t *testing.T) {
 	if err := db.QueryRow(`SELECT attempts, next_try > now() FROM lastfm_queue`).Scan(&attempts, &later); err != nil || attempts != 1 || !later {
 		t.Fatalf("after a failure: attempts=%d later=%v err=%v", attempts, later, err)
 	}
-	// Не пора — не отправляется.
 	before := len(f.methods())
 	srv.flushLastfm(context.Background())
 	if len(f.methods()) != before {
@@ -190,7 +184,6 @@ func TestLastfm_NowPlayingAndLove(t *testing.T) {
 	if v := f.last(); v.Get("method") != "track.unlove" {
 		t.Fatalf("unlove: %v", v)
 	}
-	// Снять несуществующий лайк — Last.fm не трогаем.
 	before := len(f.methods())
 	call(t, router, "DELETE", "/api/me/liked/12345", token, "", http.StatusNoContent)
 	if len(f.methods()) != before {

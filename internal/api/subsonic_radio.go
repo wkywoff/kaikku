@@ -9,9 +9,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Радио, топ артиста, случайное, сведения об артисте и жанры — для «микса»
-// и страниц артиста в приложениях.
-
 func init() {
 	subsonicRoute("getSimilarSongs2", func(c *subCtx) error { return subsonicSimilar(c, "similarSongs2") })
 	subsonicRoute("getSimilarSongs", func(c *subCtx) error { return subsonicSimilar(c, "similarSongs") })
@@ -30,8 +27,6 @@ type subSongs struct {
 	Songs []subSong `xml:"song" json:"song,omitempty"`
 }
 
-// similar — радио артиста (как автопродолжение на сайте). id — артист,
-// трек или альбом: для них — радио их исполнителя.
 func subsonicSimilar(c *subCtx, key string) error {
 	id := c.param("id")
 	if id == "" {
@@ -68,7 +63,6 @@ func subsonicSimilar(c *subCtx, key string) error {
 	return c.ok(key, subSongs{page(c.songs(out.Tracks), 0, c.intParam("count", 50, 500))})
 }
 
-// getTopSongs: artist — имя; берётся артист поиска с таким именем.
 func subsonicTopSongs(c *subCtx) error {
 	name := strings.TrimSpace(c.param("artist"))
 	if name == "" {
@@ -94,7 +88,6 @@ func subsonicTopSongs(c *subCtx) error {
 	return c.ok("topSongs", subSongs{page(c.songs(p.Top), 0, c.intParam("count", 50, 500))})
 }
 
-// getRandomSongs — любимое и слушанное вперемешку; с genre — из жанра.
 func subsonicRandomSongs(c *subCtx) error {
 	size := c.intParam("size", 10, 500)
 	var pool []deezer.Track
@@ -114,7 +107,6 @@ func subsonicRandomSongs(c *subCtx) error {
 	return c.ok("randomSongs", subSongs{page(c.songs(pool), 0, size)})
 }
 
-// listenedTracks — любимые и слушанные за 90 дней, без повторов.
 func (c *subCtx) listenedTracks() ([]deezer.Track, error) {
 	rows, err := c.s.DB.Query(
 		`SELECT meta FROM liked_tracks WHERE user_id = $1
@@ -142,15 +134,12 @@ func (c *subCtx) listenedTracks() ([]deezer.Track, error) {
 	return tracks, nil
 }
 
-// --- сведения об артисте и альбоме ---
-
 type subImages struct {
 	Small  string `xml:"smallImageUrl,omitempty" json:"smallImageUrl,omitempty"`
 	Medium string `xml:"mediumImageUrl,omitempty" json:"mediumImageUrl,omitempty"`
 	Large  string `xml:"largeImageUrl,omitempty" json:"largeImageUrl,omitempty"`
 }
 
-// imagesOf — картинка в трёх размерах по полному адресу сайта.
 func (s *Server) imagesOf(u string) subImages {
 	at := func(px int) string {
 		if kind, hash, file, ok := deezerImageAt(u, px); ok {
@@ -164,7 +153,6 @@ func (s *Server) imagesOf(u string) subImages {
 	return subImages{at(250), at(500), at(1000)}
 }
 
-// bioLangOf — язык описания: русский, если приложение просит его.
 func bioLangOf(c *subCtx) string {
 	if strings.HasPrefix(strings.ToLower(c.r.Header.Get("Accept-Language")), "ru") {
 		return "ru"
@@ -187,7 +175,7 @@ func subsonicArtistInfo(c *subCtx, id3 bool) error {
 	var related struct {
 		Artists []deezer.Artist `json:"artists"`
 	}
-	c.call(c.s.handleDiscoverRelated, "GET", "/", map[string]string{"id": id}, nil, &related) // нет похожих — не беда
+	c.call(c.s.handleDiscoverRelated, "GET", "/", map[string]string{"id": id}, nil, &related)
 	similar := c.artists(page(related.Artists, 0, c.intParam("count", 20, 100)), nil)
 
 	picture, _ := c.coverURL(subArtist + id)
@@ -212,7 +200,6 @@ func subsonicArtistInfo(c *subCtx, id3 bool) error {
 	}{bio.Text, lastFm, images, artistsPlain(similar)})
 }
 
-// getAlbumInfo — только обложки: своих заметок об альбомах у нас нет.
 func subsonicAlbumInfo(c *subCtx) error {
 	id, err := c.catalogParam("id", subAlbum)
 	if err != nil {
@@ -224,8 +211,6 @@ func subsonicAlbumInfo(c *subCtx) error {
 	}
 	return c.ok("albumInfo", c.s.imagesOf(u))
 }
-
-// --- жанры (теги Last.fm, genres.go) ---
 
 func subsonicGenres(c *subCtx) error {
 	var out struct {
@@ -248,7 +233,6 @@ func subsonicGenres(c *subCtx) error {
 	}{list})
 }
 
-// genre — страница жанра по названию (как его отдал getGenres).
 func (c *subCtx) genre(name string) (genrePage, error) {
 	var p genrePage
 	slug := tagSlug(name)
@@ -272,7 +256,6 @@ func subsonicSongsByGenre(c *subCtx) error {
 	return c.ok("songsByGenre", subSongs{songs})
 }
 
-// genreAlbums — альбомы треков жанра (getAlbumList2?type=byGenre).
 func genreAlbums(c *subCtx) ([]deezer.Album, error) {
 	name := c.param("genre")
 	if name == "" {

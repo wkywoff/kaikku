@@ -1,10 +1,3 @@
-// Package deezer wraps the parts of Deezer's public API this project needs:
-// track/artist search, artist discography, and album tracklists. All of
-// these are unauthenticated GET requests (no API key, no OAuth).
-//
-// Deezer gives metadata and 30-second previews only, never full audio — the
-// audio comes from YouTube via yt-dlp, matched by artist/title/duration
-// (internal/ytdlp.FindMatches).
 package deezer
 
 import (
@@ -24,25 +17,20 @@ import (
 type Client struct {
 	apiURL string
 
-	// egresses — выходы к Deezer (egress.go): первый — напрямую, дальше —
-	// через прокси с другим IP.
 	egresses   []*egress
-	quotaDelay time.Duration // пауза перед повтором, если Deezer ответил «квота»
+	quotaDelay time.Duration
 
 	tracks      ttlCache[Track]
 	albums      ttlCache[Album]
-	albumTracks ttlCache[[]Track] // треклисты без полей альбома (их ставит GetAlbumTracks)
+	albumTracks ttlCache[[]Track]
 
-	// Промахи кеша с одним ключом в одно время — одним запросом к Deezer.
 	trackLoads     flight.Group[Track]
 	albumLoads     flight.Group[Album]
 	tracklistLoads flight.Group[[]Track]
 
-	waits limitStats // сколько запросов ждали лимита (limit.go)
+	waits limitStats
 }
 
-// Доля лимита Deezer (50 запросов / 5 с на IP) для API; воркеру остаётся
-// запас (cmd/worker задаёт себе меньше через WithRateLimit).
 const (
 	apiRequestsPer5s = 40
 	quotaRetries     = 2
@@ -52,8 +40,6 @@ func NewClient() *Client {
 	return newClient("https://api.deezer.com", newRateLimiter(apiRequestsPer5s, 5*time.Second), 1500*time.Millisecond)
 }
 
-// NewClientWithBaseURL lets tests point the client at a mock server (no
-// rate limit, a short pause before retrying on "quota exceeded").
 func NewClientWithBaseURL(apiURL string) *Client {
 	return newClient(apiURL, nil, 10*time.Millisecond)
 }
@@ -71,39 +57,28 @@ func newClient(apiURL string, limiter *rateLimiter, quotaDelay time.Duration) *C
 	}
 }
 
-// WithRateLimit sets this client's share of Deezer's request limit: at most
-// n requests in any window of per.
 func (c *Client) WithRateLimit(n int, per time.Duration) *Client {
 	c.egresses[0].limiter = newRateLimiter(n, per)
 	return c
 }
 
-// Track is the flattened shape we actually use, out of Deezer's more deeply
-// nested response.
 type Track struct {
-	ID         string `json:"id"`
-	Title      string `json:"title"`
-	Artist     string `json:"artist"`
-	ArtistID   string `json:"artist_id"`
-	Album      string `json:"album"`
-	AlbumID    string `json:"album_id"`
-	TrackNo    int    `json:"track_no"`
-	DiscNo     int    `json:"disc_no"`
-	DurationMs int    `json:"duration_ms"`
-	CoverURL   string `json:"cover_url"`
-	// Все исполнители трека (основной + фиты), если Deezer их отдал —
-	// /track и /artist/{id}/top отдают, треклист альбома и поиск — нет
-	// (для них см. Client.EnrichContributors).
+	ID           string      `json:"id"`
+	Title        string      `json:"title"`
+	Artist       string      `json:"artist"`
+	ArtistID     string      `json:"artist_id"`
+	Album        string      `json:"album"`
+	AlbumID      string      `json:"album_id"`
+	TrackNo      int         `json:"track_no"`
+	DiscNo       int         `json:"disc_no"`
+	DurationMs   int         `json:"duration_ms"`
+	CoverURL     string      `json:"cover_url"`
 	Contributors []ArtistRef `json:"contributors,omitempty"`
 	Explicit     bool        `json:"explicit"`
-	// ISRC — код записи: у одной записи на разных релизах (сингл, альбом,
-	// делюкс) он один, хотя Deezer ID разные.
-	ISRC string `json:"isrc,omitempty"`
-	// Hidden — релиз трека скрыт админом (ставит API, не Deezer).
-	Hidden bool `json:"hidden,omitempty"`
+	ISRC         string      `json:"isrc,omitempty"`
+	Hidden       bool        `json:"hidden,omitempty"`
 }
 
-// ArtistRef — исполнитель в составе трека или альбома.
 type ArtistRef struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -115,41 +90,27 @@ type Artist struct {
 	Name       string `json:"name"`
 	PictureURL string `json:"picture_url"`
 	Fans       int    `json:"fans,omitempty"`
-	// LibraryID — ID артиста в нашей медиатеке, если он там есть (ставит
-	// API при наложении ручных правок; Deezer его не отдаёт).
-	LibraryID string `json:"library_id,omitempty"`
+	LibraryID  string `json:"library_id,omitempty"`
 }
 
 type Album struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	ArtistID    string `json:"artist_id"`
-	ArtistName  string `json:"artist_name"`
-	CoverURL    string `json:"cover_url"`
-	ReleaseDate string `json:"release_date"`
-	// RecordType: "album", "ep", "single" или "compile" (сборник).
-	RecordType  string `json:"record_type"`
-	NbTracks    int    `json:"nb_tracks,omitempty"`
-	DurationSec int    `json:"duration_sec,omitempty"`
-	Label       string `json:"label,omitempty"`
-	// Главные исполнители альбома (с фото) — для шапки страницы альбома.
-	Contributors []ArtistRef `json:"contributors,omitempty"`
-	// MainArtistIDs — исполнители с ролью Main (без фитов): в списках релизов
-	// каждого из них Deezer показывает этот альбом. Есть только у альбома,
-	// запрошенного целиком (GetAlbum).
-	MainArtistIDs []string `json:"main_artist_ids,omitempty"`
-	// LibraryID — ID альбома в нашей медиатеке, если он там есть.
-	LibraryID string `json:"library_id,omitempty"`
-	// Explicit — релиз с ненормативной лексикой (у clean-версии false).
-	Explicit bool `json:"explicit,omitempty"`
-	// Hidden — релиз скрыт админом (ставит API, не Deezer).
-	Hidden bool `json:"hidden,omitempty"`
-	// VersionOf — ID основного релиза (Deezer или свой k…), если этот
-	// привязан к нему как версия (делюкс, clean); ставит API.
-	VersionOf string `json:"version_of,omitempty"`
+	ID            string      `json:"id"`
+	Title         string      `json:"title"`
+	ArtistID      string      `json:"artist_id"`
+	ArtistName    string      `json:"artist_name"`
+	CoverURL      string      `json:"cover_url"`
+	ReleaseDate   string      `json:"release_date"`
+	RecordType    string      `json:"record_type"`
+	NbTracks      int         `json:"nb_tracks,omitempty"`
+	DurationSec   int         `json:"duration_sec,omitempty"`
+	Label         string      `json:"label,omitempty"`
+	Contributors  []ArtistRef `json:"contributors,omitempty"`
+	MainArtistIDs []string    `json:"main_artist_ids,omitempty"`
+	LibraryID     string      `json:"library_id,omitempty"`
+	Explicit      bool        `json:"explicit,omitempty"`
+	Hidden        bool        `json:"hidden,omitempty"`
+	VersionOf     string      `json:"version_of,omitempty"`
 }
-
-// --- raw Deezer response shapes (unexported, converted on the way out) ---
 
 type deezerArtistRef struct {
 	ID            int64  `json:"id"`
@@ -158,10 +119,6 @@ type deezerArtistRef struct {
 	PictureMedium string `json:"picture_medium"`
 }
 
-// imageURL returns the first real image among urls (largest first). Without
-// a picture Deezer still sends a link, with an empty hash
-// (".../images/artist//1000x1000-....jpg"), which only its own CDN answers —
-// with a grey placeholder; we treat it as "no image" and draw our own.
 func imageURL(urls ...string) string {
 	for _, u := range urls {
 		_, rest, _ := strings.Cut(u, "://")
@@ -172,9 +129,6 @@ func imageURL(urls ...string) string {
 	return ""
 }
 
-// coverURL returns an album's cover: Deezer's own link, or one built from
-// md5_image when the links are missing. A release that has just come out can
-// have null cover_* fields for hours while its picture is already on the CDN.
 func coverURL(md5 string, urls ...string) string {
 	if u := imageURL(urls...); u != "" || !isMD5(md5) {
 		return u
@@ -198,7 +152,7 @@ func convertRefs(refs []deezerArtistRef) []ArtistRef {
 	var out []ArtistRef
 	for _, r := range refs {
 		if r.Role != "" && r.Role != "Main" && r.Role != "Featured" {
-			continue // композиторы и т.п. — не исполнители
+			continue
 		}
 		out = append(out, ArtistRef{ID: strconv.FormatInt(r.ID, 10), Name: r.Name, PictureURL: imageURL(r.PictureMedium)})
 	}
@@ -216,7 +170,7 @@ type deezerAlbumRef struct {
 type deezerTrack struct {
 	ID            int64             `json:"id"`
 	Title         string            `json:"title"`
-	Duration      int               `json:"duration"` // секунды
+	Duration      int               `json:"duration"`
 	TrackPosition int               `json:"track_position"`
 	DiskNumber    int               `json:"disk_number"`
 	Explicit      bool              `json:"explicit_lyrics"`
@@ -255,10 +209,6 @@ type deezerListResponse[T any] struct {
 	Total int `json:"total"`
 }
 
-// APIError is an error Deezer reports in the response body. Deezer answers
-// HTTP 200 even for errors — e.g. {"error":{"type":"DataException",
-// "message":"no data","code":800}} for an unknown ID, code 4 for the
-// 50 requests / 5 s quota.
 type APIError struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
@@ -269,21 +219,12 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("deezer %s (code %d): %s", e.Type, e.Code, e.Message)
 }
 
-// NotFound reports whether Deezer said the requested object doesn't exist.
 func (e *APIError) NotFound() bool { return e.Code == 800 }
 
-// overQuota: Deezer refused because of its request limit (code 4) or was
-// briefly overloaded (700, "service busy") — worth retrying after a pause.
 func (e *APIError) overQuota() bool { return e.Code == 4 || e.Code == 700 }
 
-// get fetches path into out, keeping to the rate limit and retrying a few
-// times when Deezer says the quota is exceeded. Если через прокси Deezer не
-// ответил (соединение, таймаут, не тот ответ) или ответил «квота», запрос
-// сразу повторяется напрямую — если прямой выход открыт (egress.go).
 func (c *Client) get(path string, out any) error { return c.fetch(path, out, false) }
 
-// getObject — get для того, что Deezer отдаёт и на закрытый IP: если открытого
-// выхода нет, запрос идёт через закрытый.
 func (c *Client) getObject(path string, out any) error { return c.fetch(path, out, true) }
 
 func (c *Client) fetch(path string, out any, closedOK bool) error {
@@ -358,10 +299,6 @@ func (c *Client) getOnce(e *egress, path string, out any) error {
 	return nil
 }
 
-// getList is get for list endpoints. Deezer has been observed returning
-// {"data":[],"total":236} from some networks — a non-empty result set with
-// the rows withheld. Passing that through as "nothing found" hides the real
-// problem, so it's an error.
 func getList[T any](c *Client, path string) ([]T, error) {
 	return fetchList[T](c, path, false)
 }
@@ -377,7 +314,6 @@ func fetchList[T any](c *Client, path string, closedOK bool) ([]T, error) {
 	return resp.Data, nil
 }
 
-// Search queries the public catalog for tracks matching q.
 func (c *Client) Search(q string, limit int) ([]Track, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 15
@@ -394,12 +330,6 @@ func (c *Client) Search(q string, limit int) ([]Track, error) {
 	return tracks, nil
 }
 
-// GetTrack authoritatively resolves one track by Deezer ID — used at ingest
-// time instead of trusting whatever metadata a client might send (the
-// client only ever supplies the ID, see handlers_ingest.go).
-//
-// Cached (cache.go): the same track is asked for by the player, the play
-// history, likes and the contributor lookup.
 func (c *Client) GetTrack(id string) (*Track, error) {
 	if t, ok := c.tracks.get(id); ok {
 		return &t, nil
@@ -412,8 +342,6 @@ func (c *Client) GetTrack(id string) (*Track, error) {
 		track := convertTrack(t)
 		ttl := trackCacheTTL
 		if track.CoverURL == "" {
-			// До выхода релиза Deezer отдаёт трек без обложки: с ней он
-			// появится к выходу, и снимок в истории не должен ждать месяц.
 			ttl = freshCacheTTL
 		}
 		c.tracks.putFor(id, track, ttl)
@@ -426,7 +354,6 @@ func (c *Client) GetTrack(id string) (*Track, error) {
 	return &track, nil
 }
 
-// SearchArtists queries the public catalog for artists matching q.
 func (c *Client) SearchArtists(q string, limit int) ([]Artist, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 15
@@ -443,7 +370,6 @@ func (c *Client) SearchArtists(q string, limit int) ([]Artist, error) {
 	return artists, nil
 }
 
-// SearchAlbums queries the public catalog for albums matching q.
 func (c *Client) SearchAlbums(q string, limit int) ([]Album, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 15
@@ -460,7 +386,6 @@ func (c *Client) SearchAlbums(q string, limit int) ([]Album, error) {
 	return albums, nil
 }
 
-// GetArtistTop returns an artist's most popular tracks.
 func (c *Client) GetArtistTop(id string, limit int) ([]Track, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 5
@@ -477,7 +402,6 @@ func (c *Client) GetArtistTop(id string, limit int) ([]Track, error) {
 	return tracks, nil
 }
 
-// GetArtist resolves one artist by Deezer ID.
 func (c *Client) GetArtist(id string) (*Artist, error) {
 	var a deezerArtist
 	if err := c.getObject("/artist/"+url.PathEscape(id), &a); err != nil {
@@ -487,12 +411,8 @@ func (c *Client) GetArtist(id string) (*Artist, error) {
 	return &artist, nil
 }
 
-// artistAlbumsPage is the largest page Deezer serves for /artist/{id}/albums.
 const artistAlbumsPage = 100
 
-// GetArtistAlbums returns an artist's discography, up to max releases. Deezer
-// pages it 100 at a time (newest first), so prolific artists' older releases
-// live on later pages — we walk them with index= until the list runs out.
 func (c *Client) GetArtistAlbums(id string, max int) ([]Album, error) {
 	if max <= 0 {
 		max = artistAlbumsPage
@@ -509,9 +429,6 @@ func (c *Client) GetArtistAlbums(id string, max int) ([]Album, error) {
 		}
 		for _, a := range resp.Data {
 			album := convertAlbum(a, deezerArtistRef{})
-			// Deezer's /artist/{id}/albums entries typically omit the "implied"
-			// artist ref (redundant since you already asked for this artist's
-			// albums) — the id param here is authoritative regardless.
 			album.ArtistID = id
 			albums = append(albums, album)
 		}
@@ -525,9 +442,6 @@ func (c *Client) GetArtistAlbums(id string, max int) ([]Album, error) {
 	return albums, nil
 }
 
-// GetAlbum resolves one album's own metadata (without its tracklist — use
-// GetAlbumTracks for that, since Deezer's /album/{id} response nests tracks
-// under a differently-shaped "data" wrapper we don't need to parse twice).
 func (c *Client) GetAlbum(id string) (*Album, error) {
 	if a, ok := c.albums.get(id); ok {
 		return &a, nil
@@ -552,8 +466,6 @@ func (c *Client) GetAlbum(id string) (*Album, error) {
 	return &album, nil
 }
 
-// AlbumRequests — сколько запросов к Deezer будут стоить альбом id и его
-// треклист из limit треков (0 — оба в кеше).
 func (c *Client) AlbumRequests(id string, limit int) int {
 	n := 0
 	if !c.albums.has(id) {
@@ -565,13 +477,8 @@ func (c *Client) AlbumRequests(id string, limit int) int {
 	return n
 }
 
-// HasTrack — трек уже в кеше (со всеми исполнителями).
 func (c *Client) HasTrack(id string) bool { return c.tracks.has(id) }
 
-// GetAlbumTracks returns an album's full, correctly-ordered tracklist.
-// Deezer's /album/{id}/tracks entries carry no "album" object at all (only
-// the parent's id is implied by the URL) — so the album's own fields
-// (title, cover) are filled from album, which callers get via GetAlbum.
 func (c *Client) GetAlbumTracks(album *Album, limit int) ([]Track, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
@@ -601,8 +508,6 @@ func (c *Client) GetAlbumTracks(album *Album, limit int) ([]Track, error) {
 		}
 		tracks = cloneTracks(loaded)
 	}
-	// Поля альбома — из переданного: он может быть с правками админа, а кеш —
-	// ответ самого Deezer.
 	for i := range tracks {
 		tracks[i].AlbumID = album.ID
 		tracks[i].Album = album.Title
@@ -671,8 +576,6 @@ func convertAlbum(a deezerAlbum, artistRef deezerArtistRef) Album {
 	}
 }
 
-// GetArtistRelated returns artists Deezer considers similar ("Fans also
-// like") — at most 20, Deezer's own cap.
 func (c *Client) GetArtistRelated(id string, limit int) ([]Artist, error) {
 	if limit <= 0 || limit > 20 {
 		limit = 20
@@ -689,8 +592,6 @@ func (c *Client) GetArtistRelated(id string, limit int) ([]Artist, error) {
 	return artists, nil
 }
 
-// GetArtistRadio returns Deezer's radio for an artist: ~25 tracks by them
-// and similar artists, a fresh random pick on every call.
 func (c *Client) GetArtistRadio(id string) ([]Track, error) {
 	data, err := getList[deezerTrack](c, fmt.Sprintf("/artist/%s/radio?limit=50", url.PathEscape(id)))
 	if err != nil {

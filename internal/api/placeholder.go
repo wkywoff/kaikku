@@ -11,19 +11,8 @@ import (
 	"path/filepath"
 )
 
-// Заглушка обложки своего релиза: его публикуют без своей картинки, и
-// сервер рисует её сам — градиент в цвете от ID релиза и пластинка
-// посередине, без текста (название поменяют, а картинка останется). Она
-// сохраняется как обычная обложка (covers/custom/…), так что есть везде:
-// в списках, превью ссылок, Subsonic-приложениях, на экране блокировки.
-// Свою картинку можно поставить потом, заглушка тогда удаляется.
-// Тот же цвет берёт превью в окне правки (frontend: lib/placeholder.js).
-
 const placeholderSide = 1000
 
-// placeholderHue — оттенок заглушки, 0…359: FNV-1a от ID и перемешивание
-// битов (fmix32 из MurmurHash3) — у соседних k1, k2… без него оттенки
-// ложились кучками.
 func placeholderHue(id string) float64 {
 	f := fnv.New32a()
 	f.Write([]byte(id))
@@ -36,7 +25,6 @@ func placeholderHue(id string) float64 {
 	return float64(h % 360)
 }
 
-// hsl → RGB, s и l — 0…1.
 func hsl(h, s, l float64) (r, g, b float64) {
 	c := (1 - math.Abs(2*l-1)) * s
 	hp := math.Mod(h, 360) / 60
@@ -59,18 +47,16 @@ func hsl(h, s, l float64) (r, g, b float64) {
 	return r + m, g + m, b + m
 }
 
-// placeholderCover рисует заглушку для релиза id и отдаёт её JPEG.
 func placeholderCover(id string) ([]byte, error) {
 	hue := placeholderHue(id)
-	r1, g1, b1 := hsl(hue, 0.55, 0.46)    // верхний левый угол
-	r2, g2, b2 := hsl(hue+40, 0.60, 0.20) // нижний правый
-	lr, lg, lb := hsl(hue, 0.50, 0.70)    // наклейка пластинки
+	r1, g1, b1 := hsl(hue, 0.55, 0.46)
+	r2, g2, b2 := hsl(hue+40, 0.60, 0.20)
+	lr, lg, lb := hsl(hue, 0.50, 0.70)
 
 	const n = placeholderSide
 	const c = n / 2.0
 	const disc, label, hole = n * 0.31, n * 0.105, n * 0.012
 	img := image.NewRGBA(image.Rect(0, 0, n, n))
-	// cover — сколько пикселя внутри круга радиуса rad (сглаженный край).
 	cover := func(d, rad float64) float64 { return math.Max(0, math.Min(1, rad-d+0.5)) }
 	mix := func(a, b, t float64) float64 { return a + (b-a)*t }
 	for y := range n {
@@ -80,7 +66,6 @@ func placeholderCover(id string) ([]byte, error) {
 			dx, dy := float64(x)+0.5-c, float64(y)+0.5-c
 			d := math.Hypot(dx, dy)
 			if a := cover(d, disc); a > 0 {
-				// Пластинка: тёмный круг с бороздками и бликом сверху слева.
 				k := 0.62
 				if d > label+n*0.02 && d < disc-n*0.015 {
 					k -= 0.05 * (0.5 + 0.5*math.Sin(d*0.9))
@@ -104,8 +89,6 @@ func placeholderCover(id string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// writePlaceholderCover рисует заглушку для релиза id и кладёт её в
-// хранилище; ответ — её ключ (covers/custom/….jpg).
 func (s *Server) writePlaceholderCover(id string) (string, error) {
 	body, err := placeholderCover(id)
 	if err != nil {

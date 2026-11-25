@@ -20,17 +20,6 @@ import (
 	"kaikku/internal/ingest"
 )
 
-// Правки админа сверх названий и картинок (handlers_edit.go, handlers_claim.go):
-//   - исполнители трека и релиза — по ссылке на артиста Deezer: Deezer залил
-//     релиз дубликату артиста, и у одного артиста две карточки;
-//   - метка explicit у трека;
-//   - скрыть релиз (overlay.go — где он пропадает);
-//   - перекачать аудио трека, загрузить своё и заново найти текст.
-
-// creditArtists validates a credit list (artist IDs, the main one first:
-// Deezer or own, k…) and makes sure every Deezer artist has a library row
-// with its name and Deezer photo — the overlay names them from there. Own
-// artists must already exist.
 func (s *Server) creditArtists(ids []string) ([]string, error) {
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("at least one artist")
@@ -68,8 +57,6 @@ func (s *Server) creditArtists(ids []string) ([]string, error) {
 	return out, nil
 }
 
-// handleArtistInfo — артист по ID (имя, фото) для правки исполнителей и
-// выбора артиста при загрузке: вставили ссылку — окно показывает, кто это.
 func (s *Server) handleArtistInfo(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !validCatalogID(id) {
@@ -84,9 +71,6 @@ func (s *Server) handleArtistInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
-// --- трек: исполнители и explicit ---
-
-// trackCreditsState — то, что окно правки трека показывает и присылает.
 type trackCreditsState struct {
 	Explicit       bool               `json:"explicit"`
 	Artists        []deezer.ArtistRef `json:"artists"`
@@ -94,7 +78,6 @@ type trackCreditsState struct {
 	ExplicitEdited bool               `json:"explicit_edited"`
 }
 
-// trackCreditsOf is the track as everyone sees it (Deezer plus all edits).
 func (s *Server) trackCreditsOf(dz string) (trackCreditsState, error) {
 	t, err := s.Deezer.GetTrack(dz)
 	if err != nil {
@@ -112,18 +95,15 @@ func (s *Server) trackCreditsOf(dz string) (trackCreditsState, error) {
 	return st, nil
 }
 
-// saveTrackCredits stores what differs from what the track would have
-// without its own edit (Deezer, plus a credit edit of its release); the
-// same as that — no edit.
 func (s *Server) saveTrackCredits(dz string, explicit *bool, artists []string) error {
 	if explicit == nil && artists == nil {
-		return nil // окно старой версии: только название и номер
+		return nil
 	}
 	t, err := s.Deezer.GetTrack(dz)
 	if err != nil {
 		return err
 	}
-	var keepExplicit any // NULL — как у Deezer
+	var keepExplicit any
 	if explicit != nil && *explicit != t.Explicit {
 		keepExplicit = *explicit
 	}
@@ -145,7 +125,6 @@ func (s *Server) saveTrackCredits(dz string, explicit *bool, artists []string) e
 			keepArtists = pq.Array(ids)
 		}
 	} else {
-		// Исполнителей не присылали — оставить прежнюю правку.
 		var prev []string
 		if s.DB.QueryRow(`SELECT artist_ids FROM track_overrides WHERE deezer_id = $1`, dz).Scan(pq.Array(&prev)) == nil && prev != nil {
 			keepArtists = pq.Array(prev)
@@ -162,7 +141,6 @@ func (s *Server) saveTrackCredits(dz string, explicit *bool, artists []string) e
 	return err
 }
 
-// badRequest — ошибка в присланных данных (400, а не 500).
 type badRequest struct{ msg string }
 
 func (e *badRequest) Error() string { return e.msg }
@@ -181,9 +159,6 @@ func writeSaveError(w http.ResponseWriter, r *http.Request, err error) {
 	serverError(w, r, "update failed", err)
 }
 
-// --- релиз: исполнители и скрытие ---
-
-// albumAsSeen is the Deezer release as everyone sees it (with the edits).
 func (s *Server) albumAsSeen(dz string) (*deezer.Album, error) {
 	if s.Deezer == nil {
 		return nil, errors.New("deezer is not configured")
@@ -196,9 +171,6 @@ func (s *Server) albumAsSeen(dz string) (*deezer.Album, error) {
 	return a, nil
 }
 
-// saveAlbumCredits stores the release's artists, or drops the edit when
-// they are Deezer's own. credits_from — Deezer's artists, whom the release's
-// tracks swap for the new ones.
 func (s *Server) saveAlbumCredits(libraryID string, artists []string) error {
 	var dz string
 	if err := s.DB.QueryRow(`SELECT deezer_id FROM albums WHERE id = $1`, libraryID).Scan(&dz); err != nil {
@@ -221,8 +193,6 @@ func (s *Server) saveAlbumCredits(libraryID string, artists []string) error {
 	return err
 }
 
-// handleSetAlbumHidden — скрыть/показать релиз по Deezer ID (меню «…» на
-// странице альбома); строка альбома заводится, если её не было.
 func (s *Server) handleSetAlbumHidden(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	var req struct {
@@ -248,8 +218,6 @@ func (s *Server) handleSetAlbumHidden(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "hidden": req.Hidden})
 }
 
-// handleRefreshAlbum забывает альбом в кеше Deezer: релиз вышел или на
-// Deezer поменялся треклист, а кеш держит старое.
 func (s *Server) handleRefreshAlbum(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	if !validDeezerID(dz) {
@@ -260,26 +228,19 @@ func (s *Server) handleRefreshAlbum(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- перекачать аудио, заново найти текст ---
-
-// handleRedownloadTrack ставит скачанный трек на перекачку: воркер заново
-// ищет видео (поиск мог стать точнее, артист — перезалить трек) и заменяет
-// файл в строке трека; лайки, плейлисты и история остаются при нём.
 func (s *Server) handleRedownloadTrack(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	if !validDeezerID(dz) {
 		writeError(w, http.StatusBadRequest, "numeric deezer id is required")
 		return
 	}
-	// Задачи до 0037 не знают explicit, а без него YouTube Music может
-	// снова дать clean-версию. Deezer недоступен — оставить как есть.
 	var explicit any
 	if t, err := s.Deezer.GetTrack(dz); err == nil {
 		explicit = t.Explicit
 	}
 	res, err := s.DB.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, hold_until = NULL,
-		        manual_video_id = NULL, known_video_id = NULL, attempts = 0, -- заново искать
+		        manual_video_id = NULL, known_video_id = NULL, attempts = 0,
 		        replace_audio = true, explicit = COALESCE($3, explicit), updated_at = now()
 		  WHERE source_ref = $1 AND status IN ('done', 'failed')
 		    AND EXISTS (SELECT 1 FROM tracks WHERE deezer_id = $2)`, "deezer:"+dz, dz, explicit)
@@ -300,25 +261,14 @@ func (s *Server) handleRedownloadTrack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
 }
 
-// Свой файл: лучше исходник (FLAC, WAV — до ~100 МБ на 10 минут), а не то,
-// что нашлось на YouTube. Предел совпадает с client_max_body_size в nginx
-// для этого адреса.
 const (
 	maxAudioUpload     = 200 << 20
 	audioUploadTimeout = 5 * time.Minute
-	// Сколько идёт сам файл: nginx его не копит (docker/nginx.conf.template),
-	// и 200 МБ по медленному каналу приходят дольше, чем длится обработка.
-	audioBodyTimeout = 20 * time.Minute
+	audioBodyTimeout   = 20 * time.Minute
 )
 
-// prepareAudio — ingest.PrepareAudio; тесты подставляют медленный.
 var prepareAudio = ingest.PrepareAudio
 
-// handleUploadTrackAudio заменяет аудио трека из медиатеки файлом админа:
-// любой формат, который читает ffmpeg, перепаковывается/кодируется в .m4a с
-// замером громкости, как скачанное (ingest.PrepareAudio). Файл меняется у
-// всех треков, которые его делили (та же запись на другом релизе), — это
-// одна запись. Лайки, плейлисты и история остаются при треке.
 func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	if !validDeezerID(dz) {
@@ -330,9 +280,6 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var oldKey string
-	// missing — трека нет в медиатеке, но его задача упала (на YouTube не
-	// нашлось, handlers_missing.go) или файл удалили как неслушаемый: файл
-	// админа и станет треком.
 	missing := false
 	if err := s.DB.QueryRow(`SELECT storage_key FROM tracks WHERE deezer_id = $1`, dz).Scan(&oldKey); err == sql.ErrNoRows {
 		if missing = s.trackMissing(dz); !missing {
@@ -343,7 +290,6 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 		serverError(w, r, "query failed", err)
 		return
 	}
-	// Перекачка в работе заменила бы загруженный файл своим.
 	var busy bool
 	s.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM ingest_jobs WHERE source_ref = $1 AND status IN ('pending', 'processing'))`,
 		"deezer:"+dz).Scan(&busy)
@@ -352,14 +298,10 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Файл в сотни МБ и перекодирование до audioUploadTimeout — дольше общих
-	// таймаутов сервера (cmd/api): без своих сроков ответ обрывался, и админ
-	// видел ошибку, хотя аудио уже заменилось. nginx ждёт этот адрес 360 с.
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Now().Add(audioBodyTimeout))
 	_ = rc.SetWriteDeadline(time.Now().Add(audioBodyTimeout))
 
-	// Тело — во временный файл рядом с медиатекой (не в память), оттуда — в .m4a.
 	src, err := os.CreateTemp(s.StorageDir, ".upload-*")
 	if err != nil {
 		serverError(w, r, "could not save audio", err)
@@ -379,7 +321,7 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 
 	key := randomKey() + ".m4a"
 	_ = rc.SetWriteDeadline(time.Now().Add(slotWait + audioUploadTimeout + 30*time.Second))
-	if !acquireAudioSlot(w, r) { // одна обработка аудио за раз (uploads_audio.go)
+	if !acquireAudioSlot(w, r) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), audioUploadTimeout)
@@ -395,12 +337,11 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 		s.saveMissingTrack(w, r, dz, key, lufs, gainDB)
 		return
 	}
-	// audio_pinned: файл админа не скачать заново — неслушаемым его не удалять (0029).
 	res, err := s.DB.Exec(`UPDATE tracks SET storage_key = $1, loudness_lufs = $2, gain_db = $3, audio_pinned = true WHERE storage_key = $4`,
 		key, lufs, gainDB, oldKey)
 	if err == nil {
 		if n, _ := res.RowsAffected(); n == 0 {
-			err = sql.ErrNoRows // трек удалили или перекачали, пока шла загрузка
+			err = sql.ErrNoRows
 		}
 	}
 	if err != nil {
@@ -413,8 +354,6 @@ func (s *Server) handleUploadTrackAudio(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "replaced", "gain_db": gainDB})
 }
 
-// saveMissingTrack делает загруженный админом файл треком, которого не было
-// в медиатеке: каталог — по данным его задачи, как у воркера.
 func (s *Server) saveMissingTrack(w http.ResponseWriter, r *http.Request, dz, key string, lufs, gainDB float64) {
 	job, err := ingest.LoadJob(s.DB, "deezer:"+dz)
 	var trackID string
@@ -435,16 +374,12 @@ func (s *Server) saveMissingTrack(w http.ResponseWriter, r *http.Request, dz, ke
 	writeJSON(w, http.StatusOK, map[string]any{"status": "added", "gain_db": gainDB})
 }
 
-// handleRefreshLyrics забывает найденный текст и ищет заново (источники
-// могли добавить текст или тайминг по словам). Ответ — как у GET.
 func (s *Server) handleRefreshLyrics(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !validDeezerID(id) {
 		writeError(w, http.StatusBadRequest, "bad track id")
 		return
 	}
-	// Забыть на всех релизах этой записи (общий ISRC), иначе тут же нашёлся
-	// бы прежний текст с сингла или альбома.
 	isrc := ""
 	if tr, err := s.Deezer.GetTrack(id); err == nil {
 		isrc = tr.ISRC

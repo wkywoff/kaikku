@@ -17,11 +17,11 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 	json.Unmarshal(call(t, router, "POST", "/api/playlists", token, `{"title":"Mix"}`, http.StatusCreated), &pl)
 
 	play := func(body string) { call(t, router, "POST", "/api/me/plays", token, body, http.StatusOK) }
-	play(`{"deezer_id":"12345"}`)                                                  // без контекста — альбом трека (9)
-	play(`{"deezer_id":"888","context":{"kind":"artist","id":"1"}}`)               // со страницы артиста
-	play(`{"deezer_id":"501","context":{"kind":"playlist","id":"` + pl.ID + `"}}`) // из своего плейлиста
+	play(`{"deezer_id":"12345"}`)
+	play(`{"deezer_id":"888","context":{"kind":"artist","id":"1"}}`)
+	play(`{"deezer_id":"501","context":{"kind":"playlist","id":"` + pl.ID + `"}}`)
 	play(`{"deezer_id":"12345","context":{"kind":"liked"}}`)
-	play(`{"deezer_id":"12345","context":{"kind":"playlist","id":"00000000-0000-0000-0000-000000000000"}}`) // чужой/несуществующий — альбом
+	play(`{"deezer_id":"12345","context":{"kind":"playlist","id":"00000000-0000-0000-0000-000000000000"}}`)
 	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"abc"}`, http.StatusBadRequest)
 
 	var n int
@@ -39,7 +39,6 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 		}
 	}
 	json.Unmarshal(call(t, router, "GET", "/api/me/recent", token, "", http.StatusOK), &recent)
-	// Последнее сверху, альбом 9 — один раз (два прослушивания).
 	want := []string{"album", "liked", "playlist", "artist"}
 	if len(recent.Items) != len(want) {
 		t.Fatalf("recent: %+v", recent.Items)
@@ -59,7 +58,6 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 		t.Errorf("playlist item: %+v", p)
 	}
 
-	// Чужая история не видна.
 	other := invitedUser(t, router, token, "history-other")
 	json.Unmarshal(call(t, router, "GET", "/api/me/recent", other, "", http.StatusOK), &recent)
 	if len(recent.Items) != 0 {
@@ -67,8 +65,6 @@ func TestPlayHistoryAndRecent(t *testing.T) {
 	}
 }
 
-// Послушал релиз до выхода, когда у Deezer не было обложки (трек 888 —
-// альбом 9 без cover_xl): карточка берёт нынешнюю обложку альбома.
 func TestRecentAlbumWithoutCoverInSnapshot(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888"}`, http.StatusOK)
@@ -104,7 +100,6 @@ func TestFollowsSuggestionsAndReleases(t *testing.T) {
 		t.Fatalf("followed ids: %+v", ids.Artists)
 	}
 
-	// Слушал артиста 1 → похожие на него (2, 3, 4), без него самого.
 	var sug struct {
 		Artists []struct{ ID string }
 		BasedOn []string `json:"based_on"`
@@ -114,7 +109,6 @@ func TestFollowsSuggestionsAndReleases(t *testing.T) {
 		t.Errorf("suggestions: %+v", sug)
 	}
 
-	// Новые релизы: только свежий альбом, с именем артиста из подписки.
 	var rel struct {
 		Albums []struct {
 			ID         string
@@ -133,8 +127,6 @@ func TestFollowsSuggestionsAndReleases(t *testing.T) {
 	}
 }
 
-// Новые — релизы за последний месяц: вышедший 25 дней назад ещё на полке,
-// 45 дней назад — уже нет.
 func TestNewReleases_LastMonth(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	call(t, router, "PUT", "/api/me/artists/30", token, "", http.StatusNoContent)
@@ -146,14 +138,10 @@ func TestNewReleases_LastMonth(t *testing.T) {
 	}
 }
 
-// Совместный релиз двух подписок — на полке один раз, подписан обоими и
-// всегда одинаково (раньше — тем, чей список пришёл первым): составом из
-// альбома Deezer, без гостя. Альбом Deezer не отдал — подписками по порядку.
 func TestNewReleases_JointReleaseCreditsEveryone(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	call(t, router, "PUT", "/api/me/artists/30", token, "", http.StatusNoContent)
 	call(t, router, "PUT", "/api/me/artists/31", token, "", http.StatusNoContent)
-	// Подписки идут от новых к старым: 31, затем 30 — а Deezer пишет 30, 31.
 	db.Exec(`UPDATE followed_artists SET added_at = added_at - interval '1 day' WHERE deezer_id = '30'`)
 
 	type album struct {
@@ -190,7 +178,6 @@ func TestNewReleases_JointReleaseCreditsEveryone(t *testing.T) {
 		}
 	}
 
-	// Приложения (Subsonic) берут новинки отсюда же.
 	newest := jsonList(t, newSubClient(t, router, token).get("getAlbumList2", url.Values{"type": {"newest"}}), "albumList2", "album")
 	if i := slices.IndexFunc(newest, func(a map[string]any) bool { return a["id"] == "al40" }); i < 0 || newest[i]["displayArtist"] != "Left Artist, Right Artist" {
 		t.Errorf("newest albums in apps = %v", newest)
@@ -221,8 +208,6 @@ func TestDiscoverRelatedRadio(t *testing.T) {
 	}
 }
 
-// Страница артиста кешируется (Deezer спрашивается один раз), а правки
-// админа накладываются при каждом ответе — и не попадают в кеш.
 func TestArtistPageIsCachedButShowsEdits(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	artistCalls.Store(0)

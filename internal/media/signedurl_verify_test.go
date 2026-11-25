@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// Ожидаемое значение получено рецептом из документации nginx secure_link:
-//
-//	echo -n "1893456000/media/abc123.ogg testsecret" | openssl md5 -binary | openssl base64 | tr +/ -_ | tr -d =
 func TestSignMatchesNginxRecipe(t *testing.T) {
 	const want = "7pf87-63614HEsGP0hTkyA"
 	if got := sign(1893456000, "/media/abc123.ogg", "testsecret"); got != want {

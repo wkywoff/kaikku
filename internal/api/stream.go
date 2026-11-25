@@ -1,26 +1,5 @@
 package api
 
-// Воспроизведение трека, которого ещё нет в медиатеке, во время скачивания.
-//
-//	GET /api/stream/deezer/{id}/url  (Bearer) — ставит трек на скачивание
-//	    (ingest-job, как лайк), сразу начинает качать сам и отдаёт подписанную ссылку
-//	    на поток; если трек уже в медиатеке — обычную ссылку /media, как
-//	    /api/tracks/{id}/stream-url.
-//	GET /api/stream/deezer/{id}?st=…&e=…  — сам поток: <audio> не умеет
-//	    слать Bearer, поэтому подпись как у /media (media.Signer).
-//
-// Поток — формат 140 с YouTube (AAC в DASH-MP4) как есть, без
-// перекодирования (ytdlp.OpenStream: поиск и извлечение «тёплым» yt-dlp,
-// затем прямое скачивание; замер на сервере — звук через ~2–3 с после
-// клика). Он пишется в файл, а запросы читают этот растущий файл:
-// сколько бы запросов (перемотка, повтор) ни пришло, трек качается один раз.
-// Полный размер известен по первым ~1 КБ (sidx, media.DashFileSize), так что
-// ответ сразу с Content-Length и Range, как у статики, — без этого iOS
-// Safari не играет <audio>.
-//
-// Скачанный файл отдаётся воркеру (ingest.PrefetchPath), и тот не качает
-// трек заново. Чтобы воркер не взял job раньше, ingest_jobs.hold_until.
-
 import (
 	"context"
 	"database/sql"
@@ -43,11 +22,8 @@ import (
 	"kaikku/internal/ytdlp"
 )
 
-// StreamSource finds the recording on YouTube and opens its audio
-// (ytdlp.OpenStream in production; a fake in tests).
 type StreamSource func(ctx context.Context, want ytdlp.Want) (videoID string, body io.ReadCloser, err error)
 
-// Матчинг — с теми же параметрами, что у воркера (internal/ingest/worker.go).
 const (
 	streamSearchCandidates  = 15
 	streamDurationTolerance = 4000
@@ -59,29 +35,20 @@ func defaultStreamSource(ctx context.Context, want ytdlp.Want) (string, io.ReadC
 }
 
 const (
-	// Верхняя граница на поиск + скачивание; столько же job придержан на время скачивания.
 	streamDownloadTimeout = 3 * time.Minute
-	// Сколько скачанный файл ещё отдаётся по той же ссылке (перемотка, пауза):
-	// не меньше срока жизни подписанной ссылки.
-	streamRetain = 15 * time.Minute
-	// Если в первых байтах нет sidx, размер не узнать до конца скачивания.
-	streamHeaderLimit = 64 << 10
-	// Одновременных скачиваний: 1 vCPU, и воркер параллельно качает до трёх.
-	streamMaxDownloads = 3
+	streamRetain          = 15 * time.Minute
+	streamHeaderLimit     = 64 << 10
+	streamMaxDownloads    = 3
 )
 
-// StreamHub keeps the downloads in progress (and recently finished), one
-// per Deezer track.
 type StreamHub struct {
-	Dir        string // рабочий каталог API, очищается при старте
-	StagingDir string // STAGING_DIR воркера: сюда — готовый файл (hard link)
+	Dir        string
+	StagingDir string
 	Source     StreamSource
 
-	mu     sync.Mutex
-	active map[string]*streamDownload
-	slots  chan struct{}
-	// notFound — когда для трека не нашлось видео на YouTube: следующие
-	// запросы notFoundTTL отвечают сразу, без нового поиска на 5–10 с.
+	mu       sync.Mutex
+	active   map[string]*streamDownload
+	slots    chan struct{}
 	notFound map[string]time.Time
 }
 
@@ -102,7 +69,6 @@ func (h *StreamHub) markNotFound(deezerID string) {
 	h.notFound[deezerID] = now
 }
 
-// recentlyNotFound — недавно для трека не нашлось видео.
 func (h *StreamHub) recentlyNotFound(deezerID string) bool {
 	if h == nil {
 		return false
@@ -113,7 +79,6 @@ func (h *StreamHub) recentlyNotFound(deezerID string) bool {
 	return ok && time.Since(at) < notFoundTTL
 }
 
-// clearNotFound — админ указал видео или загрузил файл.
 func (h *StreamHub) clearNotFound(deezerID string) {
 	if h == nil {
 		return
@@ -123,9 +88,6 @@ func (h *StreamHub) clearNotFound(deezerID string) {
 	delete(h.notFound, deezerID)
 }
 
-// NewStreamHub prepares dir (wiping leftovers of a previous run — only the
-// API writes there). stagingDir must be on the same filesystem for the
-// hand-off to be a hard link; otherwise the file is copied.
 func NewStreamHub(dir, stagingDir string) (*StreamHub, error) {
 	if err := os.RemoveAll(dir); err != nil {
 		return nil, err
@@ -140,9 +102,9 @@ type streamDownload struct {
 	path string
 
 	mu      sync.Mutex
-	changed chan struct{} // закрывается и заменяется при каждом изменении
+	changed chan struct{}
 	written int64
-	size    int64 // -1, пока неизвестен
+	size    int64
 	done    bool
 	err     error
 }
@@ -168,7 +130,6 @@ func (d *streamDownload) update(f func()) {
 	d.mu.Unlock()
 }
 
-// wait blocks until cond holds for the download's state (or ctx ends).
 func (d *streamDownload) wait(ctx context.Context, cond func(streamState) bool) (streamState, error) {
 	for {
 		st := d.state()
@@ -183,13 +144,11 @@ func (d *streamDownload) wait(ctx context.Context, cond func(streamState) bool) 
 	}
 }
 
-// streamJob is what the download needs from ingest_jobs.
 type streamJob struct {
 	id   int64
 	want ytdlp.Want
 }
 
-// get returns the download for deezerID, starting it if there is none.
 func (h *StreamHub) get(db *sql.DB, deezerID string, job streamJob) *streamDownload {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -210,7 +169,6 @@ func (h *StreamHub) get(db *sql.DB, deezerID string, job streamJob) *streamDownl
 	return d
 }
 
-// lookup returns a download that is running or finished, or nil.
 func (h *StreamHub) lookup(deezerID string) *streamDownload {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -226,8 +184,6 @@ func (h *StreamHub) forget(deezerID string, d *streamDownload) {
 	os.Remove(d.path)
 }
 
-// run downloads the track into d.path. It isn't tied to any request: if the
-// listener goes away mid-download, the file still reaches the worker.
 func (h *StreamHub) run(db *sql.DB, deezerID string, job streamJob, d *streamDownload) {
 	ctx, cancel := context.WithTimeout(context.Background(), streamDownloadTimeout)
 	defer cancel()
@@ -235,8 +191,6 @@ func (h *StreamHub) run(db *sql.DB, deezerID string, job streamJob, d *streamDow
 	started := time.Now()
 	var audioAfter time.Duration
 	var videoID string
-	// Паника в скачивании — как ошибка: иначе ждущие поток висели бы, а
-	// задача так и осталась бы придержанной (hold_until).
 	err := guard("stream download", func() (err error) {
 		videoID, err = h.download(ctx, job, d, func() { audioAfter = time.Since(started) })
 		return err
@@ -248,7 +202,7 @@ func (h *StreamHub) run(db *sql.DB, deezerID string, job streamJob, d *streamDow
 			h.markNotFound(deezerID)
 		}
 		d.update(func() { d.err = err })
-		h.forget(deezerID, d) // следующий запрос начнёт заново
+		h.forget(deezerID, d)
 	} else {
 		log.Printf("stream deezer:%s: video %s, audio after %.1fs, downloaded after %.1fs (hand-off: %v)",
 			deezerID, videoID, audioAfter.Seconds(), time.Since(started).Seconds(), job.id != 0)
@@ -257,7 +211,6 @@ func (h *StreamHub) run(db *sql.DB, deezerID string, job streamJob, d *streamDow
 	if job.id == 0 {
 		return
 	}
-	// Отдаём воркеру. Файл должен лежать на месте до снятия hold.
 	if err == nil && h.StagingDir != "" {
 		if linkErr := linkOrCopy(d.path, ingest.PrefetchPath(h.StagingDir, job.id)); linkErr != nil {
 			log.Printf("stream deezer:%s: hand-off to worker: %v", deezerID, linkErr)
@@ -362,22 +315,11 @@ func linkOrCopy(src, dst string) error {
 
 func streamPath(deezerID string) string { return "/api/stream/deezer/" + deezerID }
 
-// handleStreamURL (GET /api/stream/deezer/{id}/url) — see the top of the file.
-//
-//	в медиатеке: {"status":"duplicate","job_id"?,"track_id","url","expires_at","gain_db"}
-//	нет:         {"status":"queued|duplicate","job_id","job_status"?,"url","expires_at","gain_db":0}
-//
-// status/job_id/job_status — состояние ingest-job'а (как у /api/ingest/lookup);
-// track_id — трек медиатеки, когда он уже скачан.
-// Новых скачиваний на пользователя: примерно одно в 10 с. Обычное прослушивание
-// и перелистывание сюда не упираются, а один человек не занимает все слоты
-// скачивания (streamMaxDownloads) и не забивает диск и очередь заданий.
 const (
 	streamStartsPerWindow = 30
 	streamStartWindow     = 5 * time.Minute
 )
 
-// streamStartLimit — счётчик по окнам; нулевое значение готово к работе.
 type streamStartLimit struct {
 	mu sync.Mutex
 	m  map[string]*streamStartCount
@@ -429,14 +371,11 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
-	// Только что не нашлось на YouTube — так и говорим, плеер покажет почему
-	// пропускает трек (а не ищет заново ещё 5–10 с).
 	if s.Streams.recentlyNotFound(deezerID) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "the song was not found on YouTube", "reason": "not_found"})
 		return
 	}
 
-	// Уже идущее скачивание ничего не стоит, админа лимит не касается.
 	if admin, _ := r.Context().Value(isAdminCtxKey).(bool); !admin && s.Streams.lookup(deezerID) == nil &&
 		!s.streamStarts.allow(userID, time.Now()) {
 		w.Header().Set("Retry-After", "60")
@@ -449,8 +388,6 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 		writeDeezerError(w, "ingest failed", err)
 		return
 	}
-	// Та же запись на другом релизе (ISRC) уже в медиатеке — играет её файл,
-	// без YouTube; воркер сразу заведёт на него и этот трек (worker.go).
 	if twin, err := s.sameRecordingURL(deezerID); err != nil {
 		serverError(w, r, "query failed", err)
 		return
@@ -461,8 +398,6 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, statusFor(result), result)
 		return
 	}
-	// Скачивание — сразу, не дожидаясь, пока браузер запросит поток: так
-	// звук на круг клиент↔сервер раньше.
 	if err := s.startStream(deezerID); errors.Is(err, errDiskLow) {
 		writeError(w, http.StatusServiceUnavailable, "the server is low on disk space, new songs can't be played right now")
 		return
@@ -473,12 +408,10 @@ func (s *Server) handleDeezerStreamURL(w http.ResponseWriter, r *http.Request) {
 	url, expires := s.MediaSigner.PathURL(streamPath(deezerID))
 	result["url"] = url
 	result["expires_at"] = time.Unix(expires, 0).UTC().Format(time.RFC3339)
-	result["gain_db"] = 0 // громкость ещё не измерена — узнаем, когда трек будет в медиатеке
+	result["gain_db"] = 0
 	writeJSON(w, statusFor(result), result)
 }
 
-// ownStreamURL — ссылка на файл своего трека (загрузка): он всегда в
-// медиатеке, скачивать нечего. Чужой черновик — как будто трека нет.
 func (s *Server) ownStreamURL(w http.ResponseWriter, r *http.Request, id string) {
 	if tracks, err := s.localTracks(viewerOf(r), []string{id}); err != nil {
 		serverError(w, r, "query failed", err)
@@ -498,8 +431,6 @@ func (s *Server) ownStreamURL(w http.ResponseWriter, r *http.Request, id string)
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// libraryStreamURL is the /media link of the track with this Deezer ID, or
-// nil if the library doesn't have it.
 func (s *Server) libraryStreamURL(deezerID string) (map[string]any, error) {
 	var trackID, storageKey string
 	var gainDB float64
@@ -521,9 +452,6 @@ func (s *Server) libraryStreamURL(deezerID string) (map[string]any, error) {
 	}, nil
 }
 
-// touchTrack — трек включили: его аудио не удалять как неслушаемое
-// (ingest.Housekeep). Не чаще раза в час на трек — не писать в базу на
-// каждую выдачу ссылки.
 func (s *Server) touchTrack(trackID string) {
 	if _, err := s.DB.Exec(
 		`UPDATE tracks SET last_played_at = now() WHERE id = $1 AND last_played_at < now() - interval '1 hour'`, trackID,
@@ -532,8 +460,6 @@ func (s *Server) touchTrack(trackID string) {
 	}
 }
 
-// sameRecordingURL is the /media link of a library track with the same
-// ISRC as the queued Deezer track, or nil.
 func (s *Server) sameRecordingURL(deezerID string) (map[string]any, error) {
 	var trackID, storageKey string
 	var gainDB float64
@@ -556,7 +482,6 @@ func (s *Server) sameRecordingURL(deezerID string) (map[string]any, error) {
 	}, nil
 }
 
-// handleDeezerStream (GET /api/stream/deezer/{id}?st=…&e=…) — the audio.
 func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 	deezerID := r.PathValue("id")
 	if s.Streams == nil || !validDeezerID(deezerID) {
@@ -566,7 +491,7 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 	switch err := s.MediaSigner.Verify(streamPath(deezerID), r.URL.Query().Get("st"), r.URL.Query().Get("e")); err {
 	case nil:
 	case media.ErrExpired:
-		http.Error(w, "link expired", http.StatusGone) // как nginx secure_link: плеер перевыпустит ссылку
+		http.Error(w, "link expired", http.StatusGone)
 		return
 	default:
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -574,7 +499,6 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.Streams.lookup(deezerID) == nil {
-		// Скачанное уже убрано, а трек в медиатеке (ссылка ещё живая) — туда.
 		if resp, err := s.libraryStreamURL(deezerID); err != nil {
 			logServerError(r, "query failed", err)
 			http.Error(w, "query failed", http.StatusInternalServerError)
@@ -583,7 +507,6 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, resp["url"].(string), http.StatusFound)
 			return
 		}
-		// Иначе (скачивание упало, сервер перезапускался) — качаем заново.
 		if err := s.startStream(deezerID); err == sql.ErrNoRows {
 			http.Error(w, "track is not queued", http.StatusNotFound)
 			return
@@ -598,18 +521,14 @@ func (s *Server) handleDeezerStream(w http.ResponseWriter, r *http.Request) {
 	}
 	d := s.Streams.lookup(deezerID)
 	if d == nil {
-		http.Error(w, "could not get the audio from YouTube", http.StatusBadGateway) // упало мгновенно
+		http.Error(w, "could not get the audio from YouTube", http.StatusBadGateway)
 		return
 	}
 	serveGrowingFile(w, r, d)
 }
 
-// errDiskLow — места меньше минимума: нового не качаем. Задание остаётся в
-// очереди, воркер скачает трек сам, когда место появится (ingest.DiskLow).
 var errDiskLow = errors.New("low on disk space")
 
-// diskLow: тот же минимум, что у воркера и загрузок (minFreeSpace), — иначе
-// прослушивания доедали бы диск, пока воркер ждёт места.
 func (h *StreamHub) diskLow() bool {
 	for _, dir := range []string{h.Dir, h.StagingDir} {
 		if free, err := freeSpace(dir); err == nil && free < minFreeSpace {
@@ -619,10 +538,6 @@ func (h *StreamHub) diskLow() bool {
 	return false
 }
 
-// startStream starts downloading the queued track deezerID, unless that's
-// already under way. A pending job is held from the worker until the
-// download is handed off to it; if the worker already has the job, the
-// download is for listening only.
 func (s *Server) startStream(deezerID string) error {
 	if s.Streams.lookup(deezerID) != nil {
 		return nil
@@ -644,8 +559,6 @@ func (s *Server) startStream(deezerID string) error {
 		return err
 	}
 	job.want.Explicit = ytdlp.NullBool(explicit)
-	// Видео админа — только оно; уже скачанное раньше (файл удалили как
-	// неслушаемый) — сначала оно, не открылось — поиск.
 	switch {
 	case manual.Valid:
 		job.want.VideoID = manual.String
@@ -660,25 +573,19 @@ func (s *Server) startStream(deezerID string) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n != 1 {
-		job.id = 0 // job уже у воркера (или готов) — воркеру не отдаём
+		job.id = 0
 	}
 	s.Streams.get(s.DB, deezerID, job)
 	return nil
 }
 
-// serveGrowingFile answers like http.ServeContent (Content-Length, single
-// Range, 206/416), but from a file that is still being written: bytes that
-// haven't arrived yet are waited for.
 func serveGrowingFile(w http.ResponseWriter, r *http.Request, d *streamDownload) {
 	ctx := r.Context()
-	// Общий WriteTimeout сервера (cmd/api) не для потока: начала ждут, пока
-	// освободится слот и найдётся запись, а дальше срок продлевается перед
-	// каждой порцией.
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Now().Add(streamDownloadTimeout))
 	st, err := d.wait(ctx, func(st streamState) bool { return st.size >= 0 || st.done || st.err != nil })
 	if err != nil {
-		return // клиент ушёл
+		return
 	}
 	if st.err != nil && st.written == 0 {
 		http.Error(w, "could not get the audio from YouTube", http.StatusBadGateway)
@@ -688,12 +595,11 @@ func serveGrowingFile(w http.ResponseWriter, r *http.Request, d *streamDownload)
 	h := w.Header()
 	h.Set("Content-Type", "audio/mp4")
 	h.Set("Cache-Control", "private, max-age=600")
-	h.Set("X-Accel-Buffering", "no") // nginx не копит ответ в буфере — байты идут сразу
+	h.Set("X-Accel-Buffering", "no")
 
 	start, end := int64(0), st.size-1
 	status := http.StatusOK
 	if st.size < 0 {
-		// Размер неизвестен (не DASH) — без Content-Length и Range, просто поток.
 		end = -1
 	} else {
 		h.Set("Accept-Ranges", "bytes")
@@ -728,8 +634,6 @@ func serveGrowingFile(w http.ResponseWriter, r *http.Request, d *streamDownload)
 			return
 		}
 		if st.written <= pos {
-			// Скачивание кончилось (или упало) раньше, чем дошло до pos.
-			// Ответ с Content-Length обрывается — клиент увидит ошибку сети.
 			return
 		}
 		limit := st.written
@@ -739,8 +643,6 @@ func serveGrowingFile(w http.ResponseWriter, r *http.Request, d *streamDownload)
 		for pos < limit {
 			n, err := f.ReadAt(buf[:min(int64(len(buf)), limit-pos)], pos)
 			if n > 0 {
-				// Браузер на паузе перестаёт читать, а ответ должен дожить
-				// до продолжения.
 				_ = rc.SetWriteDeadline(time.Now().Add(2 * time.Minute))
 				if _, werr := w.Write(buf[:n]); werr != nil {
 					return
@@ -758,9 +660,6 @@ func serveGrowingFile(w http.ResponseWriter, r *http.Request, d *streamDownload)
 	}
 }
 
-// parseRange handles a single "bytes=a-b", "bytes=a-" or "bytes=-n" range
-// against size. Several ranges at once aren't supported (players don't
-// ask for them): ok=false → 416.
 func parseRange(header string, size int64) (start, end int64, ok bool) {
 	spec, found := strings.CutPrefix(header, "bytes=")
 	if !found || strings.Contains(spec, ",") {

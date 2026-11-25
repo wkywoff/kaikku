@@ -7,10 +7,6 @@ import (
 	"testing"
 )
 
-// Deezer уже отдаёт альбом 11, но в списке релизов артиста 1 его ещё нет:
-// после того как страницу альбома открыли, он появляется в дискографии —
-// первым, как самый свежий. Релиз совместный: появляется и у второго
-// главного исполнителя (2), а у гостя (3) — нет.
 func TestDiscography_OpenedReleaseMissingFromDeezerListIsAdded(t *testing.T) {
 	db, router, token := newTestRouter(t)
 
@@ -22,7 +18,7 @@ func TestDiscography_OpenedReleaseMissingFromDeezerListIsAdded(t *testing.T) {
 
 	var page struct{ Album pageAlbum }
 	getJSON(t, router, "/api/discover/albums/11", token, false, &page)
-	getJSON(t, router, "/api/discover/albums/9", token, false, &page) // есть в списке — запоминать нечего
+	getJSON(t, router, "/api/discover/albums/9", token, false, &page)
 
 	var extras int
 	db.QueryRow(`SELECT count(*) FROM discography_extras`).Scan(&extras)
@@ -49,8 +45,6 @@ func TestDiscography_OpenedReleaseMissingFromDeezerListIsAdded(t *testing.T) {
 	}
 }
 
-// Запомненный релиз, который админ отдал другому артисту, у прежнего не
-// показывается: правка исполнителей главнее.
 func TestDiscography_RememberedReleaseFollowsCreditEdits(t *testing.T) {
 	_, router, token := newTestRouter(t)
 

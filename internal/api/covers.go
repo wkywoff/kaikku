@@ -14,24 +14,12 @@ import (
 	"strconv"
 )
 
-// Скачанные обложки и фото артистов (STORAGE_DIR/covers/...) хранятся в
-// полном размере, обычно 1000×1000. Для списков и карточек фронт берёт
-// уменьшенную копию: /api/cover/<px>/<key>. Копия делается при первом
-// запросе и кладётся в STORAGE_DIR/.sized/<px>/<key>; ключи обложек
-// случайные и при замене картинки меняются, так что копии не устаревают и
-// кешируются браузером навсегда. Удаление обложки удаляет и копии
-// (removeStorageFiles).
-//
-// Без авторизации, как и /media/covers/ в nginx: обложки публичные.
-
 const sizedDir = ".sized"
 
-// Размеры — как у картинок Deezer на фронте (imageproxy.js, sized и srcsetOf).
 var coverSizes = map[int]bool{64: true, 200: true, 300: true, 320: true, 640: true}
 
 var coverKeyRe = regexp.MustCompile(`^covers/(?:[a-z]+/)?[0-9a-f]{16,64}\.jpg$`)
 
-// Уменьшение — несколько десятков мс CPU; на 1 vCPU не больше двух сразу.
 var resizeSlots = make(chan struct{}, 2)
 
 func (s *Server) handleSizedCover(w http.ResponseWriter, r *http.Request) {
@@ -57,9 +45,8 @@ func (s *Server) handleSizedCover(w http.ResponseWriter, r *http.Request) {
 	case os.IsNotExist(err):
 		http.NotFound(w, r)
 	case err != nil:
-		// Не разобрали картинку — отдаём как есть, лишь бы она показалась.
 		http.ServeFile(w, r, original)
-	case data == nil: // оригинал и так не больше px
+	case data == nil:
 		http.ServeFile(w, r, original)
 	default:
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
@@ -67,15 +54,12 @@ func (s *Server) handleSizedCover(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// resizeCover writes a px×px copy of original to dst and returns its bytes;
-// nil, nil if the original is already that small.
 func resizeCover(original, dst string, px int) ([]byte, error) {
 	f, err := os.Open(original)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	// Сначала размеры из заголовка: огромную картинку не распаковываем.
 	cfg, _, err := image.DecodeConfig(f)
 	if err != nil {
 		return nil, err
@@ -98,7 +82,6 @@ func resizeCover(original, dst string, px int) ([]byte, error) {
 	if err := jpeg.Encode(&buf, downscale(src, px, px), &jpeg.Options{Quality: 85}); err != nil {
 		return nil, err
 	}
-	// Через временный файл: параллельный запрос не увидит половину картинки.
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err == nil {
 		tmp := dst + "." + randomKey() + ".part"
 		if os.WriteFile(tmp, buf.Bytes(), 0o644) == nil && os.Rename(tmp, dst) != nil {
@@ -108,9 +91,6 @@ func resizeCover(original, dst string, px int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// downscale shrinks src to w×h by averaging each destination pixel's box of
-// source pixels — for big reductions (1000 → 64) this is as clean as a
-// proper filter, and needs nothing beyond the standard library.
 func downscale(src image.Image, w, h int) *image.RGBA {
 	b := src.Bounds()
 	rgba := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
@@ -147,7 +127,6 @@ func downscale(src image.Image, w, h int) *image.RGBA {
 	return out
 }
 
-// sizedCopies lists the possible resized copies of a storage key.
 func sizedCopies(key string) []string {
 	if !coverKeyRe.MatchString(key) {
 		return nil

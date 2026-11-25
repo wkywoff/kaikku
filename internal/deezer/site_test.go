@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// Гостевой токен берётся один раз; истёк (VALID_TOKEN_REQUIRED) — берётся
-// новый и запрос повторяется. Без куки сессии страница артиста не отдаётся.
 func TestSite_ArtistBio(t *testing.T) {
 	tokens := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

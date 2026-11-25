@@ -11,16 +11,11 @@ import (
 	"strings"
 )
 
-// LRCRed — lrc.red: тексты в TTML с таймингом по словам (у части песен по
-// слогам или только по строкам), подпевками и голосами дуэтов. Ищется
-// точно по ISRC. Условия сервиса: представляться (User-Agent с адресом
-// для связи — Contact) и ссылаться на lrc.red там, где показан текст
-// (LyricsView). Без Contact источник не включается (EnableLyrics).
 type LRCRed struct {
-	Contact string // email в User-Agent
+	Contact string
 }
 
-var lrcredAPI = "https://lrc.red" // переменная — для тестов
+var lrcredAPI = "https://lrc.red"
 
 func (LRCRed) Name() string { return "lrcred" }
 
@@ -40,17 +35,13 @@ func (p LRCRed) Find(ctx context.Context, t Track) (*Lyrics, error) {
 	return parseTTML(b, t.Duration)
 }
 
-// parseTTML разбирает TTML (как у Apple Music): <p> — строка, <span> в ней
-// — слово или слог (между слогами одного слова нет пробела), <span
-// ttm:role="x-bg"> — подпевки, ttm:agent — голос. Переводы и
-// транслитерация (x-translation, x-roman) не нужны.
 func parseTTML(src []byte, duration float64) (*Lyrics, error) {
 	d := xml.NewDecoder(bytes.NewReader(src))
 	l := &Lyrics{}
 	var timing string
 	var writers []string
-	groups := map[string]bool{} // голоса «все вместе» — не дуэт
-	var voices []string         // голоса по порядку появления
+	groups := map[string]bool{}
+	var voices []string
 	for {
 		tok, err := d.Token()
 		if err == io.EOF {
@@ -122,8 +113,6 @@ func parseTTML(src []byte, duration float64) (*Lyrics, error) {
 	return l, nil
 }
 
-// ttmlLine читает <p> до конца. Строка с таймингом только по строкам —
-// текст прямо в <p>, без <span>.
 func ttmlLine(d *xml.Decoder, p xml.StartElement) (Line, error) {
 	line := Line{Start: ttmlTime(attr(p, "begin")), End: ttmlTime(attr(p, "end"))}
 	var text strings.Builder
@@ -143,11 +132,9 @@ func ttmlLine(d *xml.Decoder, p xml.StartElement) (Line, error) {
 	return line, nil
 }
 
-// ttmlWords читает слова до конца текущего элемента; подпевки — в bg (nil
-// внутри самих подпевок), текст вне слов — в text.
 func ttmlWords(d *xml.Decoder, bg *[]Word, text *strings.Builder) ([]Word, error) {
 	var words []Word
-	gap := true // после последнего слова был пробел
+	gap := true
 	for {
 		tok, err := d.Token()
 		if err != nil {
@@ -183,7 +170,7 @@ func ttmlWords(d *xml.Decoder, bg *[]Word, text *strings.Builder) ([]Word, error
 				}
 				gap = true
 				continue
-			default: // перевод, транслитерация
+			default:
 				if err := d.Skip(); err != nil {
 					return nil, err
 				}
@@ -207,7 +194,6 @@ func ttmlWords(d *xml.Decoder, bg *[]Word, text *strings.Builder) ([]Word, error
 	}
 }
 
-// ttmlTime: «45.157», «1:14.887», «1:02:03.5», «15.553s», «500ms».
 func ttmlTime(s string) float64 {
 	s = strings.TrimSpace(s)
 	switch {
@@ -231,8 +217,6 @@ func ttmlTime(s string) float64 {
 	return t
 }
 
-// attr — значение атрибута по имени без пространства имён (begin,
-// ttm:agent, xml:id…).
 func attr(se xml.StartElement, name string) string {
 	for _, a := range se.Attr {
 		if a.Name.Local == name {

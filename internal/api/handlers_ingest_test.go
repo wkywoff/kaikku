@@ -32,8 +32,6 @@ func openTestDB(t *testing.T) *sql.DB {
 	if err := db.Ping(); err != nil {
 		t.Fatalf("db ping: %v", err)
 	}
-	// t.Cleanup runs LIFO — register Close() first so the truncate cleanup
-	// (registered second, runs first) still has an open connection to use.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(func() {
 		if _, err := db.Exec(`TRUNCATE ingest_jobs, tracks, albums, artists, users, track_edits, track_overrides, discography_extras RESTART IDENTITY CASCADE`); err != nil {
@@ -67,16 +65,10 @@ func postJSON(router http.Handler, path, body, token string) *httptest.ResponseR
 	return rec
 }
 
-// artistCalls counts requests for /artist/1 (the artist page cache test).
 var artistCalls atomic.Int32
 
-// daysAgo — дата n дней назад, как её пишет Deezer.
 func daysAgo(n int) string { return time.Now().AddDate(0, 0, -n).Format("2006-01-02") }
 
-// mockDeezerServer serves a single track (12345, album 9), a two-artist
-// compilation (album 77) and a Deezer-style not-found error (track 404) —
-// response shapes as Deezer actually returns them (tracklist entries carry
-// no "album" object; errors come with HTTP 200).
 func mockDeezerServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -101,8 +93,6 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/album/10/tracks", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":12346,"title":"Old Song","duration":180,"track_position":1,"disk_number":1,"artist":{"id":1,"name":"Test Artist"}}],"total":1}`))
 	})
-	// Альбом 11 — свежий совместный релиз артистов 1 и 2 с гостем 3, которого
-	// ещё нет ни в чьём /artist/{id}/albums (discography_test.go).
 	mux.HandleFunc("/album/11", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"id":11,"title":"Late Album","release_date":"` + time.Now().Format("2006-01-02") + `","record_type":"album","artist":{"id":1,"name":"Test Artist"},
 			"contributors":[{"id":1,"name":"Test Artist","role":"Main"},{"id":2,"name":"Other Artist","role":"Main"},{"id":3,"name":"Feat Artist","role":"Featured"}]}`))
@@ -134,8 +124,6 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/artist/1/related", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":2,"name":"Other Artist"},{"id":3,"name":"Feat Artist"},{"id":4,"name":"Fourth Artist"}],"total":3}`))
 	})
-	// Артист 2 — «настоящий» артист, которому админ переназначает релизы
-	// артиста 1 (handlers_admin_test.go).
 	mux.HandleFunc("/artist/2", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"id":2,"name":"Other Artist","picture_xl":"http://example.com/2.jpg"}`))
 	})
@@ -146,7 +134,7 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{"data":[],"total":0}`))
 	})
 	mux.HandleFunc("/artist/2/related", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"data":[],"total":0}`)) // у артиста нет похожих
+		w.Write([]byte(`{"data":[],"total":0}`))
 	})
 	mux.HandleFunc("/artist/1/radio", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":501,"title":"Album Track One","duration":180,"artist":{"id":1,"name":"Test Artist"},"album":{"id":77,"title":"Compilation","cover_xl":"http://example.com/comp.jpg"}}]}`))
@@ -155,9 +143,6 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 		fresh := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
 		w.Write([]byte(`{"data":[{"id":9,"title":"Test Album","release_date":"` + fresh + `","record_type":"album"},{"id":10,"title":"Old Single","release_date":"2015-01-01","record_type":"single"}],"total":2}`))
 	})
-	// Артисты 30 и 31 — новые релизы (handlers_history_test.go): у 30 сингл
-	// 25-дневной давности ещё новый, 45-дневной — уже нет; 40 и 43 — их
-	// совместные синглы (в обоих списках), у 40 есть гость, 43 Deezer не отдаёт.
 	mux.HandleFunc("/artist/30", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"id":30,"name":"Left Artist"}`))
 	})
@@ -180,14 +165,12 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/album/43", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":{"type":"DataException","message":"no data","code":800}}`))
 	})
-	// Поиск артистов и альбомов: артист 1 — на любой запрос, альбомов нет.
 	mux.HandleFunc("/search/artist", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[{"id":1,"name":"Test Artist","nb_fan":5}],"total":1}`))
 	})
 	mux.HandleFunc("/search/album", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[],"total":0}`))
 	})
-	// Поиск (импорт плейлиста): «Test Song» находится, остальное — нет.
 	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(strings.ToLower(r.URL.Query().Get("q")), "test song") {
 			w.Write([]byte(`{"data":[],"total":0}`))
@@ -210,25 +193,21 @@ func newTestRouter(t *testing.T) (*sql.DB, http.Handler, string) {
 	return db, router, token
 }
 
-// newTestServer — то же, что newTestRouter, и сам Server: его поля
-// (StorageDir и др.) читаются на каждом запросе, тест может их поменять.
 func newTestServer(t *testing.T) (*sql.DB, http.Handler, string, *Server) {
 	t.Helper()
 	db := openTestDB(t)
 	deezerSrv := mockDeezerServer(t)
 	t.Cleanup(deezerSrv.Close)
 	srv := &Server{
-		DB:        db,
-		JWTSecret: []byte("test-secret-at-least-32-bytes-long!!"),
-		Deezer:    deezer.NewClientWithBaseURL(deezerSrv.URL),
-		// Фоновое скачивание — сразу, иначе оно гонялось бы с закрытием тестовой БД.
+		DB:         db,
+		JWTSecret:  []byte("test-secret-at-least-32-bytes-long!!"),
+		Deezer:     deezer.NewClientWithBaseURL(deezerSrv.URL),
 		Background: func(f func()) { f() },
 	}
 	router := NewRouter(srv)
 	return db, router, registerTestUser(t, router), srv
 }
 
-// jobOf returns the ingest job of a Deezer track.
 func jobOf(t *testing.T, db *sql.DB, deezerID string) (id int64, status string) {
 	t.Helper()
 	if err := db.QueryRow(`SELECT id, status FROM ingest_jobs WHERE source_ref = $1`, "deezer:"+deezerID).Scan(&id, &status); err != nil {
@@ -237,8 +216,6 @@ func jobOf(t *testing.T, db *sql.DB, deezerID string) (id int64, status string) 
 	return id, status
 }
 
-// На скачивание ставит лайк (и сохранение альбома, плейлист, воспроизведение);
-// в тестах фоновая работа идёт сразу (Server.Background).
 func TestLike_QueuesDownloadOnceWithAlbumMetadata(t *testing.T) {
 	db, router, token := newTestRouter(t)
 
@@ -278,8 +255,6 @@ func TestSaveAlbum_CompilationKeepsAlbumArtist(t *testing.T) {
 
 	call(t, router, "PUT", "/api/me/albums/77", token, "", http.StatusNoContent)
 
-	// Треклист альбома не содержит данных альбома — они должны прийти из
-	// /album/{id}, а альбомный исполнитель не должен подменяться трековым.
 	rows, err := db.Query(
 		`SELECT artist_name, album_artist_name, album_title, album_deezer_id, cover_url, release_date IS NULL, disc_no
 		   FROM ingest_jobs WHERE source_ref IN ('deezer:501', 'deezer:502') ORDER BY source_ref`)
@@ -304,7 +279,6 @@ func TestSaveAlbum_CompilationKeepsAlbumArtist(t *testing.T) {
 		t.Fatalf("got %d jobs, want 2", i)
 	}
 
-	// Сохранили заново — дублей нет.
 	call(t, router, "DELETE", "/api/me/albums/77", token, "", http.StatusNoContent)
 	call(t, router, "PUT", "/api/me/albums/77", token, "", http.StatusNoContent)
 	var count int
@@ -342,7 +316,6 @@ func TestDownload_DeletedTrackIsRequeued(t *testing.T) {
 	db.QueryRow(`INSERT INTO tracks (album_id, title, duration_ms, storage_key, deezer_id) VALUES ($1, 'Test Song', 200000, 'x.m4a', '12345') RETURNING id`, albumID).Scan(&trackID)
 	db.Exec(`UPDATE ingest_jobs SET status = 'done', result_track_id = $1 WHERE id = $2`, trackID, job)
 
-	// Раньше падало на FK из ingest_jobs.result_track_id.
 	if _, err := db.Exec(`DELETE FROM tracks WHERE id = $1`, trackID); err != nil {
 		t.Fatalf("deleting an ingested track: %v", err)
 	}
@@ -393,8 +366,6 @@ func TestDownload_OtherArtistsForSearch(t *testing.T) {
 		t.Fatalf("other_artists = %q, explicit = %v, want [Feat Artist], true", others, explicit)
 	}
 
-	// Job из времён до миграций 0008 и 0037: при перезапуске упавшего фиты
-	// и explicit дозаполняются.
 	db.Exec(`UPDATE ingest_jobs SET status = 'failed', other_artists = '{}', explicit = NULL WHERE id = $1`, job)
 	call(t, router, "PUT", "/api/me/liked/888", token, "", http.StatusNoContent)
 	others = nil
@@ -405,7 +376,6 @@ func TestDownload_OtherArtistsForSearch(t *testing.T) {
 	}
 }
 
-// У артиста без похожих — пустой список, а не null (на null падала страница артиста).
 func TestRelatedArtistsEmptyIsArray(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	body := call(t, router, "GET", "/api/discover/artists/2/related", token, "", http.StatusOK)

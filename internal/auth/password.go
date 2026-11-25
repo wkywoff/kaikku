@@ -14,24 +14,18 @@ import (
 )
 
 const (
-	pbkdf2Iterations = 210_000 // OWASP 2023 minimum recommendation for PBKDF2-HMAC-SHA256
+	pbkdf2Iterations = 210_000
 	saltLen          = 16
 	keyLen           = 32
 
-	// MaxPasswordLen bounds a password, so a request can't make hashing
-	// arbitrarily expensive (the API also caps JSON bodies, router.go).
 	MaxPasswordLen = 256
 )
 
 var (
 	ErrPasswordTooLong = fmt.Errorf("password longer than %d bytes", MaxPasswordLen)
-	// ErrBusy: too many password checks are already running.
-	ErrBusy = errors.New("too many password checks at once")
+	ErrBusy            = errors.New("too many password checks at once")
 )
 
-// Хеш пароля — ~0.2 с процессора, а на сервере один vCPU: одновременно не
-// больше hashParallel проверок, остальные ждут не дольше hashWait. Иначе
-// поток попыток входа отнимал бы весь процессор у музыки.
 const (
 	hashParallel = 2
 	hashWait     = 10 * time.Second
@@ -39,10 +33,6 @@ const (
 
 var hashSlots = make(chan struct{}, hashParallel)
 
-// derive is PBKDF2-HMAC-SHA256 (RFC 8018) from the standard library: the
-// HMAC is keyed once per call. The hand-written version this replaces
-// re-keyed it on every one of the 210 000 iterations, so a long password
-// cost minutes of CPU. The output is the same, so existing hashes verify.
 func derive(password string, salt []byte, iterations, n int) ([]byte, error) {
 	timer := time.NewTimer(hashWait)
 	defer timer.Stop()
@@ -55,11 +45,6 @@ func derive(password string, salt []byte, iterations, n int) ([]byte, error) {
 	return pbkdf2.Key(sha256.New, password, salt, iterations, n)
 }
 
-// HashPassword returns a self-describing string:
-// pbkdf2-sha256$<iterations>$<salt_b64>$<hash_b64>
-//
-// PBKDF2 at this iteration count is an accepted choice (Django's default)
-// and needs nothing beyond the standard library.
 func HashPassword(password string) (string, error) {
 	if len(password) > MaxPasswordLen {
 		return "", ErrPasswordTooLong
@@ -79,9 +64,6 @@ func HashPassword(password string) (string, error) {
 	), nil
 }
 
-// VerifyPassword checks password against a hash produced by HashPassword.
-// A password over MaxPasswordLen can't have been stored, so it's rejected
-// without hashing.
 func VerifyPassword(password, encoded string) (bool, error) {
 	if len(password) > MaxPasswordLen {
 		return false, nil
@@ -109,13 +91,8 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
-// dummyHash — хеш постороннего пароля (с теми же параметрами, что у
-// настоящих), чтобы DummyVerify тратил столько же времени.
 const dummyHash = "pbkdf2-sha256$210000$bXVzaWNzdHJlYW0tZHVtbQ$632HfEaVL/+d7gQ5hHS147AP065sB+8PAoRwR6dfTeY"
 
-// DummyVerify takes as long as VerifyPassword does for a real user. The
-// login handler calls it for unknown usernames, so the response time
-// doesn't tell which usernames exist.
 func DummyVerify(password string) {
 	_, _ = VerifyPassword(password, dummyHash)
 }

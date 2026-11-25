@@ -26,7 +26,6 @@ func TestProfilesAndFollows(t *testing.T) {
 	bob := invitedUser(t, router, me, "prof-bob")
 	annID, bobID := userIDOf(t, router, ann), userIDOf(t, router, bob)
 
-	// Профиль — по нику без учёта регистра; в нём только публичные плейлисты.
 	call(t, router, "POST", "/api/playlists", ann, `{"title":"Open","is_public":true}`, http.StatusCreated)
 	call(t, router, "POST", "/api/playlists", ann, `{"title":"Hidden"}`, http.StatusCreated)
 	p := getProfile(t, router, me, "PROF-ANN")
@@ -35,13 +34,12 @@ func TestProfilesAndFollows(t *testing.T) {
 	}
 	call(t, router, "GET", "/api/users/nobody-here", me, "", http.StatusNotFound)
 
-	// Подписки: в одну сторону — подписчик, в обе — друзья.
 	var st person
 	json.Unmarshal(call(t, router, "PUT", "/api/users/"+annID+"/follow", bob, "", http.StatusOK), &st)
 	if !st.IFollow || st.FollowsMe {
 		t.Fatalf("bob follows ann: %+v", st)
 	}
-	call(t, router, "PUT", "/api/users/"+annID+"/follow", bob, "", http.StatusOK) // повтор — не ошибка
+	call(t, router, "PUT", "/api/users/"+annID+"/follow", bob, "", http.StatusOK)
 	if a := getProfile(t, router, ann, "prof-ann"); !a.Me || len(a.People) != 1 || !a.People[0].FollowsMe || a.People[0].IFollow {
 		t.Fatalf("ann's own profile: %+v", a)
 	}
@@ -58,7 +56,6 @@ func TestProfilesAndFollows(t *testing.T) {
 	call(t, router, "PUT", "/api/users/"+userIDOf(t, router, me)+"/follow", me, "", http.StatusBadRequest)
 	call(t, router, "PUT", "/api/users/not-a-user/follow", me, "", http.StatusNotFound)
 
-	// Поиск находит человека только по нику целиком.
 	if got := (&Server{DB: openTestDB(t)}).searchPeople("00000000-0000-0000-0000-000000000000", "@prof-bob"); len(got) != 1 || got[0].ID != bobID {
 		t.Errorf("exact search: %+v", got)
 	}

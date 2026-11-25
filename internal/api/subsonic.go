@@ -26,18 +26,8 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Subsonic API (subsonic.org/pages/api.jsp) с расширениями OpenSubsonic —
-// для приложений: Feishin, Amperfy, Symfonium и других. Адрес —
-// /rest/<метод> (с .view или без), GET или POST-форма; ответ — XML, с f=json
-// — JSON. Данные отдают те же обработчики, что и сайту (call): правки
-// админа, скрытые релизы, черновики и права на плейлисты — как в вебе.
-//
-// Вход — паролем для приложений (users.subsonic_secret), не основным:
-// клиенты шлют md5(пароль + соль), а основной хранится только как PBKDF2.
-
 const subsonicVersion = "1.16.1"
 
-// Коды ошибок Subsonic.
 const (
 	subErrGeneric      = 0
 	subErrMissing      = 10
@@ -60,11 +50,10 @@ func subMissing(name string) error {
 	return subFail(subErrMissing, "required parameter is missing: "+name)
 }
 
-// subCtx — один запрос к /rest/.
 type subCtx struct {
 	s      *Server
 	w      http.ResponseWriter
-	r      *http.Request // после входа — с пользователем в контексте
+	r      *http.Request
 	json   bool
 	userID string
 	user   string
@@ -77,10 +66,9 @@ func (c *subCtx) params(name string) []string { return c.r.Form[name] }
 
 type subsonicMethod struct {
 	run    func(*subCtx) error
-	public bool // без входа (getOpenSubsonicExtensions)
+	public bool
 }
 
-// subsonicMethods заполняют файлы subsonic_*.go.
 var subsonicMethods = map[string]subsonicMethod{}
 
 func subsonicRoute(name string, run func(*subCtx) error) {
@@ -88,8 +76,6 @@ func subsonicRoute(name string, run func(*subCtx) error) {
 }
 
 func (s *Server) handleSubsonic(w http.ResponseWriter, r *http.Request) {
-	// Веб-клиенты (Feishin в браузере) ходят с другого адреса; пароль — в
-	// параметрах, куки не нужны.
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
@@ -119,8 +105,6 @@ func (s *Server) handleSubsonic(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// --- вход ---
-
 func (c *subCtx) login() error {
 	if c.param("apiKey") != "" {
 		return subFail(subErrAuthNotAllow, "use the username and the app password")
@@ -129,12 +113,9 @@ func (c *subCtx) login() error {
 	if name == "" {
 		return subMissing("u")
 	}
-	// Такого имени быть не может, а в счётчик оно попало бы целиком.
 	if len(name) > 4*maxUsernameLen {
 		return subFail(subErrWrongCreds, "wrong username or app password")
 	}
-	// Подбор — как у входа на сайт (loginguard.go), но счётчик отдельный:
-	// наводнение выдуманными именами здесь не должно задевать вход на сайт.
 	now := time.Now()
 	key := loginPairKey(name, clientIP(c.r))
 	if c.s.subsonicLogins.wait(key, now) > 0 {
@@ -151,7 +132,7 @@ func (c *subCtx) login() error {
 	var password string
 	if sealed != nil {
 		if password, err = c.s.openSubsonicSecret(sealed); err != nil {
-			log.Printf("subsonic: app password of %s: %v", name, err) // сменился JWT_SECRET
+			log.Printf("subsonic: app password of %s: %v", name, err)
 		}
 	}
 	token, salt, plain := c.param("t"), c.param("s"), c.param("p")
@@ -183,8 +164,6 @@ func (c *subCtx) login() error {
 	return nil
 }
 
-// Пароль для приложений шифруется ключом из JWT_SECRET: дамп базы без
-// .env его не выдаёт. Сменился JWT_SECRET — пароль надо создать заново.
 func (s *Server) subsonicAEAD() (cipher.AEAD, error) {
 	key, err := hkdf.Key(sha256.New, s.JWTSecret, nil, "kaikku subsonic app password", 32)
 	if err != nil {
@@ -219,8 +198,6 @@ func (s *Server) openSubsonicSecret(sealed []byte) (string, error) {
 	return string(plain), err
 }
 
-// newAppPassword — 16 знаков без похожих (0/o, 1/l/i): его набирают руками
-// на телефоне.
 func newAppPassword() string {
 	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 	b := make([]byte, 16)
@@ -230,8 +207,6 @@ func newAppPassword() string {
 	}
 	return string(b)
 }
-
-// --- пароль для приложений на сайте (Настройки) ---
 
 type subsonicAccess struct {
 	Enabled  bool   `json:"enabled"`
@@ -253,7 +228,6 @@ func (s *Server) subsonicAccessOf(userID string) (subsonicAccess, error) {
 	return a, nil
 }
 
-// GET /api/me/subsonic — включён ли вход из приложений, логин и пароль.
 func (s *Server) handleSubsonicAccess(w http.ResponseWriter, r *http.Request) {
 	a, err := s.subsonicAccessOf(currentUser(r))
 	if err != nil {
@@ -263,7 +237,6 @@ func (s *Server) handleSubsonicAccess(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
-// POST /api/me/subsonic — новый пароль для приложений (старый перестаёт работать).
 func (s *Server) handleNewSubsonicPassword(w http.ResponseWriter, r *http.Request) {
 	sealed, err := s.sealSubsonicSecret(newAppPassword())
 	if err == nil {
@@ -276,7 +249,6 @@ func (s *Server) handleNewSubsonicPassword(w http.ResponseWriter, r *http.Reques
 	s.handleSubsonicAccess(w, r)
 }
 
-// DELETE /api/me/subsonic — выключить вход из приложений.
 func (s *Server) handleDisableSubsonic(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.DB.Exec(`UPDATE users SET subsonic_secret = NULL WHERE id = $1`, currentUser(r)); err != nil {
 		serverError(w, r, "could not turn it off", err)
@@ -285,9 +257,6 @@ func (s *Server) handleDisableSubsonic(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- ответ ---
-
-// ok отвечает payload под именем key ("" — пустой ответ, как у ping).
 func (c *subCtx) ok(key string, payload any) error {
 	c.write("ok", key, payload)
 	return nil
@@ -295,7 +264,7 @@ func (c *subCtx) ok(key string, payload any) error {
 
 func (c *subCtx) fail(err error) {
 	if errors.Is(err, context.Canceled) && c.r.Context().Err() != nil {
-		return // приложение уже не ждёт ответа
+		return
 	}
 	var se *subsonicError
 	if !errors.As(err, &se) {
@@ -336,32 +305,20 @@ func (c *subCtx) write(status, key string, payload any) {
 	enc.Flush()
 }
 
-// --- доля лимита Deezer ---
-
-// Приложения открывают альбомы сотнями (Feishin — всю дискографию артиста
-// разом). Чтобы сайт не ждал за ними, их запросы к Deezer идут своей
-// долей лимита (5/8 того, что пропускают выходы к Deezer: 25 из 40 за
-// 5 с, со вторым выходом — 50 из 80; остальное — сайту) и не больше
-// appSlots альбомов сразу; брошенный приложением запрос уходит из очереди,
-// не потратив лимит.
 var (
-	appShares sync.Map // запросов за 5 с → *deezer.Limiter
+	appShares sync.Map
 	appSlots  = make(chan struct{}, 4)
 )
 
-// appDeezerShare — доля приложений при нынешней ёмкости: упал прокси —
-// доля меньше.
 func (s *Server) appDeezerShare() *deezer.Limiter {
 	n := s.Deezer.Capacity() * 5 / 8
 	if n <= 0 {
-		n = 25 // без ограничения (тесты)
+		n = 25
 	}
 	l, _ := appShares.LoadOrStore(n, deezer.NewLimiter(n, 5*time.Second))
 	return l.(*deezer.Limiter)
 }
 
-// deezerShare ждёт места в очереди и cost запросов из доли приложений;
-// release — отпустить место.
 func (c *subCtx) deezerShare(cost int) (release func(), err error) {
 	if cost == 0 {
 		return func() {}, nil
@@ -383,10 +340,6 @@ func (c *subCtx) deezerShare(cost int) (release func(), err error) {
 	return release, nil
 }
 
-// --- обработчики сайта изнутри ---
-
-// fromAppCtxKey — запрос пришёл от приложения (call): обработчики сайта
-// не тратят на него лимит Deezer там, где можно обойтись (фиты в альбоме).
 const fromAppCtxKey ctxKey = "subsonic"
 
 func fromApp(r *http.Request) bool {
@@ -394,7 +347,6 @@ func fromApp(r *http.Request) bool {
 	return v
 }
 
-// recorder — ответ обработчика сайта в память.
 type recorder struct {
 	header http.Header
 	code   int
@@ -405,9 +357,6 @@ func (rec *recorder) Header() http.Header         { return rec.header }
 func (rec *recorder) Write(b []byte) (int, error) { return rec.body.Write(b) }
 func (rec *recorder) WriteHeader(code int)        { rec.code = code }
 
-// call runs one of the site's JSON handlers as the logged-in user and
-// decodes its answer into out (nil — not needed). target carries the query
-// (?q=…), vals — the {…} of the handler's route, body is sent as JSON.
 func (c *subCtx) call(h http.HandlerFunc, method, target string, vals map[string]string, body, out any) error {
 	var rd io.Reader = http.NoBody
 	if body != nil {
@@ -446,8 +395,6 @@ func (c *subCtx) call(h http.HandlerFunc, method, target string, vals map[string
 	return nil
 }
 
-// --- служебное ---
-
 func init() {
 	subsonicRoute("ping", func(c *subCtx) error { return c.ok("", nil) })
 	subsonicRoute("getLicense", func(c *subCtx) error {
@@ -475,7 +422,6 @@ func init() {
 	subsonicRoute("getScanStatus", subsonicScanStatus)
 	subsonicRoute("startScan", subsonicScanStatus)
 
-	// Чего у нас нет — пустые ответы: клиенты спрашивают это при старте.
 	empty := func(key string) func(*subCtx) error {
 		return func(c *subCtx) error { return c.ok(key, struct{}{}) }
 	}
@@ -513,7 +459,6 @@ type subsonicUserInfo struct {
 	Folders           []int  `xml:"folder" json:"folder"`
 }
 
-// getUser — только о себе: другие пользователи приложениям не нужны.
 func subsonicUser(c *subCtx) error {
 	if name := c.param("username"); name != "" && name != c.user {
 		return subFail(subErrForbidden, "only your own user")

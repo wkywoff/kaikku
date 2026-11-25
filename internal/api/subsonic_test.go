@@ -25,7 +25,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// subClient — приложение с паролем для приложений.
 type subClient struct {
 	t      *testing.T
 	router http.Handler
@@ -43,7 +42,6 @@ func newSubClient(t *testing.T, router http.Handler, token string) *subClient {
 	return &subClient{t: t, router: router, user: a.Username, pass: a.Password}
 }
 
-// raw — ответ на method с токеном (t, s) и params.
 func (c *subClient) raw(method string, params url.Values) *httptest.ResponseRecorder {
 	if params == nil {
 		params = url.Values{}
@@ -64,7 +62,6 @@ func (c *subClient) raw(method string, params url.Values) *httptest.ResponseReco
 	return rec
 }
 
-// get — JSON-ответ; status должен быть ok.
 func (c *subClient) get(method string, params url.Values) map[string]any {
 	c.t.Helper()
 	if params == nil {
@@ -87,7 +84,6 @@ func subResponse(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 	return body["subsonic-response"]
 }
 
-// subErrorCode — код ошибки JSON-ответа (-1 — ошибки нет).
 func subErrorCode(t *testing.T, rec *httptest.ResponseRecorder) int {
 	t.Helper()
 	resp := subResponse(t, rec)
@@ -101,7 +97,6 @@ func subErrorCode(t *testing.T, rec *httptest.ResponseRecorder) int {
 func TestSubsonicLogin(t *testing.T) {
 	db, router, token := newTestRouter(t)
 
-	// Без пароля для приложений не войти и основным паролем.
 	var a subsonicAccess
 	json.Unmarshal(call(t, router, "GET", "/api/me/subsonic", token, "", http.StatusOK), &a)
 	if a.Enabled || a.Password != "" {
@@ -113,7 +108,7 @@ func TestSubsonicLogin(t *testing.T) {
 	}
 
 	c := newSubClient(t, router, token)
-	c.get("ping", nil) // токен с солью
+	c.get("ping", nil)
 	for _, p := range []string{c.pass, "enc:" + hex.EncodeToString([]byte(c.pass))} {
 		if code := subErrorCode(t, c.raw("ping", url.Values{"f": {"json"}, "p": {p}})); code != -1 {
 			t.Errorf("p=%s: code %d", p, code)
@@ -126,14 +121,12 @@ func TestSubsonicLogin(t *testing.T) {
 		t.Errorf("apiKey: code %d, want 42", code)
 	}
 
-	// Пароль хранится зашифрованным.
 	var sealed []byte
 	db.QueryRow(`SELECT subsonic_secret FROM users WHERE username = $1`, c.user).Scan(&sealed)
 	if strings.Contains(string(sealed), c.pass) {
 		t.Error("app password stored in the clear")
 	}
 
-	// Новый пароль — старый больше не подходит.
 	old := c.pass
 	c2 := newSubClient(t, router, token)
 	if c2.pass == old {
@@ -144,14 +137,12 @@ func TestSubsonicLogin(t *testing.T) {
 	}
 	c2.get("ping", nil)
 
-	// Выключен — не войти.
 	call(t, router, "DELETE", "/api/me/subsonic", token, "", http.StatusNoContent)
 	if code := subErrorCode(t, c2.raw("ping", url.Values{"f": {"json"}})); code != subErrWrongCreds {
 		t.Errorf("disabled: code %d, want 40", code)
 	}
 }
 
-// После пяти неудач подряд — пауза, и верный пароль тоже не пускают.
 func TestSubsonicLoginThrottled(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	c := newSubClient(t, router, token)
@@ -163,8 +154,6 @@ func TestSubsonicLoginThrottled(t *testing.T) {
 	}
 }
 
-// Неудачи приложений считаются отдельно от входа на сайт, а имя длиннее
-// возможного в счётчик не попадает.
 func TestSubsonicLoginOwnCounter(t *testing.T) {
 	_, router, token, s := newTestServer(t)
 	c := newSubClient(t, router, token)
@@ -195,7 +184,6 @@ func TestSubsonicEnvelope(t *testing.T) {
 		t.Errorf("folders: %v", folders)
 	}
 
-	// XML — по умолчанию, те же данные атрибутами.
 	rec := c.raw("getMusicFolders", nil)
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/xml") {
 		t.Errorf("content type %q", ct)
@@ -212,18 +200,15 @@ func TestSubsonicEnvelope(t *testing.T) {
 		t.Errorf("xml: %v %+v\n%s", err, x, rec.Body.String())
 	}
 
-	// Ошибка — status failed и код.
 	if code := subErrorCode(t, c.raw("noSuchMethod", url.Values{"f": {"json"}})); code != subErrGeneric {
 		t.Errorf("unknown method: code %d", code)
 	}
-	// Расширения OpenSubsonic — без входа.
 	req := httptest.NewRequest(http.MethodGet, "/rest/getOpenSubsonicExtensions?f=json", nil)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if resp := subResponse(t, rec); resp["status"] != "ok" {
 		t.Errorf("extensions: %v", resp)
 	}
-	// getUser — только о себе.
 	if user := c.get("getUser", url.Values{"username": {c.user}})["user"].(map[string]any); user["streamRole"] != true {
 		t.Errorf("user: %v", user)
 	}
@@ -232,7 +217,6 @@ func TestSubsonicEnvelope(t *testing.T) {
 	}
 }
 
-// jsonList — массив из JSON-ответа по пути ключей ("starred2", "song").
 func jsonList(t *testing.T, v any, keys ...string) []map[string]any {
 	t.Helper()
 	for _, k := range keys {
@@ -278,7 +262,6 @@ func TestSubsonicLibrary(t *testing.T) {
 		t.Errorf("song %v", song)
 	}
 
-	// Артисты медиатеки: подписка и исполнитель сохранённого.
 	var names []string
 	for _, idx := range jsonList(t, c.get("getArtists", nil), "artists", "index") {
 		for _, a := range jsonList(t, idx, "artist") {
@@ -311,7 +294,6 @@ func TestSubsonicLibrary(t *testing.T) {
 		t.Errorf("album list %v", got)
 	}
 
-	// Пустой поиск — медиатека; с запросом — каталог.
 	if got := ids(jsonList(t, c.get("search3", url.Values{"query": {`""`}}), "searchResult3", "song")); !slices.Equal(got, []string{"t12345"}) {
 		t.Errorf("empty search %v", got)
 	}
@@ -319,7 +301,6 @@ func TestSubsonicLibrary(t *testing.T) {
 		t.Errorf("search %v", got)
 	}
 
-	// Ошибки: не тот тип ID, нет параметра.
 	if code := subErrorCode(t, c.raw("getAlbum", url.Values{"f": {"json"}, "id": {"t12345"}})); code != subErrNotFound {
 		t.Errorf("song id as album: code %d", code)
 	}
@@ -327,7 +308,6 @@ func TestSubsonicLibrary(t *testing.T) {
 		t.Errorf("no type: code %d", code)
 	}
 
-	// Скрытый админом релиз пропадает.
 	call(t, router, "PUT", "/api/albums/deezer/9/hidden", token, `{"hidden":true}`, http.StatusOK)
 	if code := subErrorCode(t, c.raw("getAlbum", url.Values{"f": {"json"}, "id": {"al9"}})); code != subErrNotFound {
 		t.Errorf("hidden album: code %d", code)
@@ -341,7 +321,6 @@ func TestSubsonicLibrary(t *testing.T) {
 	}
 }
 
-// XML того же альбома: атрибуты и вложенные song.
 func TestSubsonicAlbumXML(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	c := newSubClient(t, router, token)
@@ -389,7 +368,6 @@ func TestSubsonicStreamDownloaded(t *testing.T) {
 	}
 }
 
-// Нескачанный — ссылка на поток API, а трек встаёт в очередь.
 func TestSubsonicStreamNotDownloaded(t *testing.T) {
 	srv, _, token, _ := newStreamTestServer(t)
 	c := newSubClient(t, NewRouter(srv), token)
@@ -409,13 +387,11 @@ func TestSubsonicCoverArt(t *testing.T) {
 	srv.StorageDir = t.TempDir()
 	c := newSubClient(t, router, token)
 
-	// Обложка Deezer (в моке — не CDN Deezer) — редиректом.
 	rec := c.raw("getCoverArt", url.Values{"id": {"al9"}})
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://example.com/cover.jpg" {
 		t.Errorf("deezer cover: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 
-	// Своя обложка — с диска, уменьшенная.
 	key := "covers/custom/" + strings.Repeat("ab", 16) + ".jpg"
 	os.MkdirAll(filepath.Join(srv.StorageDir, "covers", "custom"), 0o755)
 	var buf bytes.Buffer
@@ -468,7 +444,6 @@ func TestSubsonicScrobbleAndLyrics(t *testing.T) {
 	if plays() != 1 {
 		t.Errorf("plays %d, want 1", plays())
 	}
-	// Текстов нет (Lyrics не настроен) — пустой список, не ошибка.
 	if l := c.get("getLyricsBySongId", url.Values{"id": {"t12345"}})["lyricsList"]; l == nil {
 		t.Error("no lyricsList")
 	}
@@ -491,13 +466,11 @@ func TestSubsonicPlaylists(t *testing.T) {
 	if got := ids(jsonList(t, p, "entry")); p["name"] != "Road trip" || !slices.Equal(got, []string{"t888", "t501"}) {
 		t.Errorf("after update: %v %v", p["name"], got)
 	}
-	// createPlaylist с playlistId заменяет треки.
 	owner.get("createPlaylist", url.Values{"playlistId": {id}, "songId": {"t12345"}})
 	if got := ids(jsonList(t, owner.get("getPlaylist", url.Values{"id": {id}}), "playlist", "entry")); !slices.Equal(got, []string{"t12345"}) {
 		t.Errorf("after replace: %v", got)
 	}
 
-	// Соавтор меняет треки, но не название и не удаляет.
 	invite := newInvite(t, router, token)
 	var reg struct{ Token string }
 	json.Unmarshal(postJSON(router, "/api/register", `{"username":"subsonic-friend-`+strconv.FormatInt(time.Now().UnixNano(), 36)+`","password":"testpass123","invite":"`+invite+`"}`, "").Body.Bytes(), &reg)
@@ -507,7 +480,7 @@ func TestSubsonicPlaylists(t *testing.T) {
 	if code := subErrorCode(t, friend.raw("getPlaylist", url.Values{"f": {"json"}, "id": {id}})); code != subErrNotFound {
 		t.Errorf("private playlist seen by a stranger: code %d", code)
 	}
-	call(t, router, "PUT", "/api/users/"+me.ID+"/follow", token, "", http.StatusOK) // соавтор — только друг
+	call(t, router, "PUT", "/api/users/"+me.ID+"/follow", token, "", http.StatusOK)
 	call(t, router, "PUT", "/api/users/"+userIDOf(t, router, token)+"/follow", reg.Token, "", http.StatusOK)
 	call(t, router, "PUT", "/api/playlists/"+strings.TrimPrefix(id, "pl")+"/collaborators/"+me.ID, token, "", http.StatusNoContent)
 	friend.get("updatePlaylist", url.Values{"playlistId": {id}, "songIdToAdd": {"t888"}})
@@ -539,7 +512,7 @@ func TestSubsonicRadio(t *testing.T) {
 
 	for _, q := range []struct{ method, id, key string }{
 		{"getSimilarSongs2", "ar1", "similarSongs2"},
-		{"getSimilarSongs", "t12345", "similarSongs"}, // радио исполнителя трека
+		{"getSimilarSongs", "t12345", "similarSongs"},
 	} {
 		if got := ids(jsonList(t, c.get(q.method, url.Values{"id": {q.id}}), q.key, "song")); !slices.Equal(got, []string{"t501"}) {
 			t.Errorf("%s %s: %v", q.method, q.id, got)
@@ -594,7 +567,6 @@ func TestSubsonicCoverIDs(t *testing.T) {
 	}
 }
 
-// Артист без фото — заглушка-картинка, а не ошибка (в приложении — битая картинка).
 func TestSubsonicCoverPlaceholder(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	c := newSubClient(t, router, token)
@@ -604,7 +576,6 @@ func TestSubsonicCoverPlaceholder(t *testing.T) {
 	}
 }
 
-// Картинка Deezer берётся с CDN один раз, дальше — из памяти.
 func TestDeezerImageCached(t *testing.T) {
 	var hits atomic.Int32
 	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -635,8 +606,8 @@ func TestGuessContributors(t *testing.T) {
 	album := &deezer.Album{Contributors: []deezer.ArtistRef{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}}}
 	tracks := []deezer.Track{
 		{ID: "10", ArtistID: "1"},
-		{ID: "11", ArtistID: "3"}, // чужой исполнитель — не трогаем
-		{ID: "12", ArtistID: "2", Contributors: []deezer.ArtistRef{{ID: "2", Name: "B"}}}, // уже известны
+		{ID: "11", ArtistID: "3"},
+		{ID: "12", ArtistID: "2", Contributors: []deezer.ArtistRef{{ID: "2", Name: "B"}}},
 	}
 	guessContributors(album, tracks)
 	if len(tracks[0].Contributors) != 2 || len(tracks[1].Contributors) != 0 || len(tracks[2].Contributors) != 1 {
@@ -649,7 +620,6 @@ func TestGuessContributors(t *testing.T) {
 	}
 }
 
-// Очередь приложений занята, а приложение ушло — запрос не ждёт и не тратит лимит.
 func TestSubsonicDeezerShareCancelled(t *testing.T) {
 	for range cap(appSlots) {
 		appSlots <- struct{}{}
@@ -672,7 +642,6 @@ func TestSubsonicDeezerShareCancelled(t *testing.T) {
 	}
 }
 
-// Доля приложений — 5/8 ёмкости выходов к Deezer.
 func TestAppDeezerShare(t *testing.T) {
 	one := &Server{Deezer: deezer.NewClient()}
 	u, _ := url.Parse("socks5://127.0.0.1:40000")
@@ -695,7 +664,7 @@ func TestSubsonicAppPasswordOffAfterPasswordChange(t *testing.T) {
 	if code := subErrorCode(t, c.raw("ping", url.Values{"f": {"json"}})); code != subErrWrongCreds {
 		t.Errorf("app password after the change: code %d, want 40", code)
 	}
-	newSubClient(t, router, fresh.Token).get("ping", nil) // включается заново
+	newSubClient(t, router, fresh.Token).get("ping", nil)
 }
 
 func TestSubsonicHidesStrangersDraftCover(t *testing.T) {

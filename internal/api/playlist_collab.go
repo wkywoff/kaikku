@@ -5,13 +5,6 @@ import (
 	"net/http"
 )
 
-// Совместные плейлисты (миграция 0031): владелец зовёт в соавторы друзей —
-// тех, с кем подписан взаимно (profiles.go).
-// Соавтор добавляет, убирает и переставляет треки (editablePlaylist),
-// видит плейлист у себя в медиатеке и может выйти из соавторов сам.
-// Название, описание, обложку и удаление меняет только владелец.
-
-// playlistTracks — треки плейлиста по порядку, с тем, кто добавил.
 func (s *Server) playlistTracks(playlistID string) ([]collectionTrack, error) {
 	rows, err := s.DB.Query(`
 		SELECT i.id, i.meta, i.added_at, u.id, u.username
@@ -63,8 +56,6 @@ func (s *Server) playlistCollaborators(playlistID string) ([]playlistOwner, erro
 	return out, rows.Err()
 }
 
-// PUT /api/playlists/{id}/collaborators/{user} — позвать в соавторы
-// (владелец; только друга).
 func (s *Server) handleAddCollaborator(w http.ResponseWriter, r *http.Request) {
 	userID, id, other := currentUser(r), r.PathValue("id"), r.PathValue("user")
 	if !s.ownPlaylist(w, r, userID, id) {
@@ -104,8 +95,6 @@ func (s *Server) handleAddCollaborator(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DELETE /api/playlists/{id}/collaborators/{user} — убрать соавтора
-// (владелец) или выйти из соавторов самому.
 func (s *Server) handleRemoveCollaborator(w http.ResponseWriter, r *http.Request) {
 	userID, id, other := currentUser(r), r.PathValue("id"), r.PathValue("user")
 	if other != userID && !s.ownPlaylist(w, r, userID, id) {

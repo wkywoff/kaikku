@@ -18,7 +18,6 @@ import (
 	"time"
 )
 
-// getJSON — GET от имени token; adminMode — с заголовком режима админа.
 func getJSON(t *testing.T, router http.Handler, path, token string, adminMode bool, out any) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -69,9 +68,6 @@ func albumIDs(albums []pageAlbum) []string {
 	return ids
 }
 
-// Deezer залил альбом 9 артисту 1, а он артиста 2: после правки альбом — в
-// дискографии 2 и пропал у 1, его треки — от 2; вернуть как у Deezer —
-// правка снимается.
 func TestAlbumCredits_MoveReleaseToAnotherArtist(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	var id string
@@ -94,7 +90,6 @@ func TestAlbumCredits_MoveReleaseToAnotherArtist(t *testing.T) {
 	if tr := page.Tracks[0]; tr.ArtistID != "2" || tr.Artist != "Other Artist" {
 		t.Errorf("track of the moved release: %+v", tr)
 	}
-	// Хит 888 из топа Deezer артиста 1 — с этого релиза: у 1 его больше нет.
 	var artist struct{ Top []pageTrack }
 	getJSON(t, router, "/api/discover/artists/1", token, false, &artist)
 	if len(artist.Top) != 0 {
@@ -110,8 +105,6 @@ func TestAlbumCredits_MoveReleaseToAnotherArtist(t *testing.T) {
 	put(t, router, "/api/albums/"+id, token, `{"title":"Test Album","artists":["abc"]}`, http.StatusBadRequest)
 }
 
-// Исполнители и метка explicit трека — без скачивания; совпадает с Deezer —
-// правки нет.
 func TestTrackCredits_ArtistsAndExplicit(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	put(t, router, "/api/tracks/deezer/12345", token, `{"title":"Test Song","explicit":true,"artists":["2","1"]}`, http.StatusOK)
@@ -139,8 +132,6 @@ func TestTrackCredits_ArtistsAndExplicit(t *testing.T) {
 	}
 }
 
-// Скрытый релиз пропадает из дискографии и топа, кроме режима админа; в
-// любимых его трек остаётся с пометкой.
 func TestHiddenRelease(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	put(t, router, "/api/me/liked/12345", token, ``, http.StatusNoContent)
@@ -165,7 +156,6 @@ func TestHiddenRelease(t *testing.T) {
 	}
 }
 
-// Перекачать можно только трек из медиатеки и не дважды сразу.
 func TestRedownloadTrack(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	post := func(want int) {
@@ -174,7 +164,7 @@ func TestRedownloadTrack(t *testing.T) {
 			t.Fatalf("redownload: %d %s, want %d", rec.Code, rec.Body.String(), want)
 		}
 	}
-	post(http.StatusConflict) // нет в медиатеке
+	post(http.StatusConflict)
 
 	var artistID, albumID string
 	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('Test Artist', '1') RETURNING id`).Scan(&artistID)
@@ -191,13 +181,12 @@ func TestRedownloadTrack(t *testing.T) {
 	if status != "pending" || !replace || video.Valid {
 		t.Errorf("job: %s replace=%v video=%v", status, replace, video)
 	}
-	if !explicit.Valid || explicit.Bool { // задача без explicit — метку берём у Deezer
+	if !explicit.Valid || explicit.Bool {
 		t.Errorf("explicit = %v, want false from Deezer", explicit)
 	}
-	post(http.StatusConflict) // уже в очереди
+	post(http.StatusConflict)
 }
 
-// «Похоже на …» — с именем, исправленным админом, а не из истории.
 func TestSuggestionsBasedOnUsesEditedNames(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	var userID string
@@ -213,19 +202,17 @@ func TestSuggestionsBasedOnUsesEditedNames(t *testing.T) {
 	}
 }
 
-// Правка исполнителей релиза доходит до трека, только если на треке был
-// убранный артист: остальные исполнители трека не трогаются.
 func TestReplaceCredits(t *testing.T) {
 	cases := []struct {
 		cur, from, to, want []string
 	}{
-		{[]string{"dup"}, []string{"dup"}, []string{"real"}, []string{"real"}},                   // дубликат → настоящий
-		{[]string{"dup", "x"}, []string{"dup"}, []string{"real"}, []string{"real", "x"}},         // фит остаётся
-		{[]string{"a", "x"}, []string{"a", "b", "c"}, []string{"a", "b", "d"}, nil},              // трек без убранного C
-		{[]string{"c"}, []string{"a", "b", "c"}, []string{"a", "b", "d"}, []string{"d"}},         // C → D
-		{[]string{"a", "b"}, []string{"a", "b"}, []string{"b", "a"}, nil},                        // только порядок
-		{[]string{"a"}, []string{"a"}, []string{"a", "b"}, nil},                                  // только добавили
-		{[]string{"x", "dup", "real"}, []string{"dup"}, []string{"real"}, []string{"x", "real"}}, // без повторов
+		{[]string{"dup"}, []string{"dup"}, []string{"real"}, []string{"real"}},
+		{[]string{"dup", "x"}, []string{"dup"}, []string{"real"}, []string{"real", "x"}},
+		{[]string{"a", "x"}, []string{"a", "b", "c"}, []string{"a", "b", "d"}, nil},
+		{[]string{"c"}, []string{"a", "b", "c"}, []string{"a", "b", "d"}, []string{"d"}},
+		{[]string{"a", "b"}, []string{"a", "b"}, []string{"b", "a"}, nil},
+		{[]string{"a"}, []string{"a"}, []string{"a", "b"}, nil},
+		{[]string{"x", "dup", "real"}, []string{"dup"}, []string{"real"}, []string{"x", "real"}},
 	}
 	for _, c := range cases {
 		if got := replaceCredits(c.cur, c.from, c.to); !slices.Equal(got, c.want) {
@@ -234,8 +221,6 @@ func TestReplaceCredits(t *testing.T) {
 	}
 }
 
-// «Популярное» — сначала то, что слушали здесь за месяц (больше — выше),
-// потом топ Deezer без повторов.
 func TestArtistTopByPlaysOnTheService(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	var userID string
@@ -248,8 +233,8 @@ func TestArtistTopByPlaysOnTheService(t *testing.T) {
 	}
 	play("501", `{"id":"501","title":"Album Track One","artist_id":"1","artist":"Test Artist","album_id":"77"}`, 1, "1 day")
 	play("12345", `{"id":"12345","title":"Test Song","artist_id":"9","artist":"Someone","album_id":"9",
-		"contributors":[{"id":"9","name":"Someone"},{"id":"1","name":"Test Artist"}]}`, 3, "2 days") // фит
-	play("777", `{"id":"777","title":"Old","artist_id":"1","artist":"Test Artist","album_id":"9"}`, 5, "40 days") // давно
+		"contributors":[{"id":"9","name":"Someone"},{"id":"1","name":"Test Artist"}]}`, 3, "2 days")
+	play("777", `{"id":"777","title":"Old","artist_id":"1","artist":"Test Artist","album_id":"9"}`, 5, "40 days")
 
 	var page struct{ Top []pageTrack }
 	getJSON(t, router, "/api/discover/artists/1", token, false, &page)
@@ -262,7 +247,6 @@ func TestArtistTopByPlaysOnTheService(t *testing.T) {
 	}
 }
 
-// wavTone — секунда синуса в WAV (16 бит, моно, 8 кГц).
 func wavTone() []byte {
 	const rate, n = 8000, 8000
 	b := new(bytes.Buffer)
@@ -271,7 +255,7 @@ func wavTone() []byte {
 	le(uint32(36 + n*2))
 	b.WriteString("WAVEfmt ")
 	le(uint32(16))
-	le(uint16(1)) // PCM
+	le(uint16(1))
 	le(uint16(1))
 	le(uint32(rate))
 	le(uint32(rate * 2))
@@ -285,8 +269,6 @@ func wavTone() []byte {
 	return b.Bytes()
 }
 
-// Свой файл заменяет аудио трека и той же записи на другом релизе (файл
-// общий); старый файл удаляется. Не аудио и трек не из медиатеки — отказ.
 func TestUploadTrackAudio(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
@@ -300,7 +282,7 @@ func TestUploadTrackAudio(t *testing.T) {
 			t.Fatalf("upload: %d %s, want %d", rec.Code, rec.Body.String(), want)
 		}
 	}
-	upload(wavTone(), http.StatusConflict) // нет в медиатеке
+	upload(wavTone(), http.StatusConflict)
 
 	var artistID, albumID string
 	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('Test Artist', '1') RETURNING id`).Scan(&artistID)
@@ -333,15 +315,11 @@ func TestUploadTrackAudio(t *testing.T) {
 		t.Errorf("temporary files left: %v", left)
 	}
 
-	// Пока трек перекачивается, загрузка подождёт.
 	db.Exec(`INSERT INTO ingest_jobs (source_ref, title, artist_name, album_artist_name, album_title, duration_ms, status)
 	         VALUES ('deezer:12345', 'Test Song', 'Test Artist', 'Test Artist', 'Test Album', 200000, 'pending')`)
 	upload(wavTone(), http.StatusConflict)
 }
 
-// Перекодирование своего файла бывает дольше общих таймаутов сервера
-// (cmd/api): ответ всё равно доходит. Раньше соединение обрывалось, и админ
-// видел 502 от nginx, хотя файл уже заменился.
 func TestUploadTrackAudio_OutlivesServerTimeouts(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
@@ -355,7 +333,7 @@ func TestUploadTrackAudio_OutlivesServerTimeouts(t *testing.T) {
 
 	orig := prepareAudio
 	prepareAudio = func(ctx context.Context, src, dst string) (float64, float64, error) {
-		time.Sleep(300 * time.Millisecond) // длинный FLAC на одном ядре
+		time.Sleep(300 * time.Millisecond)
 		return orig(ctx, src, dst)
 	}
 	t.Cleanup(func() { prepareAudio = orig })

@@ -10,13 +10,10 @@ import (
 
 var (
 	lrcStampRe = regexp.MustCompile(`\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]`)
-	lrcWordRe  = regexp.MustCompile(`<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>`) // «расширенный» LRC: время слов — убираем
-	lrcMetaRe  = regexp.MustCompile(`^\[[a-zA-Z#]+:.*\]$`)               // [ar:…], [ti:…], [offset:…]
+	lrcWordRe  = regexp.MustCompile(`<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>`)
+	lrcMetaRe  = regexp.MustCompile(`^\[[a-zA-Z#]+:.*\]$`)
 )
 
-// parseLRC разбирает LRC: «[mm:ss.xx]строка», у строки может быть
-// несколько отметок («[00:12.00][01:30.00]припев»). Пустая строка с
-// отметкой — конец предыдущей (проигрыш). Без единой отметки — nil.
 func parseLRC(src string, duration float64) *Lyrics {
 	type entry struct {
 		at   float64
@@ -32,7 +29,6 @@ func parseLRC(src string, duration float64) *Lyrics {
 		if len(stamps) == 0 || stamps[0][0] != 0 {
 			continue
 		}
-		// Текст — после последней из подряд идущих отметок.
 		end := 0
 		for _, s := range stamps {
 			if s[0] != end {
@@ -70,7 +66,6 @@ func parseLRC(src string, duration float64) *Lyrics {
 		return nil
 	}
 	fillEnds(l.Lines, duration)
-	// Все строки в одной точке — это не тайминг, а текст с нулевыми отметками.
 	if l.Lines[0].Start == l.Lines[len(l.Lines)-1].Start && len(l.Lines) > 1 {
 		return plainText(joinLines(l.Lines))
 	}
@@ -86,8 +81,6 @@ func joinLines(ls []Line) string {
 	return b.String()
 }
 
-// plainText — текст без времени; пустые строки — разделители куплетов
-// (подряд — одна), по краям не нужны.
 func plainText(body string) *Lyrics {
 	l := &Lyrics{Sync: SyncNone}
 	blank := false
@@ -112,11 +105,8 @@ func plainText(body string) *Lyrics {
 	return l
 }
 
-// SourceUpload — текст своего трека (загрузка), его дал автор.
 const SourceUpload = "upload"
 
-// FromText — текст, который автор дал своему треку: LRC с отметками
-// времени (тогда он синхронный) или просто строки. nil — пусто.
 func FromText(text string, duration float64) *Lyrics {
 	l := parseLRC(text, duration)
 	if l == nil {
@@ -128,7 +118,6 @@ func FromText(text string, duration float64) *Lyrics {
 	return l
 }
 
-// ToText — обратно в текст для окна загрузки: LRC, если есть время.
 func ToText(l *Lyrics) string {
 	if l == nil {
 		return ""

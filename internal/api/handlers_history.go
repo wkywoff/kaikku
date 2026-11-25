@@ -13,20 +13,11 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// История прослушиваний и подписки на артистов (миграция 0011). Из них
-// главная строит «Недавно прослушанное», «Тебе может понравиться» и
-// «Новые релизы».
-
-// --- история ---
-
 type playContext struct {
-	Kind string `json:"kind"` // album | playlist | artist | liked; пусто — альбом трека
+	Kind string `json:"kind"`
 	ID   string `json:"id"`
 }
 
-// handleRecordPlay — клиент присылает трек, дослушанный до 30 секунд (или до
-// половины), и откуда его включили. Ответ — id прослушивания: по нему плеер
-// потом сообщает, сколько трек играл (handlePlayListened).
 func (s *Server) handleRecordPlay(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	var req struct {
@@ -37,8 +28,6 @@ func (s *Server) handleRecordPlay(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "deezer_id must be a song ID")
 		return
 	}
-	// Снимок — с правками админа: прослушивание засчитывается исполнителю,
-	// которому релиз переназначен, а не дубликату у Deezer.
 	track, err := s.catalogTrack(viewerOf(r), req.DeezerID)
 	if err != nil {
 		writeCatalogError(w, "track lookup failed", err)
@@ -60,9 +49,6 @@ func (s *Server) handleRecordPlay(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int64{"id": id})
 }
 
-// handlePlayListened — сколько трек реально играл за прослушивание (ms, без
-// перемоток): по нему итоги года считают минуты. Плеер присылает его
-// несколько раз за прослушивание — остаётся наибольшее, не длиннее трека.
 func (s *Server) handlePlayListened(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var req struct {
@@ -87,10 +73,6 @@ func (s *Server) handlePlayListened(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// asTracklistOf: a track from another release put on album albumID's
-// tracklist (tracklist.go) and played there counts for that album — its
-// title, cover and ID in the snapshot, as on the album page — in the recent
-// list and the year in review.
 func (s *Server) asTracklistOf(albumID string, track *deezer.Track) {
 	var on bool
 	if s.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM albums WHERE deezer_id = $1 AND $2 = ANY(tracklist))`, albumID, track.ID).Scan(&on) != nil || !on {
@@ -101,8 +83,6 @@ func (s *Server) asTracklistOf(albumID string, track *deezer.Track) {
 	}
 }
 
-// albumVisibleTo: чужой черновик albumCard отдал бы как есть, поэтому там, где
-// ID называет клиент, сначала проверяем это.
 func (s *Server) albumVisibleTo(v viewer, id string) bool {
 	if !isLocalID(id) {
 		return true
@@ -111,8 +91,6 @@ func (s *Server) albumVisibleTo(v viewer, id string) bool {
 	return err == nil
 }
 
-// albumCard — the album's card fields (title, cover, artist) with the
-// admin's edits; nil if Deezer doesn't answer.
 func (s *Server) albumCard(id string) *deezer.Album {
 	if isLocalID(id) {
 		cards, err := s.localAlbumCards([]string{id})
@@ -125,16 +103,11 @@ func (s *Server) albumCard(id string) *deezer.Album {
 	if err != nil {
 		return nil
 	}
-	// Без Contributors: overlay правит их на месте, а срез общий с кешем.
 	a := &deezer.Album{ID: full.ID, Title: full.Title, CoverURL: full.CoverURL, ArtistID: full.ArtistID, ArtistName: full.ArtistName}
 	s.overlayFor(nil, []*deezer.Album{a}, nil)
 	return a
 }
 
-// resolvePlayContext checks the context the client named; anything unknown
-// or not visible to the user falls back to the track's own album. For an
-// artist it also returns their snapshot (name, picture) for the recent list,
-// for a mix — its card (mixes.go).
 func (s *Server) resolvePlayContext(r *http.Request, userID string, c playContext, track *deezer.Track) (playContext, []byte) {
 	albumCtx := playContext{Kind: "album", ID: track.AlbumID}
 	switch c.Kind {
@@ -175,7 +148,6 @@ func (s *Server) resolvePlayContext(r *http.Request, userID string, c playContex
 	return albumCtx, nil
 }
 
-// recentItem — карточка «Недавно прослушанного»: ровно одно из полей.
 type recentItem struct {
 	Kind     string         `json:"kind"`
 	Album    *deezer.Album  `json:"album,omitempty"`
@@ -186,8 +158,6 @@ type recentItem struct {
 
 const recentLimit = 12
 
-// handleRecent — откуда человек недавно слушал: альбомы, плейлисты,
-// артисты, «Любимые» — последние сверху, без повторов.
 func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	rows, err := s.DB.Query(`
@@ -238,16 +208,12 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if t.AlbumID != "" && t.AlbumID != x.id {
-				// Трек с другого релиза в треклисте этого (tracklist.go), записанный
-				// до asTracklistOf: карточка — по самому альбому, не по треку.
 				if a := s.albumCard(x.id); a != nil {
 					items = append(items, recentItem{Kind: "album", Album: a})
 				}
 				continue
 			}
 			if t.CoverURL == "" {
-				// Снимок сделан до выхода релиза, когда у Deezer ещё не было
-				// обложки: берём нынешнюю карточку альбома.
 				if a := s.albumCard(x.id); a != nil {
 					items = append(items, recentItem{Kind: "album", Album: a})
 					continue
@@ -266,12 +232,10 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 		case "playlist":
 			p, err := s.visiblePlaylist(userID, x.id)
 			if err != nil {
-				continue // удалён или стал приватным
+				continue
 			}
 			items = append(items, recentItem{Kind: "playlist", Playlist: &p})
 		case "mix":
-			// Карточка — какой микс был тогда; если его уже нет, страница
-			// микса так и скажет.
 			var m mix
 			if json.Unmarshal(x.ctxMeta, &m) == nil && m.ID != "" {
 				items = append(items, recentItem{Kind: "mix", Mix: &m})
@@ -285,8 +249,6 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// handleSuggestions — «Тебе может понравиться»: похожие на артистов, которых
-// человек больше всего слушал за месяц, кроме тех, на кого он подписан.
 func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	rows, err := s.DB.Query(`
@@ -323,11 +285,10 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 		skip[id] = true
 	}
 
-	// По очереди от каждого из топа, чтобы первый не занял весь ряд.
 	var lists [][]deezer.Artist
 	for _, id := range topIDs {
 		if isLocalID(id) {
-			continue // похожих на своего артиста Deezer не знает
+			continue
 		}
 		related, err := s.relatedArtists(id)
 		if err != nil {
@@ -353,8 +314,6 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	// «Похоже на …»: имена — из истории прослушиваний, какими были тогда;
-	// правки админа (новое имя) накладываются так же, как на карточки.
 	based := make([]deezer.Artist, len(topIDs))
 	for i := range topIDs {
 		based[i] = deezer.Artist{ID: topIDs[i], Name: basedOn[i]}
@@ -368,8 +327,6 @@ func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "based_on": basedOn})
 }
-
-// --- подписки на артистов ---
 
 func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
@@ -437,9 +394,6 @@ func (s *Server) handleFollowedArtists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"artists": artists})
 }
 
-// Новые релизы — вышедшие за последний месяц (releasesWindow) у артистов,
-// на которых человек подписан. Дискографии кешируются, так что главная не
-// ходит в Deezer за каждым артистом при каждом открытии.
 const (
 	releasesWindow = 30 * 24 * time.Hour
 	releasesLimit  = 20
@@ -455,11 +409,9 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	since := time.Now().Add(-releasesWindow).Format("2006-01-02")
 
-	// Списки разбираются в порядке подписок, а не по мере ответов: иначе
-	// совместный релиз доставался то одному артисту, то другому.
 	lists := make([][]deezer.Album, len(artists))
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4) // Deezer пускает ~50 запросов за 5 с
+	sem := make(chan struct{}, 4)
 	for i, artist := range artists {
 		wg.Add(1)
 		go func() {
@@ -468,7 +420,7 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 			defer func() { <-sem }()
 			err := guard("new releases", func() error {
 				var list []deezer.Album
-				if !isLocalID(artist.ID) { // у своего артиста все релизы — из базы (creditedDiscography)
+				if !isLocalID(artist.ID) {
 					var err error
 					list, err = storedCached(s, "albums:"+artist.ID, releasesTTL, func() ([]deezer.Album, error) {
 						return s.Deezer.GetArtistAlbums(artist.ID, artistAlbumsFirstPage)
@@ -477,8 +429,6 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 						return err
 					}
 				}
-				// Правки накладываются на месте — не в кеш; релизы, переназначенные
-				// артисту, — тоже его новинки.
 				lists[i] = s.creditedDiscography(artist.ID, cloneAlbums(list))
 				return nil
 			})
@@ -490,7 +440,7 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	albums := []deezer.Album{}
-	followedOn := map[string][]deezer.ArtistRef{} // релиз → подписки, в чьих списках он есть
+	followedOn := map[string][]deezer.ArtistRef{}
 	for i, list := range lists {
 		artist := artists[i]
 		for _, a := range list {
@@ -504,7 +454,7 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 				}
 				albums = append(albums, a)
 			} else if refs[len(refs)-1].ID == artist.ID {
-				continue // тот же релиз дважды в одном списке
+				continue
 			}
 			followedOn[a.ID] = append(refs, deezer.ArtistRef{ID: artist.ID, Name: artist.Name, PictureURL: artist.PictureURL})
 		}
@@ -524,13 +474,6 @@ func (s *Server) handleNewReleases(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"albums": visibleAlbums(r, albums)})
 }
 
-// creditReleases подписывает релизы полки их исполнителями (contributors).
-// В списке релизов артиста Deezer исполнителей не присылает, и релиз
-// подписан тем, на кого человек подписан. Совместный релиз нескольких
-// подписок получает состав из самого альбома, как на его странице: альбом
-// почти всегда в кеше, а таких релизов на полке единицы. Подписки, которых в
-// составе нет, дописываются в конец; Deezer не ответил — подписки по порядку.
-// У альбома, запрошенного целиком (запомненный релиз), из состава уходят фиты.
 func (s *Server) creditReleases(albums []deezer.Album, followedOn map[string][]deezer.ArtistRef) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
@@ -572,8 +515,6 @@ func (s *Server) creditReleases(albums []deezer.Album, followedOn map[string][]d
 	wg.Wait()
 }
 
-// mainCredits — главные исполнители альбома, без фитов, в порядке Deezer.
-// Известны, только если альбом запрашивался целиком (GetAlbum).
 func mainCredits(a deezer.Album) []deezer.ArtistRef {
 	var out []deezer.ArtistRef
 	for _, c := range a.Contributors {
@@ -584,13 +525,8 @@ func mainCredits(a deezer.Album) []deezer.ArtistRef {
 	return out
 }
 
-// Новинки всегда на первой странице дискографии (Deezer отдаёт свежие первыми).
 const artistAlbumsFirstPage = 100
 
-// GET /api/me/library/times — для сортировки медиатеки: когда что
-// добавлено (сохранённые альбомы, подписки, свои плейлисты) и когда
-// последний раз слушалось (по контексту прослушиваний). Ключи — "<kind>:<id>",
-// kind — album | artist | playlist (и liked у прослушиваний).
 func (s *Server) handleLibraryTimes(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	times := func(query string) (map[string]time.Time, error) {

@@ -15,25 +15,8 @@ import (
 	"time"
 )
 
-// Куки YouTube (cookies.txt в формате Netscape), которые админ загружает на
-// странице «Не нашлось»: с ними YouTube пускает и сервер, которому иначе
-// отвечает «Sign in to confirm you're not a bot», и к видео 18+ (если
-// аккаунт подтвердил возраст), для спонсоров канала. Лежат одним файлом
-// рядом со staging — на томе, общем у API и воркера
-// (/data/youtube-cookies.txt), и только для youtube.com: куки других сайтов
-// серверу не нужны.
-//
-// Только когда YouTube просит войти (needsSignIn), не всегда: с аккаунтом
-// yt-dlp не может взять быстрые клиенты и решает JS-проверку плеера —
-// замер 23.11.2026 на сервере: ~10 с на ролик вместо ~2.
-//
-// yt-dlp с --cookies при выходе записывает свою банку обратно в файл, а
-// запусков бывает несколько сразу (воркер, API, помощник): общий файл они
-// перетирали бы друг другу. Поэтому каждый запуск получает свою копию
-// (cookieCopy), а сам файл меняет только админ.
 var cookiesFile string
 
-// haveCookies reports whether the admin uploaded cookies.
 func haveCookies() bool {
 	if cookiesFile == "" {
 		return false
@@ -42,19 +25,14 @@ func haveCookies() bool {
 	return err == nil
 }
 
-// Когда YouTube не пускает сервер без кук, они какое-то время идут первыми:
-// иначе каждый запрос сначала зря ждал бы отказа.
 const cookiesFirstFor = 30 * time.Minute
 
-var cookiesFirstUntil atomic.Int64 // UnixNano
+var cookiesFirstUntil atomic.Int64
 
 func cookiesFirst() bool {
 	return time.Now().UnixNano() < cookiesFirstUntil.Load() && haveCookies()
 }
 
-// signInNeeded decides about a run without the cookies that failed with
-// output: true — run again with them (YouTube wants a sign-in and they're
-// there). A refusal of the whole server also puts them first for a while.
 func signInNeeded(output string) bool {
 	if !needsSignIn(output) || !haveCookies() {
 		return false
@@ -65,7 +43,6 @@ func signInNeeded(output string) bool {
 	return true
 }
 
-// stderrOf is yt-dlp's stderr in cmd.Output's error.
 func stderrOf(err error) string {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		return string(exitErr.Stderr)
@@ -73,8 +50,6 @@ func stderrOf(err error) string {
 	return ""
 }
 
-// ytdlpOutput runs yt-dlp for its stdout: without the cookies, and again
-// with them when YouTube wants a sign-in.
 func ytdlpOutput(ctx context.Context, args ...string) ([]byte, error) {
 	signIn := cookiesFirst()
 	for {
@@ -88,22 +63,17 @@ func ytdlpOutput(ctx context.Context, args ...string) ([]byte, error) {
 	}
 }
 
-// SetCookiesFile sets where uploaded cookies are kept; "" turns them off.
-// Call it at startup, like SetProxy.
 func SetCookiesFile(path string) { cookiesFile = path }
 
-// CookiesPath is the cookies file next to stagingDir, on the volume the API
-// and the worker share.
 func CookiesPath(stagingDir string) string {
 	return filepath.Join(filepath.Dir(filepath.Clean(stagingDir)), "youtube-cookies.txt")
 }
 
-// CookiesInfo describes uploaded cookies without their values.
 type CookiesInfo struct {
 	UpdatedAt time.Time  `json:"updated_at"`
-	Count     int        `json:"count"`             // кук youtube.com
-	SignedIn  bool       `json:"signed_in"`         // среди них вход в аккаунт
-	Expires   *time.Time `json:"expires,omitempty"` // когда истекает вход: самая ранняя из кук входа
+	Count     int        `json:"count"`
+	SignedIn  bool       `json:"signed_in"`
+	Expires   *time.Time `json:"expires,omitempty"`
 }
 
 var (
@@ -113,19 +83,16 @@ var (
 	ErrCookiesOff       = errors.New("youtube cookies are off on this server")
 )
 
-// Куки входа в аккаунт Google: без них YouTube просит войти так же.
 var signInCookies = map[string]bool{
 	"SID": true, "__Secure-1PSID": true, "__Secure-3PSID": true,
 	"SAPISID": true, "__Secure-3PAPISID": true, "LOGIN_INFO": true,
 }
 
-// parseCookies keeps the youtube.com cookies of a cookies.txt file, as a
-// file of their own.
 func parseCookies(data []byte) ([]byte, CookiesInfo, error) {
 	var info CookiesInfo
 	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	if t := bytes.TrimSpace(data); len(t) > 0 && (t[0] == '[' || t[0] == '{') {
-		return nil, info, ErrCookiesJSON // так выгружают некоторые расширения
+		return nil, info, ErrCookiesJSON
 	}
 	var out bytes.Buffer
 	out.WriteString("# Netscape HTTP Cookie File\n")
@@ -136,7 +103,6 @@ func parseCookies(data []byte) ([]byte, CookiesInfo, error) {
 		if strings.TrimSpace(entry) == "" || !httpOnly && strings.HasPrefix(entry, "#") {
 			continue
 		}
-		// domain, для поддоменов, path, только https, истекает, имя, значение
 		f := strings.Split(entry, "\t")
 		if len(f) != 7 {
 			continue
@@ -168,8 +134,6 @@ func parseCookies(data []byte) ([]byte, CookiesInfo, error) {
 	return out.Bytes(), info, nil
 }
 
-// SaveCookies keeps the youtube.com cookies of a cookies.txt file for every
-// later yt-dlp run; the helper restarts with them.
 func SaveCookies(data []byte) (CookiesInfo, error) {
 	if cookiesFile == "" {
 		return CookiesInfo{}, ErrCookiesOff
@@ -178,8 +142,6 @@ func SaveCookies(data []byte) (CookiesInfo, error) {
 	if err != nil {
 		return info, err
 	}
-	// Целиком или никак: запуск, который читает файл прямо сейчас, не должен
-	// увидеть половину.
 	tmp, err := os.CreateTemp(filepath.Dir(cookiesFile), ".youtube-cookies-*")
 	if err != nil {
 		return info, err
@@ -200,7 +162,6 @@ func SaveCookies(data []byte) (CookiesInfo, error) {
 	return info, nil
 }
 
-// RemoveCookies deletes the uploaded cookies.
 func RemoveCookies() error {
 	if cookiesFile == "" {
 		return nil
@@ -212,7 +173,6 @@ func RemoveCookies() error {
 	return nil
 }
 
-// Cookies describes the uploaded cookies; false: there are none.
 func Cookies() (CookiesInfo, bool) {
 	if cookiesFile == "" {
 		return CookiesInfo{}, false
@@ -231,7 +191,6 @@ func Cookies() (CookiesInfo, bool) {
 	return info, true
 }
 
-// cookiesVersion changes whenever the cookies file does ("" — no file).
 func cookiesVersion() string {
 	if cookiesFile == "" {
 		return ""
@@ -243,8 +202,6 @@ func cookiesVersion() string {
 	return fmt.Sprintf("%d/%d", st.ModTime().UnixNano(), st.Size())
 }
 
-// cookieCopy copies the cookies for one yt-dlp run (path "" — there are
-// none); done removes the copy once the run is over.
 func cookieCopy() (path string, done func()) {
 	nothing := func() {}
 	if cookiesFile == "" {
@@ -257,7 +214,7 @@ func cookieCopy() (path string, done func()) {
 		}
 		return "", nothing
 	}
-	f, err := os.CreateTemp("", "kaikku-cookies-*.txt") // 0600
+	f, err := os.CreateTemp("", "kaikku-cookies-*.txt")
 	if err != nil {
 		log.Printf("youtube cookies: %v", err)
 		return "", nothing
@@ -274,9 +231,6 @@ func cookieCopy() (path string, done func()) {
 	return f.Name(), func() { os.Remove(f.Name()) }
 }
 
-// Check asks YouTube for videoID with the cookies, the way the worker does
-// (yt-dlp itself, not the helper): nil means YouTube lets the server in
-// with them, ErrBlocked that it still doesn't.
 func Check(ctx context.Context, videoID string) error {
 	cmd, done := command(ctx, true, "-j", "--no-warnings", "-f", "140/bestaudio", "https://www.youtube.com/watch?v="+videoID)
 	defer done()

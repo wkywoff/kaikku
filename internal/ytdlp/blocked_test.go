@@ -38,7 +38,6 @@ func TestDownload_BlockedStopsAfterDefaultClients(t *testing.T) {
 	if !errors.Is(err, ErrBlocked) {
 		t.Fatalf("Download: %v, want ErrBlocked", err)
 	}
-	// Быстрый клиент, затем штатные — третья попытка уже не нужна.
 	if len(*calls) != 2 {
 		t.Errorf("yt-dlp ran %d times, want 2: %q", len(*calls), *calls)
 	}
@@ -61,7 +60,6 @@ func TestOpenStream_BlockedGivesUpAtOnce(t *testing.T) {
 	if !errors.Is(err, ErrBlocked) {
 		t.Fatalf("OpenStream: %v, want ErrBlocked", err)
 	}
-	// Поиск и одно извлечение: ни второй попытки, ни следующего видео.
 	if len(*calls) != 2 {
 		t.Errorf("yt-dlp calls: %q", *calls)
 	}

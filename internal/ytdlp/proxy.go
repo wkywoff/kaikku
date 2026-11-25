@@ -9,18 +9,8 @@ import (
 	"os/exec"
 )
 
-// Прокси к YouTube (YTDLP_PROXY). YouTube не отдаёт видео на многие адреса
-// дата-центров («Sign in to confirm you're not a bot»), а через другой
-// выход, например Cloudflare WARP, отдаёт. Через прокси идёт всё, что
-// ходит на YouTube: yt-dlp и его помощник, поиск YouTube Music и докачка
-// звука по ссылке googlevideo (Fetch) — ссылка действует только с того IP,
-// с которого её получили.
 var proxy string
 
-// SetProxy sends everything that talks to YouTube through the proxy at raw
-// (socks5://host:port, socks5h://… or http://host:port); "" means directly.
-// Call it at startup, before EnableWarm: the helper takes the proxy when it
-// starts.
 func SetProxy(raw string) error {
 	if raw == "" {
 		proxy = ""
@@ -32,7 +22,7 @@ func SetProxy(raw string) error {
 		return fmt.Errorf("want socks5://host:port or http://host:port, got %q", raw)
 	}
 	switch u.Scheme {
-	case "socks5", "socks5h", "http", "https": // понимают и yt-dlp, и net/http
+	case "socks5", "socks5h", "http", "https":
 	default:
 		return fmt.Errorf("unsupported proxy scheme %q: use socks5://, socks5h:// or http://", u.Scheme)
 	}
@@ -44,9 +34,6 @@ func SetProxy(raw string) error {
 	return nil
 }
 
-// command runs yt-dlp with the proxy and, when signIn is set, a copy of the
-// cookies (cookies.go: they're for when YouTube wants a sign-in, see
-// ytdlpOutput). Call done once the process has exited: it removes the copy.
 func command(ctx context.Context, signIn bool, args ...string) (cmd *exec.Cmd, done func()) {
 	var common []string
 	if proxy != "" {
@@ -62,8 +49,6 @@ func command(ctx context.Context, signIn bool, args ...string) (cmd *exec.Cmd, d
 	return execCommand(ctx, "yt-dlp", append(common, args...)...), done
 }
 
-// warmEnv — добавки к окружению помощника (helper.py читает их при
-// старте); cookies — его копия кук.
 func warmEnv(cookies string) []string {
 	env := []string{warmMallocArenas}
 	if proxy != "" {

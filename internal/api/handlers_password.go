@@ -17,18 +17,6 @@ import (
 	"kaikku/internal/auth"
 )
 
-// Смена и сброс пароля (миграция 0016).
-//
-//   - Сам: PUT /api/me/password {old_password, new_password} — со старым
-//     паролем; неудачные попытки сдерживает та же пауза, что и вход
-//     (loginguard.go).
-//   - Забыл: админ создаёт одноразовую ссылку /?reset=<код> на 24 часа
-//     (почты у пользователей нет), человек по ней сам задаёт новый пароль —
-//     админ его не видит. В базе — только sha256 кода.
-//
-// После смены или сброса токены, выданные раньше, не действуют (authed):
-// остальные устройства выходят, а ответ несёт новый токен для этого.
-
 const passwordResetTTL = 24 * time.Hour
 
 func validNewPassword(p string) bool {
@@ -40,7 +28,6 @@ func resetCodeHash(code string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// handleAdminUsers (admin) — кому можно сбросить пароль.
 func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.Query(`SELECT id, username, is_admin FROM users ORDER BY lower(username)`)
 	if err != nil {
@@ -67,8 +54,6 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": users})
 }
 
-// handleCreatePasswordReset (admin) issues a one-time link for the user;
-// an older unused link of theirs stops working.
 func (s *Server) handleCreatePasswordReset(w http.ResponseWriter, r *http.Request) {
 	adminID := currentUser(r)
 	userID := r.PathValue("id")
@@ -114,8 +99,6 @@ func (s *Server) handleCreatePasswordReset(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// handlePasswordReset ({code, password}, no auth) sets the new password by
-// a reset link and logs the person in.
 func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code     string `json:"code"`
@@ -125,7 +108,6 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password: 8–256 characters")
 		return
 	}
-	// Ссылку — до хеширования: по чужой или старой ссылке CPU не тратится.
 	hash := resetCodeHash(req.Code)
 	var userID, username string
 	err := s.DB.QueryRow(
@@ -154,7 +136,6 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	// Пока хешировали, ссылку могли использовать — второй раз она не сработает.
 	res, err := tx.Exec(`UPDATE password_resets SET used_at = now() WHERE code_hash = $1 AND used_at IS NULL AND expires_at > now()`, hash)
 	if err != nil {
 		serverError(w, r, "could not set the password", err)
@@ -167,11 +148,10 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !s.setPassword(w, r, tx, userID, passwordHash) {
 		return
 	}
-	s.loginForget(username) // пауза после неудачных входов — снята
+	s.loginForget(username)
 	s.writeFreshToken(w, r, userID, username)
 }
 
-// handleChangePassword (PUT /api/me/password) — с текущим паролем.
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	var req struct {
@@ -187,7 +167,6 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "query failed", err)
 		return
 	}
-	// Подбор старого пароля с чужого открытого устройства — как подбор при входе.
 	ip := clientIP(r)
 	if wait := s.reserveLogin(username, ip, time.Now()); wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
@@ -219,9 +198,6 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	// Пока шли проверка и хеширование, пароль могли сменить (сброс по ссылке,
-	// другое устройство): запрос доказан уже не действующим паролем и новый
-	// не перезаписывает. FOR UPDATE — чтобы сброс не прошёл между сверкой и записью.
 	var current string
 	if err := tx.QueryRow(`SELECT password_hash FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&current); err != nil {
 		serverError(w, r, "could not set the password", err)
@@ -237,12 +213,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	s.writeFreshToken(w, r, userID, username)
 }
 
-// hashNewPassword — auth.HashPassword; тест подставляет сброс пароля в момент хеширования.
 var hashNewPassword = auth.HashPassword
 
-// setPassword stores the hash, ends every older session (password_changed_at)
-// and drops the user's unused reset links and app password (кто подсмотрел
-// его из чужой сессии, не должен остаться в приложениях); commits tx.
 func (s *Server) setPassword(w http.ResponseWriter, r *http.Request, tx *sql.Tx, userID, hash string) bool {
 	if _, err := tx.Exec(`UPDATE users SET password_hash = $2, password_changed_at = now(), subsonic_secret = NULL WHERE id = $1`, userID, hash); err != nil {
 		serverError(w, r, "could not set the password", err)
@@ -259,9 +231,6 @@ func (s *Server) setPassword(w http.ResponseWriter, r *http.Request, tx *sql.Tx,
 	return true
 }
 
-// writeFreshToken answers with a token issued after the change. Tokens carry
-// whole seconds and authed rejects those from the second of the change, so
-// the new one waits for the next second (at most 1 s).
 func (s *Server) writeFreshToken(w http.ResponseWriter, r *http.Request, userID, username string) {
 	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
 	token, err := auth.IssueToken(userID, tokenTTL, s.JWTSecret)

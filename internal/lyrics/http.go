@@ -16,7 +16,6 @@ const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, li
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
-// statusError — ответ не 2xx.
 type statusError struct {
 	Code int
 	Body string
@@ -24,12 +23,10 @@ type statusError struct {
 
 func (e *statusError) Error() string { return fmt.Sprintf("HTTP %d: %.200s", e.Code, e.Body) }
 
-// fetch делает GET и отдаёт тело ответа (до 8 МБ).
 func fetch(ctx context.Context, url string, headers map[string]string) ([]byte, error) {
 	return do(ctx, http.MethodGet, url, headers, nil)
 }
 
-// postJSON отправляет body как JSON и разбирает JSON-ответ в out.
 func postJSON(ctx context.Context, url string, headers map[string]string, body, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -46,8 +43,6 @@ func postJSON(ctx context.Context, url string, headers map[string]string, body, 
 	return json.Unmarshal(resp, out)
 }
 
-// retryAfter — пауза перед единственным повтором, когда источник занят
-// (LRCLIB под нагрузкой отвечает 503 «retry in a moment»).
 var retryAfter = 700 * time.Millisecond
 
 func do(ctx context.Context, method, rawURL string, headers map[string]string, body []byte) ([]byte, error) {
@@ -78,7 +73,6 @@ func doOnce(ctx context.Context, method, rawURL string, headers map[string]strin
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		// В ошибку и лог — только хост и путь, без параметров запроса.
 		var ue *url.Error
 		if errors.As(err, &ue) {
 			return nil, fmt.Errorf("%s %s%s: %w", ue.Op, req.URL.Host, req.URL.Path, ue.Err)

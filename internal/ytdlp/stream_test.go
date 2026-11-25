@@ -18,25 +18,6 @@ import (
 	"time"
 )
 
-// fakeYtDlp replaces yt-dlp with this test binary (TestHelperProcess), so
-// the code under test runs real processes with pipes and exit codes but no
-// network. Video IDs decide the behaviour:
-//
-//	ok*      — extraction gives a direct URL (served by a local server with
-//	           Range support); `-o -` prints "audio:<id>";
-//	gone*    — "ERROR: Video unavailable", exit 1, for everything;
-//	flaky*   — fails like gone* on the first call, then like ok*;
-//	partial* — `-o -` prints some audio, then fails;
-//	expired* — the direct URL answers 403 (yt-dlp's own download works);
-//	hls*     — format 140 is HLS, not a plain file;
-//	noquick* — fails with the quick client (quickClientArgs), works without;
-//	blocked* — "Sign in to confirm you’re not a bot", exit 1, for everything;
-//	bot*     — like blocked*, but works with --cookies;
-//	age*     — "Sign in to confirm your age" (18+), works with --cookies.
-//
-// Searches (--flat-playlist) print searchResults; searchResults "BLOCKED"
-// fails them like blocked*, "NEEDCOOKIES\n…" like bot* (then prints the
-// rest). `-o <template>` writes the audio to the template with ext m4a.
 func fakeYtDlp(t *testing.T, searchResults string) *[]string {
 	t.Helper()
 	media := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +53,7 @@ func TestHelperProcess(t *testing.T) {
 		fakeWarmHelper()
 	}
 	args := os.Args[sep+2:]
-	if i := slices.Index(args, "--cookies"); i >= 0 { // копия кук должна быть на месте всё время запуска
+	if i := slices.Index(args, "--cookies"); i >= 0 {
 		if b, err := os.ReadFile(args[i+1]); err != nil || !strings.Contains(string(b), "youtube.com") {
 			fmt.Fprintln(os.Stderr, "ERROR: the cookies file is missing or empty")
 			os.Exit(1)
@@ -120,7 +101,7 @@ func TestHelperProcess(t *testing.T) {
 		}
 		os.Exit(0)
 	}
-	if slices.Contains(args, "-j") { // извлечение без скачивания
+	if slices.Contains(args, "-j") {
 		protocol := "https"
 		if strings.HasPrefix(id, "hls") {
 			protocol = "m3u8_native"
@@ -188,11 +169,10 @@ func TestOpenStream_FallsBackToNextCandidate(t *testing.T) {
 	}
 	data, _ := io.ReadAll(body)
 	body.Close()
-	// goneBest — две попытки, flakySecond — проходит со второй.
 	if id != "flakySecond" || string(data) != "audio:flakySecond" {
 		t.Fatalf("OpenStream = %q (%q), want flakySecond", id, data)
 	}
-	if len(*calls) != 5 { // поиск + 2 × goneBest + 2 × flakySecond (только извлечение)
+	if len(*calls) != 5 {
 		t.Errorf("yt-dlp calls = %d, want 5: %q", len(*calls), *calls)
 	}
 	if last := (*calls)[4]; !strings.Contains(last, "-j") || strings.Contains(last, "-o -") {
@@ -200,8 +180,6 @@ func TestOpenStream_FallsBackToNextCandidate(t *testing.T) {
 	}
 }
 
-// Заданное видео (ссылка админа, уже скачанное раньше) — без поиска; не
-// открылось — поиск, только если это разрешено.
 func TestOpenStream_GivenVideo(t *testing.T) {
 	calls := fakeYtDlp(t, searchLine("okFound", "Song", 200))
 	want := Want{Artist: "Artist", Title: "Song", DurationMs: 200000, VideoID: "okGiven"}
@@ -260,7 +238,7 @@ func TestFetch_ChunkedRangeRequests(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.Header.Get("Range") == "" || r.Header.Get("X-Test") != "yes" {
-			http.Error(w, "no range or headers", http.StatusBadRequest) // как YouTube: целиком — нельзя
+			http.Error(w, "no range or headers", http.StatusBadRequest)
 			return
 		}
 		http.ServeContent(w, r, "", time.Time{}, strings.NewReader(content))
@@ -282,7 +260,7 @@ func TestFetch_ChunkedRangeRequests(t *testing.T) {
 	if err != nil || string(data) != content {
 		t.Fatalf("ReadAll = %q, %v", data, err)
 	}
-	if n := requests.Load(); n != 8 { // ceil(50/7)
+	if n := requests.Load(); n != 8 {
 		t.Errorf("%d range requests, want 8", n)
 	}
 }
@@ -309,8 +287,6 @@ func TestParseContentRange(t *testing.T) {
 	}
 }
 
-// fakeWarmHelper speaks helper.py's protocol with the same video-ID
-// behaviours as the fake yt-dlp; crash* makes the helper exit.
 func fakeWarmHelper() {
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
@@ -335,7 +311,7 @@ func fakeWarmHelper() {
 			reply["error"] = "ERROR: [youtube] " + req.Video + ": Sign in to confirm you’re not a bot"
 		default:
 			url := os.Getenv("FAKE_MEDIA_URL") + "/" + req.Video
-			if c := os.Getenv("KAIKKU_YTDLP_COOKIES"); c != "" { // помощник с куками — видно по ссылке
+			if c := os.Getenv("KAIKKU_YTDLP_COOKIES"); c != "" {
 				if b, err := os.ReadFile(c); err == nil && strings.Contains(string(b), "youtube.com") {
 					url += "?cookies=1"
 				}
@@ -417,7 +393,6 @@ func TestWarm_HelperCrashFallsBackToYtDlp(t *testing.T) {
 		t.Errorf("calls %q: want the extraction redone by yt-dlp after the helper died", *calls)
 	}
 
-	// Сразу после падения помощник не перезапускается — всё через yt-dlp.
 	if _, err := FindMatches(context.Background(), want, 15, 4000); err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +441,7 @@ func TestWarm_SleepsWhenIdleAndWakesWithoutFallback(t *testing.T) {
 	}
 	waitDead(t, old)
 
-	openOK(t, want) // снова через помощника, а не через yt-dlp и без паузы после «падения»
+	openOK(t, want)
 	if countCalls(*calls, "-c ") != 2 || countCalls(*calls, "-j --no-warnings") != 0 {
 		t.Errorf("calls %q: want the helper started again and no yt-dlp fallback", *calls)
 	}
@@ -490,12 +465,11 @@ func TestWarm_RecyclesGrownHelperBetweenRequests(t *testing.T) {
 	}
 
 	rss = warmRecycleRSS + 1
-	c.maintain(time.Now().Add(time.Second)) // запрос только что был — не трогаем
+	c.maintain(time.Now().Add(time.Second))
 	if c.proc != old {
 		t.Fatal("recycled right after a request")
 	}
 
-	// Запрос в работе — не заменяем, даже в паузу.
 	old.mu.Lock()
 	old.pending[-1] = make(chan warmReply, 1)
 	old.mu.Unlock()

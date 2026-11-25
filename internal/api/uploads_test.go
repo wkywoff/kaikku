@@ -51,7 +51,6 @@ type releaseResp struct {
 	} `json:"tracks"`
 }
 
-// newDraft — черновик через API и n треков в нём (как после загрузки файлов).
 func newDraft(t *testing.T, db *sql.DB, router http.Handler, token string, n int) (string, []string) {
 	t.Helper()
 	var created struct{ ID string }
@@ -74,8 +73,6 @@ func newDraft(t *testing.T, db *sql.DB, router http.Handler, token string, n int
 	return created.ID, tracks
 }
 
-// Загружать может каждый; в «Моих загрузках» у каждого — свои релизы, у
-// админа — все (и без режима админа), с именем автора у чужих.
 func TestUploads_EveryoneUploadsAdminSeesAll(t *testing.T) {
 	_, router, admin := newTestRouter(t)
 	user := invitedUser(t, router, admin, "plain")
@@ -123,22 +120,19 @@ func TestUploads_SaveAndPublish(t *testing.T) {
 		t.Fatalf("artist = %+v", artist)
 	}
 
-	// Черновик сохраняется и недозаполненным.
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin,
 		`{"title":"","tracks":[{"id":"`+tracks[0]+`","title":""},{"id":"`+tracks[1]+`","title":"B"}]}`, http.StatusOK)
 
 	body := `{"title":"Big Miss","artists":["` + artist.ID + `","1"],"record_type":"ep","release_date":"2026-10-15",
 		"tracks":[{"id":"` + tracks[1] + `","title":"Second first","explicit":true,"artists":["` + artist.ID + `","2"]},
 		          {"id":"` + tracks[0] + `","title":"Then this"}],"published":true}`
-	// Не хватает — 400 со списком; релиз остаётся черновиком.
 	var missing struct{ Missing []string }
 	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, strings.Replace(body, `"Big Miss"`, `""`, 1), http.StatusBadRequest), &missing)
 	if !slices.Equal(missing.Missing, []string{"title"}) {
 		t.Errorf("missing = %v", missing.Missing)
 	}
-	call(t, router, "GET", "/api/discover/albums/"+id, listener, "", http.StatusNotFound) // всё ещё черновик
+	call(t, router, "GET", "/api/discover/albums/"+id, listener, "", http.StatusNotFound)
 
-	// Без обложки публикуется с заглушкой; своя её заменяет.
 	var st releaseResp
 	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body, http.StatusOK), &st)
 	placeholder := strings.TrimPrefix(st.CoverURL, "/media/")
@@ -189,17 +183,13 @@ func TestUploads_SaveAndPublish(t *testing.T) {
 		t.Errorf("uploads = %+v", mine.Releases)
 	}
 
-	// Список треков должен совпадать с тем, что в релизе.
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, `{"title":"X","tracks":[{"id":"`+tracks[0]+`","title":"A"}]}`, http.StatusConflict)
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, `{"title":"X","artists":["k999999"],"tracks":[]}`, http.StatusBadRequest)
 
-	// Снять с публикации.
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, strings.Replace(body, `"published":true`, `"published":false`, 1), http.StatusOK)
 	call(t, router, "GET", "/api/discover/albums/"+id, listener, "", http.StatusNotFound)
 }
 
-// Релиз привязывается версией к другому и пропадает из дискографии,
-// оставаясь в «Других версиях». Mock: релиз 9 — артиста 1.
 func TestUploads_Version(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
@@ -212,7 +202,7 @@ func TestUploads_Version(t *testing.T) {
 		return `{"title":"Deluxe","artists":["1"],"record_type":"album","release_date":"2026-10-20",
 			"tracks":[{"id":"` + tracks[0] + `","title":"Bonus"}],"version_of":` + version + `,"published":true}`
 	}
-	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`"`+id+`"`), http.StatusBadRequest) // сам себе
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`"`+id+`"`), http.StatusBadRequest)
 
 	var st struct {
 		VersionOf *struct{ ID, Title string } `json:"version_of"`
@@ -236,8 +226,6 @@ func TestUploads_Version(t *testing.T) {
 	if !slices.Equal(albumIDs(page.Versions), []string{id}) {
 		t.Errorf("main release versions = %+v", page.Versions)
 	}
-	// Карточка версии — explicit, если explicit хоть один трек: свой или
-	// добавленный с Deezer (mock: 888 — explicit).
 	for _, c := range []struct {
 		tracks string
 		want   bool
@@ -270,8 +258,6 @@ func TestUploads_Version(t *testing.T) {
 	}
 }
 
-// Основной релиз сняли с публикации уже после привязки: в редакторе версии от
-// него остаётся только ID, без нынешних названия и обложки чужого черновика.
 func TestUploads_VersionOfWithdrawnRelease(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
@@ -306,9 +292,6 @@ func TestUploads_VersionOfWithdrawnRelease(t *testing.T) {
 	}
 }
 
-// В релиз добавляются существующие треки (Deezer, другие свои) — под
-// названием и обложкой релиза, на своём месте; сами они не меняются.
-// Mock: трек 12345 — с релиза 9.
 func TestUploads_OtherTracks(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
@@ -322,8 +305,8 @@ func TestUploads_OtherTracks(t *testing.T) {
 			"tracks":[` + trackList + `],"published":true}`
 	}
 	own := `{"id":"` + tracks[0] + `","title":"Bonus"}`
-	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own+`,`+own), http.StatusBadRequest)             // дважды
-	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own+`,{"id":"k999999"}`), http.StatusBadRequest) // нет такого
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own+`,`+own), http.StatusBadRequest)
+	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own+`,{"id":"k999999"}`), http.StatusBadRequest)
 
 	var st struct {
 		Tracks []struct {
@@ -332,7 +315,6 @@ func TestUploads_OtherTracks(t *testing.T) {
 			Other bool   `json:"other"`
 		} `json:"tracks"`
 	}
-	// У добавленного трека название не нужно: его здесь не правят.
 	json.Unmarshal(call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`{"id":"12345","title":"Renamed"},`+own), http.StatusOK), &st)
 	if len(st.Tracks) != 2 || st.Tracks[0].ID != "12345" || !st.Tracks[0].Other || st.Tracks[0].Title != "Test Song" || st.Tracks[1].Other {
 		t.Errorf("tracks = %+v", st.Tracks)
@@ -356,7 +338,6 @@ func TestUploads_OtherTracks(t *testing.T) {
 	if page.Album.NbTracks != 2 {
 		t.Errorf("nb_tracks = %d", page.Album.NbTracks)
 	}
-	// Карточка (медиатека, дискография, Subsonic) считает добавленный тоже: 1 с + 200 с.
 	var mine struct {
 		Releases []struct {
 			NbTracks    int `json:"nb_tracks"`
@@ -368,15 +349,12 @@ func TestUploads_OtherTracks(t *testing.T) {
 		t.Errorf("card = %+v", mine.Releases)
 	}
 
-	// Без добавленных — обычный порядок своих треков.
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(own), http.StatusOK)
 	db.QueryRow(`SELECT count(*) FROM albums WHERE deezer_id = $1 AND tracklist IS NULL`, id).Scan(&n)
 	if n != 1 {
 		t.Error("the tracklist must be cleared")
 	}
 
-	// Последний свой трек опубликованного релиза не удалить, но если в нём
-	// есть добавленный — можно: свой заменили официальным.
 	call(t, router, "DELETE", "/api/uploads/tracks/"+tracks[0], admin, "", http.StatusConflict)
 	call(t, router, "PUT", "/api/uploads/releases/"+id, admin, body(`{"id":"12345"},`+own), http.StatusOK)
 	call(t, router, "DELETE", "/api/uploads/tracks/"+tracks[0], admin, "", http.StatusNoContent)
@@ -386,9 +364,6 @@ func TestUploads_OtherTracks(t *testing.T) {
 	}
 }
 
-// Диски своего релиза: номер трека — место на своём диске, и у треков с
-// других релизов тоже; новый файл ложится в конец последнего диска; удалённый
-// трек уходит из треклиста вместе со своим диском. Mock: 12345 — с релиза 9.
 func TestUploads_Discs(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	id, tracks := newDraft(t, db, router, admin, 3)
@@ -411,20 +386,18 @@ func TestUploads_Discs(t *testing.T) {
 	}
 	a, b, c := tracks[0], tracks[1], tracks[2]
 
-	save(http.StatusBadRequest, tr(a, 2), tr(b, 1), tr(c, 1)) // диск 2 раньше первого
+	save(http.StatusBadRequest, tr(a, 2), tr(b, 1), tr(c, 1))
 	save(http.StatusBadRequest, tr(a, 1), tr(b, 1), tr(c, 100))
 	save(http.StatusOK, tr(a, 1), tr(b, 2), tr(c, 2))
 	if got, want := page(), a+":1.1 "+b+":2.1 "+c+":2.2 "; got != want {
 		t.Errorf("own discs = %q, want %q", got, want)
 	}
 
-	// С добавленным треком диски хранятся и у него.
 	save(http.StatusOK, `{"id":"12345","disc":1}`, tr(a, 1), tr(b, 2), tr(c, 2))
 	if got, want := page(), "12345:1.1 "+a+":1.2 "+b+":2.1 "+c+":2.2 "; got != want {
 		t.Errorf("discs with an added track = %q, want %q", got, want)
 	}
 
-	// Новый файл — в конец последнего диска.
 	var lib string
 	db.QueryRow(`SELECT id FROM albums WHERE deezer_id = $1`, id).Scan(&lib)
 	added, disc, err := srv.insertOwnTrack(releaseRow{id: id, libraryID: lib}, "New", receivedAudio{key: "uploads/new.m4a", durationMs: 1000})
@@ -435,14 +408,12 @@ func TestUploads_Discs(t *testing.T) {
 		t.Errorf("after an upload = %q, want %q", got, want)
 	}
 
-	// Удалённый трек уходит из треклиста, диски остальных — на местах.
 	call(t, router, "DELETE", "/api/uploads/tracks/"+a, admin, "", http.StatusNoContent)
 	if got, want := page(), "12345:1.1 "+b+":2.1 "+c+":2.2 "+added+":2.3 "; got != want {
 		t.Errorf("after deleting a track = %q, want %q", got, want)
 	}
 }
 
-// Релиз правят только автор и админ; чужой черновик не виден вовсе.
 func TestUploads_Permissions(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	author := invitedUser(t, router, admin, "author5")
@@ -460,7 +431,6 @@ func TestUploads_Permissions(t *testing.T) {
 	call(t, router, "DELETE", "/api/uploads/releases/"+rel.album, stranger, "", http.StatusForbidden)
 	call(t, router, "PUT", "/api/uploads/releases/"+rel.album+"/cover", stranger, "", http.StatusForbidden)
 
-	// Своего артиста правит тот, кто его завёл (и админ); артиста Deezer — только админ.
 	var artistID, deezerArtistID string
 	db.QueryRow(`SELECT id FROM artists WHERE deezer_id = $1`, rel.artist).Scan(&artistID)
 	db.QueryRow(`SELECT id FROM artists WHERE deezer_id = '1'`).Scan(&deezerArtistID)
@@ -475,7 +445,6 @@ func TestUploads_Permissions(t *testing.T) {
 	}
 }
 
-// Удаление убирает релиз отовсюду, а смена обложки обновляет снимки.
 func TestUploads_CoverAndDelete(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
@@ -495,7 +464,6 @@ func TestUploads_CoverAndDelete(t *testing.T) {
 	call(t, router, "POST", "/api/me/plays", fan, `{"deezer_id":"`+rel.tracks[0]+`"}`, http.StatusOK)
 	db.Exec(`INSERT INTO lyrics (deezer_id, source, sync, body) VALUES ($1, 'upload', 'none', '{}')`, rel.tracks[0])
 
-	// Обложка: снимок в лайках и сохранённом альбоме — с новой.
 	for range 2 {
 		rec := adminRequest(router, "PUT", "/api/uploads/releases/"+rel.album+"/cover", admin, testJPEG(t), "image/jpeg")
 		if rec.Code != http.StatusOK {
@@ -552,8 +520,6 @@ func TestUploads_CoverAndDelete(t *testing.T) {
 	call(t, router, "GET", "/api/discover/albums/"+rel.album, fan, "", http.StatusNotFound)
 }
 
-// Свою обложку можно убрать: у черновика её не будет (заглушка — при
-// публикации), у опубликованного сразу встаёт заглушка. Чужой — нельзя.
 func TestUploads_DeleteCover(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
@@ -613,7 +579,7 @@ func TestUploads_Audio(t *testing.T) {
 	}
 	db, router, admin, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
-	freeSpace = func(string) (uint64, error) { return 50 << 30, nil } // /tmp тестов может быть меньше гигабайта
+	freeSpace = func(string) (uint64, error) { return 50 << 30, nil }
 	t.Cleanup(func() { freeSpace = statFree })
 	fan := invitedUser(t, router, admin, "fan7")
 	id, _ := newDraft(t, db, router, admin, 0)
@@ -645,7 +611,6 @@ func TestUploads_Audio(t *testing.T) {
 		t.Errorf("temp files left: %v", tmp)
 	}
 
-	// Не аудио — отказ; файл с тегами и обложкой — название и обложка из него.
 	rec = uploadAudio(router, admin, "/api/uploads/releases/"+id+"/audio?name=x.flac", []byte("#EXTM3U\n#EXTINF:1,\nhttp://example.com/a.flac\n"))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("playlist upload: %d %s", rec.Code, rec.Body.String())
@@ -679,7 +644,6 @@ func TestUploads_Audio(t *testing.T) {
 		t.Errorf("release = %+v", st)
 	}
 
-	// Опубликованный релиз чужой человек не трогает; последний трек не удалить.
 	db.Exec(`UPDATE albums SET draft = false WHERE deezer_id = $1`, id)
 	if rec := uploadAudio(router, fan, "/api/uploads/releases/"+id+"/audio?name=a.wav", wavTone()); rec.Code != http.StatusForbidden {
 		t.Errorf("stranger upload: %d", rec.Code)
@@ -691,7 +655,6 @@ func TestUploads_Audio(t *testing.T) {
 		t.Error("deleted track's file is still there")
 	}
 
-	// Замена файла — тот же ID, новая длительность.
 	call(t, router, "PUT", "/api/me/liked/"+withTags.Track.ID, fan, "", http.StatusNoContent)
 	if rec := adminRequest(router, "PUT", "/api/uploads/tracks/"+withTags.Track.ID+"/audio", admin, wavTone(), "audio/wav"); rec.Code != http.StatusOK {
 		t.Fatalf("replace: %d %s", rec.Code, rec.Body.String())
@@ -702,15 +665,12 @@ func TestUploads_Audio(t *testing.T) {
 		t.Errorf("liked snapshot duration = %d", liked)
 	}
 
-	// Мало места — 507, ничего не сохраняется.
 	freeSpace = func(string) (uint64, error) { return 100 << 20, nil }
 	if rec := uploadAudio(router, admin, "/api/uploads/releases/"+id+"/audio?name=a.wav", wavTone()); rec.Code != http.StatusInsufficientStorage {
 		t.Errorf("low disk: %d", rec.Code)
 	}
 }
 
-// При старте API убираются брошенные загрузки, но не чужие свежие и не
-// файлы треков.
 func TestSweepUploads(t *testing.T) {
 	db, _, _, srv := newTestServer(t)
 	srv.StorageDir = t.TempDir()
@@ -718,7 +678,7 @@ func TestSweepUploads(t *testing.T) {
 	up := filepath.Join(srv.StorageDir, "uploads")
 	os.MkdirAll(up, 0o755)
 	old := time.Now().Add(-2 * time.Hour)
-	files := map[string]bool{ // путь → должен остаться
+	files := map[string]bool{
 		filepath.Join(srv.StorageDir, ".upload-123"): false,
 		filepath.Join(up, "x.m4a.part"):              false,
 		filepath.Join(up, "orphan.m4a"):              false,
@@ -803,7 +763,6 @@ func TestUploads_QuotaPerUser(t *testing.T) {
 	}
 }
 
-// Параллельные загрузки не проходят проверку места все разом.
 func TestUploads_SpaceReservedAcrossRequests(t *testing.T) {
 	srv := &Server{StorageDir: t.TempDir()}
 	freeSpace = func(string) (uint64, error) { return minFreeSpace + 2*100, nil }
@@ -828,8 +787,6 @@ func TestUploads_SpaceReservedAcrossRequests(t *testing.T) {
 	}
 }
 
-// Один свой трек правится из меню трека: название, E, исполнители — без
-// окна загрузки. Правит автор релиза и админ, слушатель — нет.
 func TestUploads_OwnTrack(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	fan := invitedUser(t, router, admin, "fan9")

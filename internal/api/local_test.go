@@ -16,15 +16,11 @@ import (
 	"kaikku/internal/media"
 )
 
-// ownRelease — свой релиз в базе, как его оставляет загрузка (uploads.go).
 type ownRelease struct {
-	artist, album string   // k-ID
-	tracks        []string // k-ID по порядку
+	artist, album string
+	tracks        []string
 }
 
-// seedOwnRelease заводит своего артиста и релиз (исполнители — он и артист
-// Deezer 1) с двумя треками; второй — с фитом артиста Deezer 2 и explicit.
-// owner — ID пользователя или "".
 func seedOwnRelease(t *testing.T, db *sql.DB, owner string, draft bool) ownRelease {
 	t.Helper()
 	var rel ownRelease
@@ -111,8 +107,6 @@ func TestOwnRelease_PublishedVisibleToAll(t *testing.T) {
 		t.Errorf("second track = %+v", page.Tracks[1])
 	}
 
-	// Карандаш на странице релиза — только в режиме админа, даже автору
-	// (свои релизы правят из медиатеки).
 	getJSON(t, router, "/api/discover/albums/"+rel.album, admin, false, &page)
 	if page.Editable {
 		t.Error("editable without admin mode")
@@ -137,7 +131,7 @@ func TestOwnRelease_DraftOnlyForOwnerAndAdmin(t *testing.T) {
 
 	for _, path := range []string{"/api/discover/albums/" + rel.album, "/api/discover/tracks/" + rel.tracks[0]} {
 		call(t, router, "GET", path, other, "", http.StatusNotFound)
-		call(t, router, "GET", path, admin, "", http.StatusNotFound) // админ — только в режиме админа
+		call(t, router, "GET", path, admin, "", http.StatusNotFound)
 	}
 
 	var page localAlbumPage
@@ -150,7 +144,6 @@ func TestOwnRelease_DraftOnlyForOwnerAndAdmin(t *testing.T) {
 		t.Error("admin in admin mode should get editable")
 	}
 
-	// В дискографии артиста Deezer черновика нет.
 	var artist struct{ Albums []pageAlbum }
 	getJSON(t, router, "/api/discover/artists/1", other, false, &artist)
 	if slices.ContainsFunc(artist.Albums, func(a pageAlbum) bool { return a.ID == rel.album }) {
@@ -217,8 +210,6 @@ func TestOwnArtistPage(t *testing.T) {
 	call(t, router, "GET", "/api/discover/artists/k999999/info", other, "", http.StatusNotFound)
 }
 
-// Релиз Deezer, перенесённый к своему артисту, на его странице — с
-// правками, а не как у Deezer.
 func TestOwnArtistPage_MovedDeezerReleaseKeepsEdits(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	rel := seedOwnRelease(t, db, "", false)
@@ -241,7 +232,6 @@ func TestOwnArtistPage_MovedDeezerReleaseKeepsEdits(t *testing.T) {
 	}
 }
 
-// Прослушивания черновика не попадают в «Популярное» артиста Deezer.
 func TestOwnRelease_DraftPlaysNotPopular(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	author := invitedUser(t, router, admin, "author2")
@@ -258,7 +248,6 @@ func TestOwnRelease_DraftPlaysNotPopular(t *testing.T) {
 	}
 }
 
-// Админские инструменты для строк Deezer не трогают свои релизы.
 func TestOwnRelease_AdminDeezerToolsRefuse(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	rel := seedOwnRelease(t, db, "", false)
@@ -274,8 +263,6 @@ func TestOwnRelease_AdminDeezerToolsRefuse(t *testing.T) {
 	call(t, router, "DELETE", "/api/tracks/"+trackID, admin, "", http.StatusBadRequest)
 }
 
-// Лайк, сохранение, подписка и плейлист со своими ID: снимки — из базы,
-// на скачивание ничего не ставится, правки автора видны в медиатеке.
 func TestOwnRelease_LibraryActions(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	user := invitedUser(t, router, admin, "collector")
@@ -310,7 +297,6 @@ func TestOwnRelease_LibraryActions(t *testing.T) {
 		t.Errorf("playlist order = %v", order)
 	}
 
-	// Автор переименовал релиз и трек — в медиатеке новые названия.
 	db.Exec(`UPDATE albums SET title = 'Renamed EP' WHERE deezer_id = $1`, rel.album)
 	db.Exec(`UPDATE tracks SET title = 'Renamed song' WHERE deezer_id = $1`, rel.tracks[1])
 	var liked struct {
@@ -324,7 +310,6 @@ func TestOwnRelease_LibraryActions(t *testing.T) {
 	if len(liked.Tracks) != 1 || liked.Tracks[0].Title != "Renamed song" || liked.Tracks[0].Album != "Renamed EP" || !liked.Tracks[0].Explicit {
 		t.Errorf("liked = %+v", liked.Tracks)
 	}
-	// Снят с публикации — у остальных серым.
 	db.Exec(`UPDATE albums SET draft = true WHERE deezer_id = $1`, rel.album)
 	json.Unmarshal(call(t, router, "GET", "/api/me/liked", user, "", http.StatusOK), &liked)
 	if !liked.Tracks[0].Hidden {
@@ -435,8 +420,6 @@ func TestOwnRelease_StreamLookupLyricsSearch(t *testing.T) {
 	if len(found.Tracks) == 0 || found.Tracks[0].ID != pub.tracks[0] {
 		t.Errorf("track search = %+v", found.Tracks)
 	}
-	// «Исполнитель название» в любом порядке; у второго трека исполнители
-	// свои (Own Artist и Other Artist), а не релиза (Own Artist и Test Artist).
 	hasTrack := func(q, id string) bool {
 		found.Tracks, found.Albums = nil, nil
 		json.Unmarshal(call(t, router, "GET", "/api/search?q="+url.QueryEscape(q), stranger, "", http.StatusOK), &found)
@@ -457,7 +440,6 @@ func TestOwnRelease_StreamLookupLyricsSearch(t *testing.T) {
 	if hasTrack("stranger first", pub.tracks[0]) {
 		t.Error("a word found nowhere still matches")
 	}
-	// Одно имя исполнителя не поднимает его загрузки над выдачей Deezer.
 	if hasTrack("own artist", pub.tracks[0]) || hasTrack("own artist", pub.tracks[1]) {
 		t.Error("an artist's name alone lists their uploads as tracks")
 	}
@@ -475,7 +457,6 @@ func TestOwnRelease_StreamLookupLyricsSearch(t *testing.T) {
 	}
 }
 
-// failProvider — источник текстов, к которому обращаться нельзя.
 type failProvider struct{ t *testing.T }
 
 func (failProvider) Name() string { return "fail" }
@@ -484,8 +465,6 @@ func (p failProvider) Find(_ context.Context, tr lyrics.Track) (*lyrics.Lyrics, 
 	return nil, nil
 }
 
-// Убрали артиста из трека — в его «Популярном» трека больше нет, хотя
-// прослушивания записаны, пока он там был.
 func TestPopular_FollowsCurrentCredits(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	rel := seedOwnRelease(t, db, "", false)
@@ -506,8 +485,6 @@ func TestPopular_FollowsCurrentCredits(t *testing.T) {
 	}
 }
 
-// Трек из черновика не попадает в «Популярное», даже если его слушали в
-// треклисте опубликованного релиза.
 func TestArtistTopOmitsDraftTrack(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	invitedUser(t, router, admin, "top-owner")
@@ -538,7 +515,6 @@ func TestArtistTopOmitsDraftTrack(t *testing.T) {
 	}
 }
 
-// Контекст прослушивания с чужим черновиком не копирует его в снимок и итоги года.
 func TestRecordPlay_StrangersDraftContext(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	invitedUser(t, router, admin, "ctx-owner")
@@ -565,9 +541,6 @@ func TestRecordPlay_StrangersDraftContext(t *testing.T) {
 	}
 }
 
-// Трек с другого релиза, прослушанный в треклисте сборника, записан под
-// сборником, но исполнители у него свои — и в снимке, и после правок поверх
-// (история, миксы, страница жанра).
 func TestRecordPlay_TracklistTrackKeepsItsArtists(t *testing.T) {
 	db, router, admin, srv := newTestServer(t)
 	own := seedOwnRelease(t, db, "", false)
@@ -594,7 +567,6 @@ func TestRecordPlay_TracklistTrackKeepsItsArtists(t *testing.T) {
 		t.Errorf("after overlay: album %s, artist %s %q; want %s by %s", got.AlbumID, got.ArtistID, got.Artist, host.album, own.artist)
 	}
 
-	// Свой трек сборника — по-прежнему исполнители сборника.
 	tracks = []deezer.Track{{ID: host.tracks[0], AlbumID: host.album}}
 	srv.overlayFor(nil, nil, tracks)
 	if tracks[0].ArtistID != host.artist {
@@ -602,7 +574,6 @@ func TestRecordPlay_TracklistTrackKeepsItsArtists(t *testing.T) {
 	}
 }
 
-// UUID в любом написании — та же строка: своя загрузка не проходит мимо проверки.
 func TestDeezerRowOnly_AnyUUIDSpelling(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	rel := seedOwnRelease(t, db, "", true)

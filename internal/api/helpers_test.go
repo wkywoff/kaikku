@@ -41,7 +41,6 @@ func TestCatalogIDs(t *testing.T) {
 	}
 }
 
-// Свой трек не ставится на скачивание: ни запроса к Deezer, ни job.
 func TestEnqueue_RefusesOwnID(t *testing.T) {
 	db, _, _, srv := newTestServer(t)
 	if _, err := srv.enqueueTrack("", "k5"); !errors.Is(err, errLocalID) {
@@ -54,7 +53,6 @@ func TestEnqueue_RefusesOwnID(t *testing.T) {
 	}
 }
 
-// captureLog собирает то, что тест написал в лог.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -68,8 +66,6 @@ func captureLog(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// Ответ 500 не раскрывает причину клиенту, но в логе она есть — с запросом,
-// без его параметров (в них подписи ссылок и токены).
 func TestServerError_LogsCause(t *testing.T) {
 	buf := captureLog(t)
 	rec := httptest.NewRecorder()
@@ -87,7 +83,6 @@ func TestServerError_LogsCause(t *testing.T) {
 	}
 }
 
-// Перевод строки из адреса не становится новой строкой лога.
 func TestServerError_PathStaysEncoded(t *testing.T) {
 	buf := captureLog(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/playlists/a%0Ab", nil)
@@ -97,8 +92,6 @@ func TestServerError_PathStaysEncoded(t *testing.T) {
 	}
 }
 
-// Человек закрыл страницу, запрос отменился — в лог это не идёт; та же
-// ошибка при живом запросе — идёт.
 func TestServerError_SkipsClientGone(t *testing.T) {
 	buf := captureLog(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -116,8 +109,6 @@ func TestServerError_SkipsClientGone(t *testing.T) {
 	}
 }
 
-// Чтение оборвалось посреди списка (здесь — деление на ноль на третьей
-// строке): closeRows пишет это в лог, а не оставляет неполные данные молча.
 func TestCloseRows_LogsBrokenRead(t *testing.T) {
 	db, _, _, _ := newTestServer(t)
 	buf := captureLog(t)

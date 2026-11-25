@@ -11,22 +11,9 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Сведение импортированных треков на один релиз.
-//
-// Поиск Deezer отдаёт одну версию записи из всех, где она есть (альбом,
-// делюкс, сингл, сборник), и какую — решает сам: из одного плейлиста одна
-// песня альбома попадает на обычное издание, другая — на делюкс, третья — на
-// сборник. Когда все треки найдены, фронт присылает их сюда, и треки одного
-// исполнителя переезжают на релиз, где их больше всего. Ту же запись на
-// другом релизе узнаём по ISRC (clean- и explicit-версии — разные записи,
-// разные ISRC, так что версия не меняется).
-//
-// Кандидаты — только релизы, куда уже попал какой-то трек плейлиста: так
-// хватает нескольких запросов к Deezer, а не всей дискографии.
-
 const (
-	maxImportAlbumsTracks = 300 // как MAX_IMPORT на фронте
-	maxImportAlbums       = 40  // релизов на запрос: по два запроса к Deezer на каждый
+	maxImportAlbumsTracks = 300
+	maxImportAlbums       = 40
 )
 
 func (s *Server) handleImportAlbums(w http.ResponseWriter, r *http.Request) {
@@ -41,14 +28,11 @@ func (s *Server) handleImportAlbums(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"matches": settleAlbums(req.Tracks, releases)})
 }
 
-// importRelease — релиз-кандидат: тип и треклист (nil — Deezer не ответил).
 type importRelease struct {
 	recordType string
 	tracks     []deezer.Track
 }
 
-// albumsToSettle — релизы, которые стоит сравнить: у исполнителя в плейлисте
-// треки с разных релизов.
 func albumsToSettle(tracks []*deezer.Track) map[string]bool {
 	byArtist := map[string]map[string]bool{}
 	var order []string
@@ -75,9 +59,6 @@ func albumsToSettle(tracks []*deezer.Track) map[string]bool {
 	return out
 }
 
-// importReleases загружает тип и треклист каждого релиза (из кеша или у
-// Deezer, в пределах лимита импорта). Ошибка Deezer не роняет импорт:
-// такой релиз просто не участвует в сравнении.
 func (s *Server) importReleases(albums map[string]bool) map[string]importRelease {
 	out := make(map[string]importRelease, len(albums))
 	var mu sync.Mutex
@@ -115,8 +96,6 @@ func (s *Server) importReleases(albums map[string]bool) map[string]importRelease
 	return out
 }
 
-// releaseClass: сначала обычные альбомы и EP, потом синглы, потом сборники
-// (и всё неизвестное) — песня с альбома не должна переезжать на «Best of».
 func releaseClass(recordType string) int {
 	switch recordType {
 	case "album", "ep":
@@ -127,14 +106,8 @@ func releaseClass(recordType string) int {
 	return 2
 }
 
-// settleAlbums возвращает matches, где треки одного исполнителя, по
-// возможности, с одного релиза. Кандидаты для трека — релизы, куда попали
-// треки того же исполнителя и где есть его запись; из них выбирается:
-// альбом, а не сингл или сборник; где больше записей исполнителя из
-// плейлиста; обычное издание, а не делюкс (меньше треков). При прочем
-// равном трек остаётся, где был.
 func settleAlbums(matches []*deezer.Track, releases map[string]importRelease) []*deezer.Track {
-	ids := make([]string, 0, len(releases)) // по порядку — чтобы выбор не зависел от обхода map
+	ids := make([]string, 0, len(releases))
 	byISRC := map[string]map[string]*deezer.Track{}
 	for id, rel := range releases {
 		ids = append(ids, id)
@@ -149,8 +122,8 @@ func settleAlbums(matches []*deezer.Track, releases map[string]importRelease) []
 	slices.Sort(ids)
 
 	type key struct{ artist, album string }
-	landed := map[key]bool{}       // сюда попал трек исполнителя
-	isrcs := map[string][]string{} // исполнитель → его записи в плейлисте
+	landed := map[key]bool{}
+	isrcs := map[string][]string{}
 	for _, t := range matches {
 		if t == nil || t.ISRC == "" {
 			continue
@@ -176,9 +149,9 @@ func settleAlbums(matches []*deezer.Track, releases map[string]importRelease) []
 			continue
 		}
 		if _, ok := releases[t.AlbumID]; !ok {
-			continue // свой релиз не загрузился — сравнивать не с чем
+			continue
 		}
-		better := func(a, b string) bool { // a лучше b
+		better := func(a, b string) bool {
 			ra, rb := releases[a], releases[b]
 			if ca, cb := releaseClass(ra.recordType), releaseClass(rb.recordType); ca != cb {
 				return ca < cb
@@ -199,7 +172,7 @@ func settleAlbums(matches []*deezer.Track, releases map[string]importRelease) []
 		}
 		moved := *byISRC[best][t.ISRC]
 		if len(moved.Contributors) == 0 {
-			moved.Contributors = t.Contributors // та же запись — те же исполнители
+			moved.Contributors = t.Contributors
 		}
 		out[i] = &moved
 	}

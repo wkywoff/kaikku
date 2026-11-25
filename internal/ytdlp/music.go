@@ -1,18 +1,5 @@
 package ytdlp
 
-// Поиск песен на YouTube Music — первый шаг FindMatches. В отличие от
-// обычного поиска YouTube он отдаёт только официальные треки и у каждого —
-// исполнителей, альбом и значок explicit. Только по нему можно отличить
-// версию с матом от clean: на YouTube это два одинаковых ролика
-// «<Artist> - Topic» с тем же названием, длиной и альбомом (Yeat «Luh
-// gëek»: -yb4WxgNqTA и jdBxc61hGyA).
-//
-// yt-dlp так искать не умеет (ytmsearch: не поддерживается), поэтому это
-// прямой запрос к внутреннему API music.youtube.com — тот же, что делает
-// сайт. API неофициальный: если он сломается (поменяют формат, перестанут
-// принимать clientVersion), FindMatches пишет об этом в лог и ищет как
-// раньше.
-
 import (
 	"bytes"
 	"context"
@@ -27,19 +14,16 @@ import (
 	"time"
 )
 
-// musicSearchURL — пустая строка выключает поиск на YouTube Music (тесты).
 var musicSearchURL = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false"
 
 const (
 	musicClientVersion = "1.20241023.01.00"
-	// params фильтра «Песни»: без него в выдаче ещё клипы, альбомы и артисты.
-	musicSongsFilter = "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
-	musicTimeout     = 5 * time.Second
+	musicSongsFilter   = "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
+	musicTimeout       = 5 * time.Second
 )
 
 var musicClient = &http.Client{}
 
-// searchMusic returns the songs YouTube Music finds for query.
 func searchMusic(ctx context.Context, query string) ([]candidate, error) {
 	body, err := json.Marshal(map[string]any{
 		"context": map[string]any{"client": map[string]string{
@@ -105,13 +89,9 @@ type musicItem struct {
 			} `json:"icon"`
 		} `json:"musicInlineBadgeRenderer"`
 	} `json:"badges"`
-	// "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT" — серый, не играет.
 	DisplayPolicy string `json:"musicItemRendererDisplayPolicy"`
 }
 
-// parseMusicSearch pulls the songs out of a search response. The list sits
-// deep in tabs/shelves whose layout YouTube changes now and then, so the
-// items are looked up by their renderer name anywhere in the tree.
 func parseMusicSearch(r io.Reader) ([]candidate, error) {
 	var tree any
 	if err := json.NewDecoder(r).Decode(&tree); err != nil {
@@ -137,7 +117,6 @@ func parseMusicSearch(r io.Reader) ([]candidate, error) {
 	}
 	collect(tree)
 	if len(raw) == 0 {
-		// И «ничего не нашлось», и сменившийся формат: ищем по-старому.
 		return nil, noMatch("youtube music: no songs in the response")
 	}
 	var out []candidate
@@ -154,8 +133,6 @@ func parseMusicSearch(r io.Reader) ([]candidate, error) {
 	return out, nil
 }
 
-// candidate reads one song: column 0 is the title, column 1 is
-// "artists • album • 2:56" (artists split by ", " and " & ").
 func (item musicItem) candidate() (candidate, bool) {
 	if item.PlaylistItemData.VideoID == "" || len(item.FlexColumns) < 2 ||
 		strings.HasSuffix(item.DisplayPolicy, "GREY_OUT") {
@@ -166,7 +143,6 @@ func (item musicItem) candidate() (candidate, bool) {
 		title.WriteString(r.Text)
 	}
 	c := candidate{ID: item.PlaylistItemData.VideoID, Title: title.String(), Music: true}
-	// Разделитель — отдельный кусок " • "; внутри имён бывает и «•» (time•bender).
 	part := 0
 	for _, r := range item.FlexColumns[1].Column.Text.Runs {
 		switch {
@@ -191,7 +167,6 @@ func (item musicItem) candidate() (candidate, bool) {
 	return c, c.DurationMs > 0
 }
 
-// parseClock reads "2:56" or "1:02:03" as milliseconds.
 func parseClock(s string) (int, bool) {
 	parts := strings.Split(s, ":")
 	if len(parts) < 2 || len(parts) > 3 {
@@ -208,19 +183,6 @@ func parseClock(s string) (int, bool) {
 	return sec * 1000, true
 }
 
-// rankMusic returns the songs that plausibly are the Deezer recording,
-// best first. Like rankCandidates for "- Topic" uploads (the title is just
-// the song's name: words must match both ways, no other-version markers,
-// duration within toleranceMs), plus:
-//
-//   - one of the Deezer artists must be among the song's artists — YouTube
-//     Music lists covers and tributes under their own artists; a name
-//     written differently (another script) finds nothing here and falls
-//     back to the plain search;
-//   - the same album as on Deezer ranks higher (album vs. deluxe vs. the
-//     single with another edit);
-//   - explicit must agree with Deezer — a mismatch isn't dropped, since
-//     labels don't always mark it, but ranks below every match.
 func rankMusic(candidates []candidate, want Want, toleranceMs int) ([]candidate, error) {
 	wantTitle := normalize(want.Title)
 	wantTokens := strings.Fields(wantTitle)
@@ -283,7 +245,6 @@ func containsAny(s string, phrases []string) bool {
 	return false
 }
 
-// findOnMusic is the YouTube Music step of FindMatches.
 func findOnMusic(ctx context.Context, want Want, toleranceMs int) ([]string, error) {
 	if musicSearchURL == "" {
 		return nil, errMusicDisabled

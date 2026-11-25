@@ -2,7 +2,6 @@ package ingest
 
 import "testing"
 
-// Вывод ffmpeg -af ebur128=peak=sample:framelog=quiet (ffmpeg 7.1), урезан.
 const ebur128Output = `size=N/A time=00:01:39.32 bitrate=N/A speed= 199x
 [Parsed_ebur128_0 @ 0x7f46b0001540] Summary:
 

@@ -6,14 +6,6 @@ import (
 	"fmt"
 )
 
-// Каталог идентифицируется по Deezer ID (миграции 0002, 0012): два разных
-// исполнителя с одинаковым именем — разные строки, а альбом всегда
-// принадлежит своему альбомному исполнителю. Воркер обрабатывает несколько
-// job'ов параллельно — вставки защищены ON CONFLICT (deezer_id).
-//
-// Поля, которые админ поправил руками (edited, миграция 0006), из Deezer
-// больше не перезаписываются.
-
 var errNoDeezerID = errors.New("catalog row needs a deezer id")
 
 func findOrCreateArtist(db *sql.DB, deezerID, name string) (string, error) {
@@ -47,10 +39,6 @@ func findOrCreateAlbum(db *sql.DB, deezerID, artistID, title string, releaseDate
 	return id, err
 }
 
-// EnsureArtist and EnsureAlbum let an admin edit an artist or album that
-// has nothing downloaded yet (api/handlers_edit.go, "claim"): its catalog
-// row is created from Deezer up front, and the worker later adds tracks to
-// the same row — the edited fields stay as the admin set them.
 func EnsureArtist(db *sql.DB, deezerID, name string) (string, error) {
 	return findOrCreateArtist(db, deezerID, name)
 }

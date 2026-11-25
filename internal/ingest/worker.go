@@ -36,21 +36,14 @@ type Job struct {
 	CoverURL            sql.NullString
 	ReleaseDate         sql.NullString
 	AlbumRecordType     sql.NullString
-	OtherArtists        []string // фиты — для поиска на YouTube
+	OtherArtists        []string
 	ISRC                sql.NullString
-	// ReplaceAudio — перекачка трека, который уже в медиатеке (админ): файл
-	// заменяется в строке трека, а не заводится новый трек.
-	ReplaceAudio bool
-	// ManualVideoID — видео, которое указал админ: без поиска (0028).
-	ManualVideoID sql.NullString
-	// KnownVideoID — видео, с которого трек уже качали (файл удалили как
-	// неслушаемый, 0029): сначала оно, не скачалось — обычный поиск.
-	KnownVideoID sql.NullString
-	// Explicit — метка Deezer, для выбора версии на YouTube Music (0037).
-	Explicit sql.NullBool
+	ReplaceAudio        bool
+	ManualVideoID       sql.NullString
+	KnownVideoID        sql.NullString
+	Explicit            sql.NullBool
 }
 
-// jobColumns и scanJob — одна задача целиком (ClaimNextJob, LoadJob).
 const jobColumns = `id, source_ref, title, artist_name, artist_deezer_id,
 	album_artist_name, album_artist_deezer_id, album_title, album_deezer_id,
 	track_no, disc_no, duration_ms, cover_url, to_char(release_date, 'YYYY-MM-DD'), album_record_type,
@@ -68,23 +61,17 @@ func scanJob(row interface{ Scan(...any) error }) (*Job, error) {
 	return &job, nil
 }
 
-// LoadJob — задача по source_ref ("deezer:<id>"); sql.ErrNoRows — её нет.
 func LoadJob(db *sql.DB, sourceRef string) (*Job, error) {
 	return scanJob(db.QueryRow(`SELECT `+jobColumns+` FROM ingest_jobs WHERE source_ref = $1`, sourceRef))
 }
 
-// deezerTrackID extracts the Deezer ID from source_ref ("deezer:<id>").
 func (j *Job) deezerTrackID() string {
 	id, _ := strings.CutPrefix(j.SourceRef, "deezer:")
 	return id
 }
 
-// Меньше этого свободного места воркер заданий не берёт: диск общий с базой.
-// Задания остаются в очереди и пойдут сами, когда место появится (Housekeep
-// убирает неслушаемое), а не считаются неудачными.
 const minFreeSpace = 1 << 30
 
-// freeSpace подменяют тесты.
 var freeSpace = func(dir string) (uint64, error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(dir, &st); err != nil {
@@ -93,14 +80,11 @@ var freeSpace = func(dir string) (uint64, error) {
 	return st.Bavail * uint64(st.Bsize), nil
 }
 
-// DiskLow reports whether jobs must wait for free space on dir.
 func DiskLow(dir string) bool {
 	free, err := freeSpace(dir)
 	return err == nil && free < minFreeSpace
 }
 
-// ClaimNextJob atomically claims one pending job and marks it 'processing'.
-// Returns (nil, nil) if there's nothing to do.
 func ClaimNextJob(db *sql.DB) (*Job, error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -108,11 +92,10 @@ func ClaimNextJob(db *sql.DB) (*Job, error) {
 	}
 	defer tx.Rollback()
 
-	// Повторы упавших (attempts > 0, Housekeep) — после новых запросов.
 	job, err := scanJob(tx.QueryRow(
 		`SELECT ` + jobColumns + `
 		   FROM ingest_jobs
-		  WHERE status = 'pending' AND (hold_until IS NULL OR hold_until < now()) -- hold: трек качает API (stream.go)
+		  WHERE status = 'pending' AND (hold_until IS NULL OR hold_until < now())
 		  ORDER BY attempts, id LIMIT 1 FOR UPDATE SKIP LOCKED`,
 	))
 	if err == sql.ErrNoRows {
@@ -132,10 +115,6 @@ func ClaimNextJob(db *sql.DB) (*Job, error) {
 	return job, nil
 }
 
-// ResetStaleJobs returns jobs left in 'processing' by a crashed or killed
-// worker to the queue. Call it once at startup, before claiming anything —
-// it assumes this is the only worker process (its goroutines haven't
-// started yet); with several processes a heartbeat column would be needed.
 func ResetStaleJobs(db *sql.DB) (int64, error) {
 	res, err := db.Exec(`UPDATE ingest_jobs SET status = 'pending', updated_at = now() WHERE status = 'processing'`)
 	if err != nil {
@@ -144,10 +123,6 @@ func ResetStaleJobs(db *sql.DB) (int64, error) {
 	return res.RowsAffected()
 }
 
-// CleanStaging removes leftovers of downloads interrupted by a crash. Only
-// the worker writes to stagingDir, so at startup everything there is stale
-// (the API only adds finished PrefetchPath files; losing one just means the
-// job downloads the track itself).
 func CleanStaging(stagingDir string) error {
 	entries, err := os.ReadDir(stagingDir)
 	if err != nil {
@@ -161,13 +136,9 @@ func CleanStaging(stagingDir string) error {
 	return nil
 }
 
-// ProcessJob runs match -> download -> transcode -> catalog upsert, then
-// marks the job done/failed. Errors are logged and recorded on the row, not
-// returned — the poll loop always continues to the next job.
 func ProcessJob(db *sql.DB, job *Job, stagingDir, storageDir string) {
 	var trackID string
 	var err error
-	// Паника в одном job'е не роняет воркер: job — failed, цикл идёт дальше.
 	if safe.Run(fmt.Sprintf("job %d", job.ID), func() { trackID, err = processJob(db, job, stagingDir, storageDir) }) {
 		err = errors.New("internal error (panic, see the worker log)")
 	}
@@ -176,11 +147,8 @@ func ProcessJob(db *sql.DB, job *Job, stagingDir, storageDir string) {
 		text, attempt := err.Error(), 1
 		switch {
 		case errors.Is(err, ytdlp.ErrBlocked):
-			// YouTube не пускает сервер, трек ни при чём: попытка не
-			// засчитывается, повтор — RetryBlocked.
 			text, attempt = "blocked: "+text, 0
 		case errors.Is(err, ytdlp.ErrSignIn):
-			// Видео — только вошедшим (18+…): загрузят куки — RetrySignIn.
 			text = "signin: " + text
 		}
 		_, _ = db.Exec(
@@ -193,7 +161,6 @@ func ProcessJob(db *sql.DB, job *Job, stagingDir, storageDir string) {
 	log.Printf("job %d done -> track %s", job.ID, trackID)
 }
 
-// MarkDone — задача готова, трек в медиатеке.
 func MarkDone(db *sql.DB, jobID int64, trackID string) {
 	_, _ = db.Exec(
 		`UPDATE ingest_jobs SET status='done', result_track_id=$1, error=NULL, attempts=0, updated_at=now() WHERE id=$2`,
@@ -201,10 +168,6 @@ func MarkDone(db *sql.DB, jobID int64, trackID string) {
 	)
 }
 
-// FailureKind — вид ошибки задачи по префиксу, который пишут processJob и
-// ProcessJob: blocked (YouTube не пускает сервер), signin (видео только
-// для вошедших: 18+, для спонсоров), not_found (на YouTube не нашлось),
-// download, audio или other.
 func FailureKind(errText string) string {
 	switch {
 	case strings.HasPrefix(errText, "blocked:"):
@@ -221,23 +184,17 @@ func FailureKind(errText string) string {
 	return "other"
 }
 
-// Поиск и скачивание на YouTube; тесты подменяют.
 var (
 	findMatches = ytdlp.FindMatches
 	download    = ytdlp.Download
 )
 
-// Матчинг YouTube по длительности — сколько кандидатов смотрим и какое
-// расхождение с эталонной длительностью Deezer ещё считаем той же записью
-// (ремастеры/разные заливки отличаются на секунды, не на миллисекунды).
 const (
-	searchCandidates  = 15 // одна страница плоского поиска, ~1.5 с
+	searchCandidates  = 15
 	maxDownloadTries  = 3
-	durationTolerance = 4000 // мс
+	durationTolerance = 4000
 )
 
-// Верхние границы на внешние процессы: один зависший yt-dlp/ffmpeg иначе
-// навсегда останавливает единственный воркер.
 const (
 	searchTimeout    = 3 * time.Minute
 	downloadTimeout  = 10 * time.Minute
@@ -247,15 +204,10 @@ const (
 func processJob(db *sql.DB, job *Job, stagingDir, storageDir string) (string, error) {
 	rawPath := PrefetchPath(stagingDir, job.ID)
 	if _, err := os.Stat(rawPath); err == nil {
-		// API уже скачал трек, пока отдавал его потоком; video_id он записал сам.
 		defer os.Remove(rawPath)
 		return finishJob(db, job, rawPath, storageDir)
 	}
 	if key, lufs, gainDB, ok := sameRecording(db, job); ok && !job.ReplaceAudio && !job.ManualVideoID.Valid {
-		// Та же запись (ISRC) на другом релизе уже скачана: тот же файл, без
-		// поиска и скачивания. Файл общий — удаление трека его не трогает,
-		// пока на него ссылается другой (internal/api, unreferencedAudio).
-		// Перекачке он не годится: его и хотят заменить.
 		trackID, _, err := saveTrack(db, job, key, lufs, gainDB)
 		if err == nil {
 			log.Printf("job %d: ISRC %s is already in the library, sharing its file", job.ID, job.ISRC.String)
@@ -265,9 +217,9 @@ func processJob(db *sql.DB, job *Job, stagingDir, storageDir string) (string, er
 
 	var err error
 	switch {
-	case job.ManualVideoID.Valid: // админ указал видео — его и только его
+	case job.ManualVideoID.Valid:
 		rawPath, err = downloadFirst(db, job, []string{job.ManualVideoID.String}, stagingDir)
-	case job.KnownVideoID.Valid: // с него уже качали; удалили — ищем заново
+	case job.KnownVideoID.Valid:
 		rawPath, err = downloadFirst(db, job, []string{job.KnownVideoID.String}, stagingDir)
 		if err != nil && !errors.Is(err, ytdlp.ErrBlocked) {
 			log.Printf("job %d: known video %s: %v, searching again", job.ID, job.KnownVideoID.String, err)
@@ -296,10 +248,6 @@ func searchAndDownload(db *sql.DB, job *Job, stagingDir string) (string, error) 
 	return downloadFirst(db, job, videoIDs, stagingDir)
 }
 
-// downloadFirst скачивает первое из videoIDs, которое скачивается: плоский
-// поиск не проверяет доступность ролика (гео/возраст/удалён) — если лучший
-// не скачался, пробуем следующих. Не скачалось ничего, а какое-то видео
-// YouTube отдал бы вошедшему (18+…), — это и ошибка задачи: её чинят куки.
 func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (string, error) {
 	var err, signInErr error
 	var signInVideo string
@@ -313,7 +261,6 @@ func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (
 		rawPath, err = download(ctx, videoID, stagingDir, randomID())
 		cancel()
 		if err == nil {
-			// YouTube снова отдаёт видео: тем, кому он отказывал, — в очередь.
 			if n, err := RetryBlocked(db, true); err == nil && n > 0 {
 				log.Printf("job %d: youtube lets the server in again, %d refused job(s) queued again", job.ID, n)
 			}
@@ -321,7 +268,7 @@ func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (
 		}
 		log.Printf("job %d: download %s: %v", job.ID, videoID, err)
 		if errors.Is(err, ytdlp.ErrBlocked) {
-			break // остальные видео YouTube не отдаст так же
+			break
 		}
 		if errors.Is(err, ytdlp.ErrSignIn) && signInErr == nil {
 			signInErr, signInVideo = err, videoID
@@ -331,24 +278,16 @@ func downloadFirst(db *sql.DB, job *Job, videoIDs []string, stagingDir string) (
 		err = errors.New("no video to download")
 	}
 	if signInErr != nil && !errors.Is(err, ytdlp.ErrBlocked) {
-		// video_id — то, которое отдали бы вошедшему: на нём API проверяет
-		// новые куки (handlers_youtube.go).
 		err = signInErr
 		_, _ = db.Exec(`UPDATE ingest_jobs SET video_id = $1 WHERE id = $2`, signInVideo, job.ID)
 	}
 	return "", fmt.Errorf("download: %w", err)
 }
 
-// replaceAudio points the existing track at the new file and removes the old
-// one unless another track (the same recording on another release) uses
-// it. sql.ErrNoRows — the track is gone.
 func replaceAudio(db *sql.DB, job *Job, storageDir, storageKey string, lufs, gainDB float64) (string, error) {
-	// Файл меняется у всех треков на нём: та же запись (ISRC) на другом
-	// релизе делит файл (sameRecording) и иначе осталась бы на старом — так
-	// же, как при загрузке файла админом (internal/api).
 	rows, err := db.Query(
 		`UPDATE tracks t SET storage_key = $1, loudness_lufs = $2, gain_db = $3,
-		        audio_pinned = false, last_played_at = now() -- файл снова с YouTube
+		        audio_pinned = false, last_played_at = now()
 		   FROM (SELECT storage_key FROM tracks WHERE deezer_id = $4) prev
 		  WHERE t.storage_key = prev.storage_key
 		  RETURNING t.id, t.deezer_id, prev.storage_key`,
@@ -392,8 +331,6 @@ func replaceAudio(db *sql.DB, job *Job, storageDir, storageKey string, lufs, gai
 	return trackID, nil
 }
 
-// sameRecording finds the library file of the same recording released
-// elsewhere (same ISRC, another Deezer track).
 func sameRecording(db *sql.DB, job *Job) (storageKey string, lufs, gainDB float64, ok bool) {
 	if !job.ISRC.Valid || job.ISRC.String == "" {
 		return "", 0, 0, false
@@ -405,8 +342,6 @@ func sameRecording(db *sql.DB, job *Job) (storageKey string, lufs, gainDB float6
 	return storageKey, lufs, gainDB, err == nil
 }
 
-// finishJob turns downloaded audio into a library track: remux + loudness
-// (PrepareAudio), then the catalog rows.
 func finishJob(db *sql.DB, job *Job, rawPath, storageDir string) (string, error) {
 	storageKey := randomID() + ".m4a"
 	dstPath := filepath.Join(storageDir, storageKey)
@@ -425,7 +360,6 @@ func finishJob(db *sql.DB, job *Job, rawPath, storageDir string) (string, error)
 			}
 			return trackID, err
 		}
-		// Трек успели удалить — заводится заново, как обычное скачивание.
 	}
 
 	trackID, created, err := saveTrack(db, job, storageKey, lufs, gainDB)
@@ -435,16 +369,10 @@ func finishJob(db *sql.DB, job *Job, rawPath, storageDir string) (string, error)
 	return trackID, err
 }
 
-// SaveTrack is saveTrack for the API: an admin's file for a track that
-// was never found on YouTube becomes the track (handleUploadTrackAudio).
 func SaveTrack(db *sql.DB, job *Job, storageKey string, lufs, gainDB float64) (trackID string, created bool, err error) {
 	return saveTrack(db, job, storageKey, lufs, gainDB)
 }
 
-// saveTrack upserts the track's artist/album and inserts the track. If a
-// track with the same Deezer ID already exists (the job was re-queued after
-// a crash that happened after the insert), the existing row wins:
-// created=false and the caller drops the freshly transcoded file.
 func saveTrack(db *sql.DB, job *Job, storageKey string, lufs, gainDB float64) (trackID string, created bool, err error) {
 	trackArtistID, err := findOrCreateArtist(db, job.ArtistDeezerID.String, job.ArtistName)
 	if err != nil {
@@ -480,8 +408,6 @@ func saveTrack(db *sql.DB, job *Job, storageKey string, lufs, gainDB float64) (t
 		return "", false, fmt.Errorf("insert track: %w", err)
 	default:
 		created = true
-		// Админ правил трек, пока его не было в медиатеке (track_edits,
-		// миграция 0010), — правка переходит в строку трека.
 		if res, err := db.Exec(
 			`UPDATE tracks t SET title = e.title, track_no = COALESCE(e.track_no, t.track_no),
 			        disc_no = COALESCE(e.disc_no, t.disc_no), edited = true

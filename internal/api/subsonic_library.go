@@ -16,10 +16,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Медиатека приложения — то же, что «Медиатека» на сайте: любимые треки,
-// сохранённые альбомы и артисты (подписки и исполнители сохранённого).
-// Остальной каталог Deezer — через поиск и страницы артистов.
-
 func init() {
 	subsonicRoute("getArtists", subsonicGetArtists)
 	subsonicRoute("getIndexes", subsonicGetIndexes)
@@ -37,7 +33,6 @@ func init() {
 	subsonicRoute("search2", func(c *subCtx) error { return subsonicSearch(c, false) })
 }
 
-// intParam — число из параметра name, def без него, не больше max.
 func (c *subCtx) intParam(name string, def, max int) int {
 	n, err := strconv.Atoi(c.param(name))
 	if err != nil || n < 0 {
@@ -53,14 +48,12 @@ func page[T any](items []T, offset, size int) []T {
 	return items[offset:min(len(items), offset+size)]
 }
 
-// --- медиатека ---
-
 type subLibrary struct {
 	liked    []deezer.Track
 	albums   []deezer.Album
 	followed []deezer.Artist
-	artists  []deezer.Artist // подписки и исполнители сохранённого
-	counts   map[string]int  // артист → сколько его альбомов в медиатеке
+	artists  []deezer.Artist
+	counts   map[string]int
 }
 
 func (c *subCtx) library() (subLibrary, error) {
@@ -88,7 +81,6 @@ func (c *subCtx) library() (subLibrary, error) {
 		lib.liked = append(lib.liked, t.Track)
 	}
 
-	// Артисты: подписки, потом исполнители сохранённых альбомов и любимых треков.
 	seen := map[string]bool{}
 	for _, a := range lib.artists {
 		seen[a.ID] = true
@@ -129,7 +121,6 @@ type subIndex[T any] struct {
 	Artists []T    `xml:"artist" json:"artist,omitempty"`
 }
 
-// indexLetter — буква оглавления: первая буква имени, остальное — «#».
 func indexLetter(name string) string {
 	if r, _ := utf8.DecodeRuneInString(name); unicode.IsLetter(r) {
 		return string(unicode.ToUpper(r))
@@ -149,7 +140,6 @@ func indexArtists[T any](artists []subArtistID3, conv func(subArtistID3) T) []su
 		}
 		out[len(out)-1].Artists = append(out[len(out)-1].Artists, conv(a))
 	}
-	// «#» — в конце, как у остальных серверов.
 	slices.SortStableFunc(out, func(a, b subIndex[T]) int {
 		switch {
 		case a.Name == b.Name:
@@ -189,8 +179,6 @@ func subsonicGetIndexes(c *subCtx) error {
 	})})
 }
 
-// --- артист, альбом, трек ---
-
 type artistPage struct {
 	Artist deezer.Artist  `json:"artist,omitempty"`
 	Albums []deezer.Album `json:"albums"`
@@ -227,7 +215,7 @@ func (c *subCtx) albumPage(id string) (albumPage, error) {
 	var p albumPage
 	cost := 0
 	if !isLocalID(id) {
-		cost = c.s.Deezer.AlbumRequests(id, 200) // как albumTracks
+		cost = c.s.Deezer.AlbumRequests(id, 200)
 	}
 	release, err := c.deezerShare(cost)
 	if err != nil {
@@ -289,7 +277,6 @@ func subsonicGetSong(c *subCtx) error {
 	return c.ok("song", s)
 }
 
-// getMusicDirectory — «папки»: артист → его альбомы, альбом → треки.
 func subsonicGetMusicDirectory(c *subCtx) error {
 	type directory struct {
 		ID       string    `xml:"id,attr" json:"id"`
@@ -317,8 +304,6 @@ func subsonicGetMusicDirectory(c *subCtx) error {
 	}
 	return subFail(subErrNotFound, "no such directory: "+id)
 }
-
-// --- списки альбомов ---
 
 func (c *subCtx) albumListOf(typ string) ([]deezer.Album, error) {
 	switch typ {
@@ -387,10 +372,8 @@ func (c *subCtx) albumListOf(typ string) ([]deezer.Album, error) {
 	return nil, subFail(subErrGeneric, "unknown list type: "+typ)
 }
 
-// subsonicAlbumLists — другие списки (subsonic_radio.go: byGenre).
 var subsonicAlbumLists = map[string]func(*subCtx) ([]deezer.Album, error){}
 
-// frequentAlbums — альбомы, которые человек слушает чаще всего.
 func (c *subCtx) frequentAlbums() ([]deezer.Album, error) {
 	rows, err := c.s.DB.Query(
 		`SELECT (array_agg(meta ORDER BY played_at DESC))[1]
@@ -432,8 +415,6 @@ func subsonicAlbumList(c *subCtx, id3 bool) error {
 	}{c.albumDirs(albums)})
 }
 
-// --- избранное ---
-
 func subsonicStarred(c *subCtx, id3 bool) error {
 	lib, err := c.library()
 	if err != nil {
@@ -455,7 +436,6 @@ func subsonicStarred(c *subCtx, id3 bool) error {
 	}{artistsPlain(artists), c.albumDirs(lib.albums), songs})
 }
 
-// star/unstar: id — трек (или альбом, артист с префиксом), albumId, artistId.
 func subsonicStar(c *subCtx, on bool) error {
 	type target struct{ kind, id string }
 	var targets []target
@@ -502,10 +482,6 @@ func subsonicStar(c *subCtx, on bool) error {
 	return c.ok("", nil)
 }
 
-// --- поиск ---
-
-// search3/search2: по каталогу Deezer и своим релизам. Пустой запрос —
-// вся медиатека: так её выкачивают себе Symfonium и другие.
 func subsonicSearch(c *subCtx, id3 bool) error {
 	q := strings.Trim(strings.TrimSpace(c.param("query")), `"`)
 	var tracks []deezer.Track

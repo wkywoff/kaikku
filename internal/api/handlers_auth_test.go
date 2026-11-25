@@ -59,7 +59,6 @@ func newInvite(t *testing.T, router http.Handler, adminToken string) string {
 	return resp.Code
 }
 
-// Форма входа спрашивает, нужен ли код: на пустой базе — нет.
 func TestRegisterInfo_FirstUser(t *testing.T) {
 	_, router := newAuthTestServer(t)
 	first := func() bool {
@@ -192,7 +191,6 @@ func TestRegister_RejectsBadInputBeforeHashing(t *testing.T) {
 	}
 }
 
-// Тело запроса больше 64 КБ не дочитывается — даже без авторизации.
 func TestRequestBodyIsCapped(t *testing.T) {
 	_, router := newAuthTestServer(t)
 	body := `{"username":"owner","password":"` + strings.Repeat("p", 100<<10) + `"}`
@@ -213,13 +211,11 @@ func TestLogin_PausesAfterRepeatedFailures(t *testing.T) {
 			t.Fatalf("attempt %d: status %d, want 401", i+1, rec.Code)
 		}
 	}
-	// Дальше — пауза, даже с правильным паролем.
 	rec := login("testpass123")
 	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
 		t.Errorf("after %d failures: status %d, Retry-After %q; want 429 with Retry-After",
 			loginFreeAttempts, rec.Code, rec.Header().Get("Retry-After"))
 	}
-	// Неизвестные имена считаются так же (и проверяются столько же времени).
 	for i := 0; i < loginFreeAttempts; i++ {
 		postJSON(router, "/api/login", `{"username":"ghost","password":"whatever1"}`, "")
 	}
@@ -256,8 +252,6 @@ func TestLoginGuard(t *testing.T) {
 	}
 }
 
-// Каждая следующая неудача удваивает паузу, но не дальше 15 минут: подбор
-// упирается в сотню попыток в сутки.
 func TestLoginGuard_PauseGrows(t *testing.T) {
 	var g loginGuard
 	t0 := time.Now()
@@ -284,7 +278,6 @@ func TestLoginGuard_PauseGrows(t *testing.T) {
 	}
 }
 
-// Наводнение выдуманными именами не снимает уже заработанную паузу.
 func TestLoginGuard_FloodKeepsPause(t *testing.T) {
 	var g loginGuard
 	t0 := time.Now()
@@ -302,12 +295,10 @@ func TestLoginGuard_FloodKeepsPause(t *testing.T) {
 	}
 }
 
-// Пользователя, который что-то скачивал, можно удалить (его задания
-// остаются без автора), и его токен сразу перестаёт работать.
 func TestDeletedUserLosesAccess(t *testing.T) {
 	db, router, admin := newTestRouter(t)
 	friend := invitedUser(t, router, admin, "leaving-friend")
-	call(t, router, "PUT", "/api/me/liked/12345", friend, "", http.StatusNoContent) // ставит задание на скачивание
+	call(t, router, "PUT", "/api/me/liked/12345", friend, "", http.StatusNoContent)
 
 	if _, err := db.Exec(`DELETE FROM users WHERE username = 'leaving-friend'`); err != nil {
 		t.Fatalf("deleting a user with download jobs: %v", err)
@@ -340,13 +331,11 @@ func TestTokenRenewal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Свежий токен не продлевается.
 	rec := request(router, "GET", "/api/me", token)
 	if rec.Code != http.StatusOK || rec.Header().Get("X-Auth-Token") != "" {
 		t.Fatalf("fresh token: %d, renewed %q", rec.Code, rec.Header().Get("X-Auth-Token"))
 	}
 
-	// Двухдневный — ответ несёт новый, выданный сейчас, на тот же срок.
 	old, err := auth.IssueTokenAt(claims.UserID, time.Now().Add(-48*time.Hour), tokenTTL, srv.JWTSecret)
 	if err != nil {
 		t.Fatal(err)
@@ -362,7 +351,6 @@ func TestTokenRenewal(t *testing.T) {
 		t.Fatalf("renewed token: %+v, %v", got, err)
 	}
 
-	// После смены пароля старый токен не продлевается, а не действует.
 	if _, err := srv.DB.Exec(`UPDATE users SET password_changed_at = now() WHERE id = $1`, claims.UserID); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +380,6 @@ func TestLoginGuard_ReserveCountsBeforeTheCheck(t *testing.T) {
 	}
 }
 
-// Параллельный подбор старого пароля упирается в тот же счёт, что и по одному.
 func TestChangePassword_ConcurrentGuessesAreBounded(t *testing.T) {
 	_, router, token, _ := newTestServer(t)
 	var mu sync.Mutex
@@ -417,7 +404,6 @@ func TestChangePassword_ConcurrentGuessesAreBounded(t *testing.T) {
 	}
 }
 
-// Вход, во время которого сменили пароль, не даёт живого токена.
 func TestLoginDuringPasswordChange(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	invitedUser(t, router, admin, "race-user")
@@ -425,7 +411,7 @@ func TestLoginDuringPasswordChange(t *testing.T) {
 		if _, err := db.Exec(`UPDATE users SET password_changed_at = now() WHERE username = 'race-user'`); err != nil {
 			t.Error(err)
 		}
-		time.Sleep(1100 * time.Millisecond) // токен старой логики выдался бы уже в следующую секунду
+		time.Sleep(1100 * time.Millisecond)
 		return auth.VerifyPassword(password, hash)
 	}
 	t.Cleanup(func() { verifyLoginPassword = auth.VerifyPassword })
@@ -447,7 +433,6 @@ func loginFrom(router http.Handler, ip, name, password string) int {
 	return rec.Code
 }
 
-// Подбор с чужого адреса не закрывает вход хозяину имени.
 func TestLogin_PauseIsPerAddress(t *testing.T) {
 	_, router, admin, _ := newTestServer(t)
 	invitedUser(t, router, admin, "pair-owner")
@@ -462,7 +447,6 @@ func TestLogin_PauseIsPerAddress(t *testing.T) {
 	}
 }
 
-// IPv6: адреса одной подсети /64 — один абонент, пауза у них общая.
 func TestLogin_IPv6CountsBySubnet(t *testing.T) {
 	_, router, admin, _ := newTestServer(t)
 	invitedUser(t, router, admin, "v6-owner")
@@ -477,7 +461,6 @@ func TestLogin_IPv6CountsBySubnet(t *testing.T) {
 	}
 }
 
-// Перебор с многих адресов упирается в потолок на имя, один адрес его не выбирает.
 func TestLogin_NameCeiling(t *testing.T) {
 	_, router, admin, s := newTestServer(t)
 	invitedUser(t, router, admin, "ceiling-owner")
@@ -494,7 +477,7 @@ func TestLogin_NameCeiling(t *testing.T) {
 	if code := loginFrom(router, "203.0.113.9", "ceiling-owner", "testpass123"); code != http.StatusTooManyRequests {
 		t.Errorf("over the ceiling, a new address: %d, want 429", code)
 	}
-	s.loginForget("ceiling-owner") // ссылка сброса пароля
+	s.loginForget("ceiling-owner")
 	if code := loginFrom(router, "203.0.113.9", "ceiling-owner", "testpass123"); code != http.StatusOK {
 		t.Errorf("after a reset: %d, want 200", code)
 	}

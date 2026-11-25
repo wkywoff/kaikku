@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// Одна запись на двух релизах делит файл (ISRC, worker.go): удаление одного
-// трека его не трогает, удаление последнего — удаляет.
 func TestDeleteTrackKeepsSharedFile(t *testing.T) {
 	srv, router := newAuthTestServer(t)
 	admin := tokenOf(t, register(router, "owner", ""))

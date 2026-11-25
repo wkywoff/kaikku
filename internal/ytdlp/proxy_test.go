@@ -63,8 +63,6 @@ func TestSetProxy_EveryYtDlpCallUsesIt(t *testing.T) {
 	}
 }
 
-// Звук по ссылке googlevideo и поиск YouTube Music идут из Go, не из
-// yt-dlp: им прокси нужен так же.
 func TestSetProxy_GoRequestsGoThroughIt(t *testing.T) {
 	var mu sync.Mutex
 	var seen []string

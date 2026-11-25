@@ -11,12 +11,6 @@ import (
 	"kaikku/internal/ytdlp"
 )
 
-// «Не нашлось» (админ): треки, чьи задачи упали — чаще всего на YouTube не
-// нашлось подходящего видео. Админ может указать видео ссылкой, загрузить
-// свой файл (PUT /api/tracks/deezer/{id}/audio) или повторить поиск.
-// Воркер и сам повторяет упавшее раз в сутки, до трёх попыток
-// (ingest.Housekeep); исчерпавшие попытки в списке не показываются.
-
 type missingTrack struct {
 	JobID         int64     `json:"job_id"`
 	DeezerID      string    `json:"deezer_id"`
@@ -27,17 +21,13 @@ type missingTrack struct {
 	CoverURL      string    `json:"cover_url,omitempty"`
 	DurationMs    int       `json:"duration_ms"`
 	Error         string    `json:"error"`
-	Kind          string    `json:"kind"` // blocked | not_found | download | audio | other (ingest.FailureKind)
+	Kind          string    `json:"kind"`
 	Attempts      int       `json:"attempts"`
 	RequestedBy   string    `json:"requested_by,omitempty"`
 	ManualVideoID string    `json:"manual_video_id,omitempty"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// GET /api/admin/missing — упавшие задачи, свежие сверху. blocked — среди
-// них есть те, кому YouTube отказал целиком (не пускает сервер): страница
-// объясняет, как это починить; proxy — YouTube уже идёт через YTDLP_PROXY;
-// cookies — загруженные куки YouTube (handlers_youtube.go) или null.
 func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.Query(`
 		SELECT j.id, substr(j.source_ref, 8), j.title, j.artist_name, j.album_title, COALESCE(j.album_deezer_id, ''),
@@ -76,8 +66,6 @@ func (s *Server) handleMissing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": out, "blocked": blocked, "proxy": ytdlp.Proxied(), "cookies": cookies})
 }
 
-// POST /api/admin/missing/{job}/retry — искать заново сейчас, с полным
-// запасом попыток.
 func (s *Server) handleRetryMissing(w http.ResponseWriter, r *http.Request) {
 	jobID, err := strconv.ParseInt(r.PathValue("job"), 10, 64)
 	if err != nil {
@@ -101,9 +89,6 @@ func (s *Server) handleRetryMissing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
 }
 
-// PUT /api/tracks/deezer/{id}/video {"url"} — скачать трек с этого видео
-// YouTube. Не нашёлся — задача снова в очереди уже без поиска; трек в
-// медиатеке (нашлось не то) — его файл заменится.
 func (s *Server) handleSetTrackVideo(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	if !validDeezerID(dz) {
@@ -138,7 +123,6 @@ func (s *Server) handleSetTrackVideo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "the track is being downloaded, try again in a minute")
 		return
 	}
-	// replace_audio — у трека уже есть файл: заменить его в той же строке.
 	if _, err := s.DB.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, hold_until = NULL,
 		        manual_video_id = $2, attempts = 0, replace_audio = $3, updated_at = now()

@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// Подпись по last.fm/api/authspec (п. 8): параметры по алфавиту
-// «имязначение», затем секрет, md5; format не подписывается.
 func TestSign_MatchesSpec(t *testing.T) {
 	c := &Client{Key: "xxxxxxxx", Secret: "mysecret"}
 	v := url.Values{"token": {"xxxxxxx"}, "method": {"auth.getSession"}, "api_key": {"xxxxxxxx"}, "format": {"json"}}

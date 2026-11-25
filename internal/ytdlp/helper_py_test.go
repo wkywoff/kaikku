@@ -12,10 +12,6 @@ import (
 	"testing"
 )
 
-// Поддельный модуль yt_dlp для настоящего helper.py: видео age* без кук —
-// «Sign in to confirm your age», bot* — «not a bot»; поиск по запросу с
-// botsearch без кук сообщает об отказе только логгеру, как yt-dlp при
-// ignoreerrors. Каждый вызов пишется в FAKE_YTDLP_LOG.
 const fakeYtDlpModule = `import json
 import os
 
@@ -49,8 +45,6 @@ type helperCall struct {
 	Cookies bool   `json:"cookies"`
 }
 
-// startHelperPy runs the real helper.py on the fake yt_dlp; withCookies
-// gives it cookies the way startWarm does.
 func startHelperPy(t *testing.T, withCookies bool) (ask func(req string) map[string]any, calls func() []helperCall) {
 	t.Helper()
 	python, err := exec.LookPath("python3")
@@ -143,7 +137,6 @@ func TestHelperPy_CookiesOnlyWhenYouTubeAsks(t *testing.T) {
 		t.Fatalf("refused search: %v", r)
 	}
 
-	// Не пускает сервер — дальше куки сразу, без попытки без них.
 	if r := ask(`"op": "extract", "video": "botC"`); url(r) != "https://media.test/botC?signed-in" {
 		t.Fatalf("refused server: %v", r)
 	}

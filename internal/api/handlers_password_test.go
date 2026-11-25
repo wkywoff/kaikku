@@ -16,7 +16,7 @@ func loginAs(router http.Handler, username, password string) int {
 func TestChangePassword(t *testing.T) {
 	_, router := newAuthTestServer(t)
 	owner := tokenOf(t, register(router, "owner", ""))
-	device2 := func() string { // второе устройство: токен, выданный до смены пароля
+	device2 := func() string {
 		body, _ := json.Marshal(map[string]string{"username": "owner", "password": "testpass123"})
 		var r struct{ Token string }
 		json.Unmarshal(postJSON(router, "/api/login", string(body), "").Body.Bytes(), &r)
@@ -87,7 +87,7 @@ func TestPasswordResetLink(t *testing.T) {
 		return r.Code
 	}
 	stale := newLink()
-	code := newLink() // новая ссылка отменяет старую
+	code := newLink()
 	reset := func(code, password string) int {
 		body, _ := json.Marshal(map[string]string{"code": code, "password": password})
 		return postJSON(router, "/api/password-reset", string(body), "").Code
@@ -118,8 +118,6 @@ func TestPasswordResetLink(t *testing.T) {
 	}
 }
 
-// Пароль сбросили, пока шла смена: смена, доказанная прежним паролем, новый
-// не перезаписывает (чужая открытая сессия не отбирает аккаунт обратно).
 func TestChangePassword_DoesNotOverwriteConcurrentReset(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	token := invitedUser(t, router, admin, "race-change")

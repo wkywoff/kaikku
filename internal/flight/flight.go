@@ -1,6 +1,3 @@
-// Package flight — одновременные одинаковые загрузки одним вызовом: при
-// старте трека один и тот же трек Deezer спрашивают плеер, история, тексты
-// и лайк, и без этого каждый промах кеша шёл к Deezer сам.
 package flight
 
 import (
@@ -21,8 +18,6 @@ type call[T any] struct {
 
 var errPanicked = errors.New("flight: load panicked")
 
-// Do вызывает fn для key; кто пришёл с тем же key, пока она идёт, ждёт её
-// и получает тот же результат (общий: менять его на месте нельзя).
 func (g *Group[T]) Do(key string, fn func() (T, error)) (T, error) {
 	g.mu.Lock()
 	if c, ok := g.m[key]; ok {

@@ -16,22 +16,13 @@ import (
 	"kaikku/internal/safe"
 )
 
-// Last.fm (миграция 0023): человек привязывает аккаунт в настройках, дальше
-// его прослушивания уходят скробблами, текущий трек — «сейчас играет», а
-// лайки — ♥. Без ключа приложения (LASTFM_API_KEY/SECRET) всё выключено.
-//
-// Скроббл сначала ложится в lastfm_queue и отправляется сразу; если Last.fm
-// недоступен — повтор с нарастающей паузой (StartLastfm), так что
-// прослушивания не теряются.
-
-const lastfmMaxAge = 14 * 24 * time.Hour // старше Last.fm не принимает (и flushLastfm)
+const lastfmMaxAge = 14 * 24 * time.Hour
 
 type lastfmLink struct {
 	username, sessionKey string
 	scrobble, love       bool
 }
 
-// lastfmLinkOf — привязка человека; nil — не привязан или Last.fm выключен.
 func (s *Server) lastfmLinkOf(userID string) *lastfmLink {
 	if s.Lastfm == nil {
 		return nil
@@ -48,8 +39,6 @@ func (s *Server) lastfmLinkOf(userID string) *lastfmLink {
 	return &l
 }
 
-// dropLastfmLink — Last.fm сказал, что ключ отозван: привязки больше нет
-// (очередь человека уходит вместе с ней).
 func (s *Server) dropLastfmLink(userID string) {
 	if _, err := s.DB.Exec(`DELETE FROM lastfm_links WHERE user_id = $1`, userID); err != nil {
 		log.Printf("lastfm unlink %s: %v", userID, err)
@@ -60,13 +49,11 @@ func lastfmTrack(t *deezer.Track) lastfm.Track {
 	return lastfm.Track{Artist: t.Artist, Title: t.Title, Album: t.Album, Duration: (t.DurationMs + 500) / 1000}
 }
 
-// GET /api/me/lastfm — доступен ли Last.fm и привязан ли аккаунт.
 func (s *Server) handleLastfmStatus(w http.ResponseWriter, r *http.Request) {
 	if s.Lastfm == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"available": false})
 		return
 	}
-	// cb — куда Last.fm вернёт человека с токеном (страница /lastfm сайта).
 	out := map[string]any{"available": true, "auth_url": s.Lastfm.AuthURL(r.URL.Query().Get("cb"))}
 	if l := s.lastfmLinkOf(currentUser(r)); l != nil {
 		var pending int
@@ -76,8 +63,6 @@ func (s *Server) handleLastfmStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// POST /api/me/lastfm {token} — токен из веб-авторизации Last.fm меняется
-// на ключ сессии; повторная привязка (другой аккаунт) заменяет прежнюю.
 func (s *Server) handleLastfmLink(w http.ResponseWriter, r *http.Request) {
 	if s.Lastfm == nil {
 		writeError(w, http.StatusNotFound, "last.fm is not configured")
@@ -93,7 +78,6 @@ func (s *Server) handleLastfmLink(w http.ResponseWriter, r *http.Request) {
 	name, key, err := s.Lastfm.Session(r.Context(), req.Token)
 	var lfErr *lastfm.Error
 	if errors.As(err, &lfErr) && !lastfm.Retryable(err) {
-		// 4, 14, 15: токен неверный, не подтверждён или устарел
 		writeError(w, http.StatusBadRequest, "last.fm did not accept the token")
 		return
 	}
@@ -113,7 +97,6 @@ func (s *Server) handleLastfmLink(w http.ResponseWriter, r *http.Request) {
 	s.handleLastfmStatus(w, r)
 }
 
-// PATCH /api/me/lastfm {scrobble?, love?}
 func (s *Server) handleLastfmSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Scrobble *bool `json:"scrobble"`
@@ -137,7 +120,6 @@ func (s *Server) handleLastfmSettings(w http.ResponseWriter, r *http.Request) {
 	s.handleLastfmStatus(w, r)
 }
 
-// DELETE /api/me/lastfm — отвязать (неотправленные скробблы пропадают).
 func (s *Server) handleLastfmUnlink(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.DB.Exec(`DELETE FROM lastfm_links WHERE user_id = $1`, currentUser(r)); err != nil {
 		serverError(w, r, "could not unlink", err)
@@ -146,8 +128,6 @@ func (s *Server) handleLastfmUnlink(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// lastfmTrackFor — трек запроса {deezer_id} с правками, если человек
-// привязал Last.fm и скробблит; иначе nil (запрос молча ничего не делает).
 func (s *Server) lastfmTrackFor(w http.ResponseWriter, r *http.Request, id string) (*lastfmLink, *deezer.Track, bool) {
 	if !validCatalogID(id) {
 		writeError(w, http.StatusBadRequest, "deezer_id must be a song ID")
@@ -166,7 +146,6 @@ func (s *Server) lastfmTrackFor(w http.ResponseWriter, r *http.Request, id strin
 	return l, track, true
 }
 
-// POST /api/me/now-playing {deezer_id} — трек начал играть.
 func (s *Server) handleNowPlaying(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DeezerID string `json:"deezer_id"`
@@ -190,8 +169,6 @@ func (s *Server) handleNowPlaying(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// POST /api/me/scrobbles {deezer_id, started_at} — трек дослушан до порога
-// Last.fm (половина или 4 минуты); started_at — начало, unix-секунды.
 func (s *Server) handleScrobble(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DeezerID  string `json:"deezer_id"`
@@ -217,18 +194,16 @@ func (s *Server) handleScrobble(w http.ResponseWriter, r *http.Request) {
 	}
 	select {
 	case s.lastfmWake <- struct{}{}:
-	default: // отправитель уже разбужен (или не запущен — тесты)
+	default:
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// lastfmLove — лайк или его снятие в kaikku ставит или снимает ♥ на Last.fm.
 func (s *Server) lastfmLove(userID string, track *deezer.Track, on bool) {
 	l := s.lastfmLinkOf(userID)
 	if l == nil || !l.love || track == nil {
 		return
 	}
-	// Снимок лайка — как у Deezer: название и исполнитель — с правками админа.
 	ts := []deezer.Track{*track}
 	s.overlayFor(nil, nil, ts)
 	s.inBackground(func() {
@@ -243,8 +218,6 @@ func (s *Server) lastfmLove(userID string, track *deezer.Track, on bool) {
 	})
 }
 
-// StartLastfm запускает отправку очереди скробблов: сразу после нового
-// скроббла и раз в минуту — то, чему пришло время повтора.
 func (s *Server) StartLastfm(ctx context.Context) {
 	if s.Lastfm == nil {
 		return
@@ -265,7 +238,6 @@ func (s *Server) StartLastfm(ctx context.Context) {
 	}()
 }
 
-// flushLastfm отправляет всё, чему пришло время, пачками по 50 на человека.
 func (s *Server) flushLastfm(ctx context.Context) {
 	if _, err := s.DB.Exec(`DELETE FROM lastfm_queue WHERE played_at < now() - interval '14 days'`); err != nil {
 		log.Printf("lastfm queue cleanup: %v", err)
@@ -291,8 +263,6 @@ func (s *Server) flushLastfm(ctx context.Context) {
 	}
 }
 
-// flushLastfmBatch отправляет одну пачку человека; true — отправилась и,
-// может быть, есть ещё.
 func (s *Server) flushLastfmBatch(ctx context.Context, userID, sk string) bool {
 	rows, err := s.DB.Query(
 		`SELECT id, artist, track, album, duration, played_at FROM lastfm_queue
@@ -329,7 +299,6 @@ func (s *Server) flushLastfmBatch(ctx context.Context, userID, sk string) bool {
 			  WHERE id = ANY($1)`, pq.Array(ids))
 		return false
 	case err != nil:
-		// Неверные данные — повтор не поможет.
 		log.Printf("lastfm scrobble rejected: %v", err)
 	}
 	if _, err := s.DB.Exec(`DELETE FROM lastfm_queue WHERE id = ANY($1)`, pq.Array(ids)); err != nil {

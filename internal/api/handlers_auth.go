@@ -26,13 +26,8 @@ const (
 	minPasswordLen = 8
 )
 
-// Токен старше этого продлевается сам (authed, X-Auth-Token): вход
-// кончается только после tokenTTL без единого захода.
 const tokenRenewAfter = 24 * time.Hour
 
-// validUsername: 3–32 letters, digits, "_", "-", ".". The name is shown to
-// other users (public playlists), so no spaces, control or invisible
-// characters and no kilometre-long strings.
 func validUsername(name string) bool {
 	if n := utf8.RuneCountInString(name); n < minUsernameLen || n > maxUsernameLen {
 		return false
@@ -58,10 +53,6 @@ type registerRequest struct {
 	Invite   string `json:"invite"`
 }
 
-// handleRegister creates a user. Registration is invite-only: the code must
-// exist, be unused and not expired, and is consumed in the same transaction.
-// The only exception is an empty users table — that first user registers
-// without an invite and becomes the admin.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -75,9 +66,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Приглашение — до хеширования: хеш стоит ~0.2 с процессора, а запрос
-	// без приглашения не должен стоить ничего. createUser проверяет его ещё
-	// раз в транзакции.
 	if ok, err := s.inviteUsable(req.Invite); err != nil {
 		serverError(w, r, "could not check the invite", err)
 		return
@@ -116,8 +104,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "token": token})
 }
 
-// handleRegisterInfo (GET /api/register): нужно ли приглашение. На пустой
-// базе — нет: форма входа сразу открывает регистрацию первого (админа).
 func (s *Server) handleRegisterInfo(w http.ResponseWriter, r *http.Request) {
 	var first bool
 	if err := s.DB.QueryRow(`SELECT NOT EXISTS (SELECT 1 FROM users)`).Scan(&first); err != nil {
@@ -127,8 +113,6 @@ func (s *Server) handleRegisterInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"first_user": first})
 }
 
-// inviteUsable: nobody has registered yet (the first user needs no invite)
-// or the code is unused and not expired.
 func (s *Server) inviteUsable(code string) (bool, error) {
 	var ok bool
 	err := s.DB.QueryRow(
@@ -145,8 +129,6 @@ func (s *Server) createUser(username, passwordHash, invite string) (string, erro
 	}
 	defer tx.Rollback()
 
-	// Сериализует параллельные регистрации в пустой базе: иначе два первых
-	// пользователя могли бы оба стать админами без приглашения.
 	if _, err := tx.Exec(`LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return "", err
 	}
@@ -204,7 +186,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	// Подбор пароля: после нескольких неудач — пауза между попытками (loginguard.go).
 	ip := clientIP(r)
 	if wait := s.reserveLogin(name, ip, time.Now()); wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
@@ -212,14 +193,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Токен — от начала входа: смена пароля, случившаяся пока он проверяется,
-	// должна его отменить, а старый пароль в этот момент ещё подходит.
 	started := time.Now()
 	var id, hash string
 	err := s.DB.QueryRow(`SELECT id, password_hash FROM users WHERE username = $1`, name).Scan(&id, &hash)
 	if err == sql.ErrNoRows {
-		// Столько же времени, сколько проверка настоящего пароля: по времени
-		// ответа не узнать, есть ли такой пользователь.
 		auth.DummyVerify(req.Password)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -249,26 +226,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
-// verifyLoginPassword — auth.VerifyPassword; тест подставляет смену пароля в момент проверки.
 var verifyLoginPassword = auth.VerifyPassword
 
-// handleMe tells the frontend who is logged in (and whether to show admin
-// controls such as "Пригласить").
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 	var username string
 	var isAdmin bool
 	err := s.DB.QueryRow(`SELECT username, is_admin FROM users WHERE id = $1`, userID).Scan(&username, &isAdmin)
 	if err == sql.ErrNoRows {
-		// Токен валиден, но пользователя уже нет — как просроченный токен.
 		writeError(w, http.StatusUnauthorized, "user no longer exists")
 		return
 	} else if err != nil {
 		serverError(w, r, "query failed", err)
 		return
 	}
-	// can_upload — показывать ли загрузку своих релизов (uploads.go);
-	// lastfm_scrobble — слать ли плееру «сейчас играет» и скробблы (lastfm.go).
 	l := s.lastfmLinkOf(userID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": userID, "username": username, "is_admin": isAdmin, "can_upload": canUpload(r),
@@ -276,7 +247,6 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleCreateInvite (admin) issues a single-use registration code.
 func (s *Server) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
 

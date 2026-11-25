@@ -11,18 +11,11 @@ import (
 	"strings"
 )
 
-// Media is format 140 of a video as yt-dlp extracted it: a googlevideo URL
-// (valid only from this server's IP, for a few hours) and the headers to
-// fetch it with.
 type Media struct {
 	URL     string
 	Headers map[string]string
 }
 
-// Resolve runs only yt-dlp's extraction (`-j`, or helper.py after
-// EnableWarm) for videoID, without its downloader. Measured on the server, `yt-dlp -o -` spends ~1 s between
-// extraction and the first byte; fetching the URL ourselves (Fetch) gets
-// it in ~0.1 s.
 func Resolve(ctx context.Context, videoID string) (*Media, error) {
 	if w := warm.Load(); w != nil {
 		m, err := w.extract(ctx, videoID)
@@ -47,7 +40,6 @@ func Resolve(ctx context.Context, videoID string) (*Media, error) {
 
 func mediaFrom(url, protocol string, headers map[string]string) (*Media, error) {
 	if url == "" || protocol != "https" {
-		// m3u8/dash-фрагменты — это не один файл; такое пусть качает сам yt-dlp.
 		return nil, fmt.Errorf("%w (protocol %q)", errNotPlainFile, protocol)
 	}
 	return &Media{URL: url, Headers: headers}, nil
@@ -55,21 +47,12 @@ func mediaFrom(url, protocol string, headers map[string]string) (*Media, error) 
 
 var errNotPlainFile = errors.New("yt-dlp extract: format 140 is not a plain https file")
 
-// errFetch marks failures of the direct download (expired URL, 403, cut
-// off), as opposed to the video itself being unavailable.
 var errFetch = errors.New("fetching audio")
 
-// httpClient fetches googlevideo URLs; the caller's context bounds it.
 var httpClient = &http.Client{}
 
-// fetchChunk: YouTube throttles a request for the whole file to a crawl
-// (measured: ~30 KB/s), but serves Range requests of up to ~10 MB at full
-// speed — yt-dlp downloads in such chunks too (http_chunk_size).
 var fetchChunk int64 = 10 << 20
 
-// Fetch downloads m with consecutive Range requests. The first one is made
-// before returning, so an expired URL or 403 is an error here, not in the
-// middle of the stream.
 func Fetch(ctx context.Context, client *http.Client, m *Media) (io.ReadCloser, error) {
 	f := &rangeFetcher{ctx: ctx, client: client, media: m, size: -1}
 	if err := f.next(); err != nil {
@@ -83,9 +66,9 @@ type rangeFetcher struct {
 	client *http.Client
 	media  *Media
 	body   io.ReadCloser
-	pos    int64 // сколько уже прочитано
-	end    int64 // конец текущего куска (не включительно)
-	size   int64 // полный размер из Content-Range; -1 — ещё неизвестен
+	pos    int64
+	end    int64
+	size   int64
 }
 
 func (f *rangeFetcher) next() error {
@@ -151,7 +134,6 @@ func (f *rangeFetcher) Close() error {
 	return nil
 }
 
-// parseContentRange parses "bytes start-end/size".
 func parseContentRange(h string) (start, end, size int64, ok bool) {
 	spec, found := strings.CutPrefix(h, "bytes ")
 	if !found {

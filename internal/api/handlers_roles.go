@@ -8,16 +8,6 @@ import (
 	"net/http"
 )
 
-// Права админа (users.is_admin). Первым админом становится первый аккаунт
-// (handlers_auth.go), дальше права выдаёт и снимает любой админ:
-// PUT /api/admin/users/{id}/admin {"admin": true|false}. Действует сразу —
-// authed и Subsonic читают is_admin на каждом запросе.
-//
-// Без админа сервис остаться не должен: вернуть права было бы некому, только
-// руками в базе. Поэтому последнего админа снять нельзя — в том числе себя.
-// С себя, пока есть другой админ, — можно: правило одно, «хоть один остаётся».
-
-// handleSetUserAdmin (admin) -> { id, username, is_admin }.
 func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 	callerID := currentUser(r)
 	userID := r.PathValue("id")
@@ -34,16 +24,12 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	// Строки всех админов — под замок до конца транзакции, по порядку id
-	// (два запроса не заблокируют друг друга). Одновременные снятия идут по
-	// очереди, и второй запрос видит уже то, что осталось после первого:
-	// два админа не снимут друг друга разом.
 	rows, err := tx.Query(`SELECT id::text FROM users WHERE is_admin ORDER BY id FOR UPDATE`)
 	if err != nil {
 		serverError(w, r, "update failed", err)
 		return
 	}
-	callerIsAdmin, others := false, 0 // others — админы, кроме того, чьи права меняют
+	callerIsAdmin, others := false, 0
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
@@ -64,7 +50,6 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, "update failed", err)
 		return
 	}
-	// adminOnly проверил права до транзакции; их могли снять, пока запрос шёл.
 	if !callerIsAdmin {
 		writeError(w, http.StatusForbidden, "admin only")
 		return

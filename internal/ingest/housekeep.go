@@ -8,16 +8,6 @@ import (
 	"time"
 )
 
-// Housekeep — уборка воркера (раз в час, cmd/worker):
-//
-//   - упавшие задачи повторяются раз в сутки, пока попыток меньше
-//     MaxAttempts (YouTube или yt-dlp могли починиться, ролик — появиться);
-//     те, кому YouTube отказал целиком (blocked), — по одной пробной в час
-//     (RetryBlocked);
-//   - мёртвые задачи удаляются: готовые, чей трек удалили, и безнадёжно
-//     упавшие, на которые никто не ссылается;
-//   - аудио, которое никто не включал keep, удаляется с диска (evictAudio);
-//   - устаревший кеш Deezer удаляется из базы (deezer_cache).
 func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 	if res, err := db.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, updated_at = now()
@@ -34,8 +24,6 @@ func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 		log.Printf("housekeep: youtube refused the server, trying one of those jobs again")
 	}
 
-	// Готовые без трека, но с известным видео — это удалённое неслушаемое
-	// аудио: по ним трек скачается заново с того же видео, их не трогаем.
 	if res, err := db.Exec(
 		`DELETE FROM ingest_jobs j
 		  WHERE (j.status = 'done' AND j.result_track_id IS NULL AND j.known_video_id IS NULL
@@ -56,16 +44,10 @@ func Housekeep(db *sql.DB, storageDir string, keep time.Duration) {
 	}
 }
 
-// RetryBlocked returns jobs YouTube refused to download (FailureKind
-// "blocked": it doesn't let the server in, the tracks aren't at fault) to
-// the queue: all of them, or one probe, the one refused longest ago. The
-// worker tries a probe at start and every hour (Housekeep), and the first
-// download that works brings the rest back (downloadFirst), so a long block
-// costs a couple of requests an hour, not a couple per job.
 func RetryBlocked(db *sql.DB, all bool) (int64, error) {
 	var limit any = 1
 	if all {
-		limit = nil // LIMIT NULL — без ограничения
+		limit = nil
 	}
 	res, err := db.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, updated_at = now()
@@ -77,11 +59,6 @@ func RetryBlocked(db *sql.DB, all bool) (int64, error) {
 	return res.RowsAffected()
 }
 
-// RetrySignIn returns jobs whose video YouTube gives only to a signed-in
-// account (FailureKind "signin": 18+, for channel members) to the queue
-// with their attempts back: the admin uploaded cookies, the reason may be
-// gone. Even the ones that used up their attempts — they may be liked or
-// in playlists.
 func RetrySignIn(db *sql.DB) (int64, error) {
 	res, err := db.Exec(
 		`UPDATE ingest_jobs SET status = 'pending', error = NULL, video_id = NULL, attempts = 0, updated_at = now()
@@ -92,22 +69,10 @@ func RetrySignIn(db *sql.DB) (int64, error) {
 	return res.RowsAffected()
 }
 
-// MaxAttempts — сколько раз задача может упасть, прежде чем Housekeep
-// перестанет её повторять. Такие пропадают и из «не нашлось»: ссылку или
-// свой файл для них админ даёт из правки трека на странице альбома.
 const MaxAttempts = 3
 
-// evictAudioBatch — сколько треков за проход: удаление файлов не должно
-// надолго занимать воркер.
 const evictAudioBatch = 200
 
-// evictAudio удаляет файлы треков Deezer, которые никто не включал keep.
-// Строка трека уходит (лайки, плейлисты и история — по Deezer ID, им она не
-// нужна), задача остаётся готовой без трека и помнит видео: следующее
-// включение поставит её в очередь, и трек скачается с того же ролика. Не
-// трогает свои загрузки (k…), файл админа (audio_pinned), правленые строки
-// и треки, которые сейчас качаются. Файл, который делят несколько релизов
-// (одна запись), удаляется только вместе с последним из них.
 func evictAudio(db *sql.DB, storageDir string, keep time.Duration) {
 	rows, err := db.Query(
 		`SELECT t.id FROM tracks t
@@ -158,8 +123,6 @@ func evictAudio(db *sql.DB, storageDir string, keep time.Duration) {
 	}
 }
 
-// evictTrack удаляет строку трека, запомнив в его задаче видео; возвращает
-// ключ файла.
 func evictTrack(db *sql.DB, trackID string) (string, error) {
 	tx, err := db.Begin()
 	if err != nil {

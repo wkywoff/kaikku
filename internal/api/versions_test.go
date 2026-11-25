@@ -15,9 +15,6 @@ type versionsPage struct {
 	Versions []pageAlbum
 }
 
-// Версия релиза пропадает из дискографии и видна в «Других версиях» на
-// странице основного и других версий; привязка к своей версии делает её
-// основной. Mock: у артиста 1 релизы 9 и 10.
 func TestAlbumVersions(t *testing.T) {
 	_, router, token := newTestRouter(t)
 	claim := func(dz string) string {
@@ -39,7 +36,7 @@ func TestAlbumVersions(t *testing.T) {
 		return p
 	}
 
-	put(t, router, "/api/albums/"+single, token, `{"title":"Old Single","version_of":"10"}`, http.StatusBadRequest) // сам себе
+	put(t, router, "/api/albums/"+single, token, `{"title":"Old Single","version_of":"10"}`, http.StatusBadRequest)
 	put(t, router, "/api/albums/"+single, token, `{"title":"Old Single","version_of":"9"}`, http.StatusOK)
 	if got := discography(); !slices.Equal(got, []string{"9"}) {
 		t.Errorf("discography with a version: %v", got)
@@ -51,7 +48,6 @@ func TestAlbumVersions(t *testing.T) {
 		t.Errorf("version page: %+v", p)
 	}
 
-	// Основной — версия своей версии: та становится основной.
 	put(t, router, "/api/albums/"+album, token, `{"title":"Test Album","version_of":"10"}`, http.StatusOK)
 	if got := discography(); !slices.Equal(got, []string{"10"}) {
 		t.Errorf("after swapping the main release: %v", got)

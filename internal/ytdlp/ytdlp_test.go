@@ -93,9 +93,6 @@ func TestPickBestMatch_PenalizesOtherVersions(t *testing.T) {
 	}
 }
 
-// Реальный случай (Daft Punk — The Game of Love, 322 с): официальная
-// заливка (332 с) вне допуска, а в допуске — Drumless Edition с
-// официального канала и lyric-видео с оригинальным звуком.
 func TestPickBestMatch_DrumlessEditionLoses(t *testing.T) {
 	candidates := []candidate{
 		{ID: "ajGKWk0auOc", Title: "Daft Punk - The Game of Love (Official Audio)", Channel: "Daft Punk", DurationMs: 332000},
@@ -136,7 +133,6 @@ func TestPickBestMatch_NoPenaltyWhenDeezerTitleHasMarker(t *testing.T) {
 }
 
 func TestPickBestMatch_WordBoundaries(t *testing.T) {
-	// "alive" must not be read as the "live" marker.
 	candidates := []candidate{{ID: "ok", Title: "Stayin Alive", Channel: "Bee Gees - Topic", DurationMs: 285000}}
 	got, err := pickBestMatch(candidates, Want{Artist: "Bee Gees", Title: "Stayin' Alive", DurationMs: 285000}, 4000)
 	if err != nil || got != "ok" {
@@ -144,9 +140,6 @@ func TestPickBestMatch_WordBoundaries(t *testing.T) {
 	}
 }
 
-// Случай с YouTube (rokma — альбом TIDE): трек находится только запросом
-// "артист альбом", а в той же выдаче есть другие треки альбома с того же
-// канала — их длительность может попасть в допуск, название — нет.
 func TestPickBestMatch_AlbumQueryNeedsMatchingTitle(t *testing.T) {
 	candidates := []candidate{
 		{ID: "fakeEp00001", Title: "rokma — TIDE [FULL EP, 2025]", Channel: "rokma", DurationMs: 1140000},
@@ -208,8 +201,6 @@ func TestPickBestMatch_NoCandidates(t *testing.T) {
 	}
 }
 
-// «Не нашлось» отличимо от сбоя (errors.Is), а текст ошибки прежний: он
-// сохраняется в задаче и показывается админу.
 func TestNoMatchErrors(t *testing.T) {
 	_, err := pickBestMatch(nil, Want{Title: "Song"}, 4000)
 	if !errors.Is(err, ErrNoMatch) || err.Error() != "youtube search returned no results" {
@@ -250,7 +241,7 @@ func TestNormalize(t *testing.T) {
 	cases := map[string]string{
 		"Song (Sped-Up)": "song sped up",
 		"  Касания  болезненны!": "касания болезненны",
-		"\u0441olitis imh":       "colitis imh", // кириллическая «с»
+		"\u0441olitis imh":       "colitis imh",
 		"KICKЭСС":                "kickэcc",
 		"":                       "",
 	}
@@ -274,8 +265,6 @@ func TestSearchQueries_FeaturedArtists(t *testing.T) {
 	}
 }
 
-// Песня того же артиста с одним общим словом в названии — не та песня, даже
-// с Topic-канала и той же длины (PUNK TACTICS скачалась как LIKE A PUNK).
 func TestPickBestMatch_SharedWordIsNotTheSong(t *testing.T) {
 	want := Want{Artist: "Joey Valence & Brae", Title: "PUNK TACTICS", DurationMs: 143000}
 	candidates := []candidate{
@@ -287,20 +276,16 @@ func TestPickBestMatch_SharedWordIsNotTheSong(t *testing.T) {
 	if err != nil || got != "reupload" {
 		t.Fatalf("got %q, %v", got, err)
 	}
-	// Topic с тем же названием и пометкой версии в скобках — та же песня.
 	candidates = append(candidates, candidate{ID: "topic", Title: "PUNK TACTICS (feat. Someone)", Channel: "Joey Valence & Brae - Topic", DurationMs: 143000})
 	if got, _ := pickBestMatch(candidates, want, 4000); got != "topic" {
 		t.Fatalf("topic upload of the song itself: got %q", got)
 	}
-	// Topic с названием на языке оригинала — та же песня.
 	jp := Want{Artist: "Hakari Hanazono", Title: "Love Love Moso Parade", DurationMs: 200000}
 	if got, err := pickBestMatch([]candidate{{ID: "jp", Title: "Love Love 妄想パレード", Channel: "Hakari Hanazono (CV: Kaede Hondo) - Topic", DurationMs: 200000}}, jp, 4000); got != "jp" {
 		t.Fatalf("original-script topic title: got %q, %v", got, err)
 	}
 }
 
-// Реальный случай (WARYKID — вой): на YouTube названия с кириллической
-// первой буквой, «оverblood» и «сolitis imh», а в Deezer — латиницей.
 func TestPickBestMatch_CyrillicLookalikes(t *testing.T) {
 	candidates := []candidate{
 		{ID: "3aPo29NgcLk", Title: "WARYKID — вой СТРИМ ft. WARYKID & UMSY", Channel: "записи стримов декмы", DurationMs: 21970000},
@@ -315,7 +300,6 @@ func TestPickBestMatch_CyrillicLookalikes(t *testing.T) {
 	if ranked, err := rankMusic(music, Want{Artist: "WARYKID", Title: "colitis imh", Album: "вой", DurationMs: 114000}, 4000); err != nil || ranked[0].ID != "O9Kzz833dPc" {
 		t.Fatalf("youtube music: %+v, %v", ranked, err)
 	}
-	// Смешанное слово и в Deezer: та же запись на YouTube находится.
 	mixed := []candidate{{ID: "kick", Title: "KICKЭСС", Channel: "Artist", DurationMs: 150000}}
 	if got, err := pickBestMatch(mixed, Want{Artist: "Artist", Title: "KICKЭСС", DurationMs: 150000}, 4000); got != "kick" {
 		t.Fatalf("mixed title on both sides: got %q, %v", got, err)

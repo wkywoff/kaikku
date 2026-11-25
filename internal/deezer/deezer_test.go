@@ -10,9 +10,6 @@ import (
 	"testing"
 )
 
-// Формы ответов ниже повторяют реальные ответы Deezer API, урезанные до
-// используемых полей.
-
 const sampleSearchResponse = `{
   "data": [
     {
@@ -62,14 +59,11 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 		w.Write(out)
 	})
 	mux.HandleFunc("/artist/27/albums", func(w http.ResponseWriter, r *http.Request) {
-		// Намеренно НЕ включаем artist-ref в каждый альбом — как в реальном
-		// Deezer-ответе на /artist/{id}/albums (см. package doc, "implied" parent).
 		w.Write([]byte(sampleArtistAlbumsResponse))
 	})
 	mux.HandleFunc("/album/302127/tracks", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(sampleAlbumTracksResponse))
 	})
-	// Реальный ответ Deezer на несуществующий id: HTTP 200 + error-объект.
 	mux.HandleFunc("/track/999", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":{"type":"DataException","message":"no data","code":800}}`))
 	})
@@ -175,7 +169,6 @@ func TestClient_GetAlbumTracks_FillsInAlbumFields(t *testing.T) {
 		t.Fatalf("got %d tracks, want 2", len(tracks))
 	}
 	for _, tr := range tracks {
-		// В ответе /album/{id}/tracks нет объекта album — всё берётся из album.
 		if tr.AlbumID != "302127" || tr.Album != "Discovery" || tr.CoverURL != album.CoverURL {
 			t.Errorf("track %q: album fields not filled from album: %+v", tr.Title, tr)
 		}
@@ -265,8 +258,6 @@ func TestImageURL_EmptyHashMeansNoImage(t *testing.T) {
 	}
 }
 
-// У только что вышедшего релиза Deezer отдаёт cover_* = null, а md5_image уже
-// есть: обложка собирается из него — и у альбома, и у его треков.
 func TestClient_CoverFromMD5Image(t *testing.T) {
 	const md5 = "d79fe52ec5be63f9381b1ae147c5c5ce"
 	const want = "https://cdn-images.dzcdn.net/images/cover/" + md5 + "/1000x1000-000000-80-0-0.jpg"
@@ -309,8 +300,6 @@ func TestCoverURL(t *testing.T) {
 	}
 }
 
-// У плодовитых артистов больше 100 релизов: Deezer отдаёт их страницами,
-// и старые синглы оказываются на второй — их тоже надо забрать.
 func TestClient_GetArtistAlbums_WalksPages(t *testing.T) {
 	const total = 109
 	mux := http.NewServeMux()

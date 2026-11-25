@@ -15,23 +15,21 @@ func box(typ string, payload []byte) []byte {
 
 func sidxV0(sizes ...uint32) []byte {
 	p := make([]byte, 0, 24+12*len(sizes))
-	p = append(p, 0, 0, 0, 0)                   // version 0, flags
-	p = binary.BigEndian.AppendUint32(p, 1)     // reference_ID
-	p = binary.BigEndian.AppendUint32(p, 44100) // timescale
-	p = binary.BigEndian.AppendUint32(p, 0)     // earliest_presentation_time
-	p = binary.BigEndian.AppendUint32(p, 0)     // first_offset
-	p = binary.BigEndian.AppendUint16(p, 0)     // reserved
+	p = append(p, 0, 0, 0, 0)
+	p = binary.BigEndian.AppendUint32(p, 1)
+	p = binary.BigEndian.AppendUint32(p, 44100)
+	p = binary.BigEndian.AppendUint32(p, 0)
+	p = binary.BigEndian.AppendUint32(p, 0)
+	p = binary.BigEndian.AppendUint16(p, 0)
 	p = binary.BigEndian.AppendUint16(p, uint16(len(sizes)))
 	for _, s := range sizes {
 		p = binary.BigEndian.AppendUint32(p, s)
-		p = binary.BigEndian.AppendUint32(p, 44100) // subsegment_duration
+		p = binary.BigEndian.AppendUint32(p, 44100)
 		p = binary.BigEndian.AppendUint32(p, 0x90000000)
 	}
 	return box("sidx", p)
 }
 
-// fakeDash builds a file shaped like YouTube's format 140: ftyp, moov,
-// sidx, then the segments sidx describes (sizes include moof+mdat).
 func fakeDash(segments ...int) []byte {
 	var f bytes.Buffer
 	f.Write(box("ftyp", []byte("dash\x00\x00\x00\x00iso6mp41")))
@@ -55,7 +53,6 @@ func TestDashFileSize(t *testing.T) {
 		t.Fatalf("DashFileSize(full) = %d, %v, %v; want %d, true, false", size, ok, needMore, len(file))
 	}
 
-	// Заголовок приходит по кусочкам — до конца sidx размер неизвестен.
 	headerEnd := bytes.Index(file, []byte("moof")) - 4
 	for _, cut := range []int{0, 5, 30, headerEnd - 1} {
 		if _, ok, needMore := DashFileSize(file[:cut]); ok || !needMore {
@@ -68,7 +65,6 @@ func TestDashFileSize(t *testing.T) {
 }
 
 func TestDashFileSize_NotDash(t *testing.T) {
-	// Обычный mp4 (moov+mdat без sidx) — размер узнаем только в конце.
 	var f bytes.Buffer
 	f.Write(box("ftyp", []byte("M4A \x00\x00\x00\x00")))
 	f.Write(box("moov", make([]byte, 50)))

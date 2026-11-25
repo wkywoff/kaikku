@@ -11,11 +11,10 @@ import (
 	"time"
 )
 
-// Claims is intentionally minimal — just enough for auth.
 type Claims struct {
 	UserID string `json:"sub"`
 	Exp    int64  `json:"exp"`
-	Iat    int64  `json:"iat"` // когда выдан: токены до смены пароля не действуют
+	Iat    int64  `json:"iat"`
 }
 
 var ErrInvalidToken = errors.New("invalid or expired token")
@@ -25,14 +24,10 @@ type jwtHeader struct {
 	Typ string `json:"typ"`
 }
 
-// IssueToken creates a signed HS256 JWT. Hand-rolled on stdlib to keep
-// lib/pq the only dependency; the header is never parsed on verify, so
-// alg-confusion attacks don't apply.
 func IssueToken(userID string, ttl time.Duration, secret []byte) (string, error) {
 	return IssueTokenAt(userID, time.Now(), ttl, secret)
 }
 
-// IssueTokenAt — то же, выданный в момент now (тесты продления входа).
 func IssueTokenAt(userID string, now time.Time, ttl time.Duration, secret []byte) (string, error) {
 	header, err := json.Marshal(jwtHeader{Alg: "HS256", Typ: "JWT"})
 	if err != nil {
@@ -53,7 +48,6 @@ func IssueTokenAt(userID string, now time.Time, ttl time.Duration, secret []byte
 	return signingInput + "." + sig, nil
 }
 
-// VerifyToken checks the signature and expiry and returns the claims.
 func VerifyToken(token string, secret []byte) (*Claims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {

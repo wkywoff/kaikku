@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"image"
-	_ "image/jpeg" // DecodeConfig для проверки загруженных картинок
+	_ "image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -15,12 +15,6 @@ import (
 
 	"kaikku/internal/deezer"
 )
-
-// Ручные правки админа. Страницы артиста/альбома и поиск строятся из
-// ответов Deezer, поэтому правки (хранятся в наших artists/albums/tracks,
-// флаги edited / *_custom — миграция 0006) накладываются поверх этих
-// ответов: overlay ниже. Артиста и альбом правят по нашему id (заводится
-// «claim», handlers_claim.go), трек — по Deezer ID (там же).
 
 func albumPtrs(albums []deezer.Album) []*deezer.Album {
 	out := make([]*deezer.Album, len(albums))
@@ -37,8 +31,6 @@ func artistPtrs(artists []deezer.Artist) []*deezer.Artist {
 	}
 	return out
 }
-
-// --- правка полей ---
 
 type artistEdit struct {
 	Name string `json:"name"`
@@ -59,12 +51,12 @@ func (s *Server) handleUpdateArtist(w http.ResponseWriter, r *http.Request) {
 
 type albumEdit struct {
 	Title      string   `json:"title"`
-	ReleasedAt string   `json:"released_at"` // YYYY-MM-DD или "" — без даты
-	RecordType string   `json:"record_type"` // album | ep | single | compile
-	Artists    []string `json:"artists"`     // Deezer ID исполнителей, основной первый; нет — не менять
+	ReleasedAt string   `json:"released_at"`
+	RecordType string   `json:"record_type"`
+	Artists    []string `json:"artists"`
 	Hidden     *bool    `json:"hidden"`
-	Tracklist  []string `json:"tracklist"`  // Deezer ID треков по порядку (tracklist.go); нет — не менять
-	VersionOf  *string  `json:"version_of"` // ID основного релиза (versions.go), "" — отвязать; нет — не менять
+	Tracklist  []string `json:"tracklist"`
+	VersionOf  *string  `json:"version_of"`
 }
 
 var recordTypes = map[string]bool{"album": true, "ep": true, "single": true, "compile": true}
@@ -131,12 +123,9 @@ type trackEdit struct {
 	TrackNo  *int     `json:"track_no,omitempty"`
 	DiscNo   *int     `json:"disc_no,omitempty"`
 	Explicit *bool    `json:"explicit,omitempty"`
-	Artists  []string `json:"artists,omitempty"` // Deezer ID исполнителей, основной первый; нет — не менять
+	Artists  []string `json:"artists,omitempty"`
 }
 
-// --- сброс к данным Deezer ---
-
-// handleResetArtist drops manual edits of the name and picture.
 func (s *Server) handleResetArtist(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var deezerID string
@@ -155,7 +144,6 @@ func (s *Server) handleResetArtist(w http.ResponseWriter, r *http.Request) {
 		writeDeezerError(w, "deezer artist lookup failed", err)
 		return
 	}
-	// Своё фото уходит; картинку Deezer фронт берёт через прокси (/api/img).
 	newPicture := picture
 	if custom {
 		newPicture = sql.NullString{}
@@ -173,8 +161,6 @@ func (s *Server) handleResetArtist(w http.ResponseWriter, r *http.Request) {
 	s.handleGetArtist(w, r)
 }
 
-// handleResetAlbum drops manual edits of title/date/type, the cover, the
-// credits and the tracklist.
 func (s *Server) handleResetAlbum(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var deezerID string
@@ -213,20 +199,11 @@ func (s *Server) handleResetAlbum(w http.ResponseWriter, r *http.Request) {
 	s.handleGetAlbum(w, r)
 }
 
-// --- свои картинки ---
-
-// Картинка приходит уже уменьшенной и в JPEG (фронт пережимает её на
-// canvas до 1000 px), так что лимит совпадает с client_max_body_size в nginx.
-// Стороны ограничены: маленький файл может объявить огромную картинку
-// («JPEG-бомба»), и распаковка при уменьшении (covers.go) съела бы память —
-// 4096×4096 это ~90 МБ, а обложку плейлиста загружает любой пользователь.
-// 2048 с запасом: фронт шлёт не больше 1000.
 const (
 	maxImageUpload = 1 << 20
 	maxImageSide   = 2048
 )
 
-// saveUploadedImage validates a JPEG body and stores it under covers/custom.
 func (s *Server) saveUploadedImage(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if s.StorageDir == "" {
 		writeError(w, http.StatusServiceUnavailable, "storage is not configured")
@@ -307,8 +284,6 @@ func (s *Server) handleUploadAlbumCover(w http.ResponseWriter, r *http.Request) 
 	s.handleGetAlbum(w, r)
 }
 
-// handleDeleteAlbumCover убирает свою обложку релиза Deezer — снова видна
-// обложка Deezer; остальные правки остаются (всё разом — handleResetAlbum).
 func (s *Server) handleDeleteAlbumCover(w http.ResponseWriter, r *http.Request) {
 	var old sql.NullString
 	err := s.DB.QueryRow(
@@ -316,7 +291,7 @@ func (s *Server) handleDeleteAlbumCover(w http.ResponseWriter, r *http.Request) 
 		   FROM (SELECT cover_key, cover_custom FROM albums WHERE id = $1 FOR UPDATE) prev
 		  WHERE a.id = $1 AND prev.cover_custom RETURNING prev.cover_key`, r.PathValue("id"),
 	).Scan(&old)
-	if err != nil && err != sql.ErrNoRows { // нет строки — нечего убирать (или нет релиза: ответит handleGetAlbum)
+	if err != nil && err != sql.ErrNoRows {
 		serverError(w, r, "update failed", err)
 		return
 	}
@@ -325,8 +300,6 @@ func (s *Server) handleDeleteAlbumCover(w http.ResponseWriter, r *http.Request) 
 	}
 	s.handleGetAlbum(w, r)
 }
-
-// --- мелочи ---
 
 func validName(s string) bool {
 	s = strings.TrimSpace(s)

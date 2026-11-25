@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// Одновременные промахи по одному ключу — одна загрузка, и результат
-// запоминается.
 func TestCachedSharesLoad(t *testing.T) {
 	var c ttlCache
 	var loads atomic.Int32

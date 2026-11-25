@@ -12,11 +12,6 @@ import (
 	"kaikku/internal/ingest"
 )
 
-// Админ правит артиста или альбом, которых ещё нет в медиатеке: «claim»
-// заводит строку каталога по Deezer ID и отдаёт её id, дальше — обычные
-// PUT /api/<...>/{id}. Без треков на главной такая строка не видна.
-// Треки правятся по Deezer ID напрямую (ниже).
-
 func (s *Server) handleClaimArtist(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	if !validDeezerID(dz) {
@@ -50,7 +45,6 @@ func (s *Server) handleClaimAlbum(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
-// claimAlbum returns the library row of a Deezer album, creating it.
 func (s *Server) claimAlbum(dz string) (string, error) {
 	var id string
 	if s.DB.QueryRow(`SELECT id FROM albums WHERE deezer_id = $1`, dz).Scan(&id) == nil {
@@ -69,13 +63,6 @@ func (s *Server) claimAlbum(dz string) (string, error) {
 	return ingest.EnsureAlbum(s.DB, dz, artistID, a.Title, date, recordType)
 }
 
-// --- правка трека по Deezer ID ---
-//
-// Трек правится и без скачивания: если он уже в медиатеке — правится его
-// строка, иначе правка хранится в track_edits (миграция 0010) и
-// накладывается на ответы Deezer; при скачивании воркер переносит её в
-// строку трека.
-
 type deezerTrackEdit struct {
 	DeezerID  string `json:"deezer_id"`
 	LibraryID string `json:"library_id,omitempty"`
@@ -83,14 +70,10 @@ type deezerTrackEdit struct {
 	TrackNo   *int   `json:"track_no"`
 	DiscNo    *int   `json:"disc_no"`
 	Edited    bool   `json:"edited"`
-	// Missing — трека нет в медиатеке, но его можно загрузить файлом: задача
-	// упала (на YouTube не нашлось или не скачалось) или файл удалили.
-	Missing bool `json:"missing,omitempty"`
+	Missing   bool   `json:"missing,omitempty"`
 	trackCreditsState
 }
 
-// trackMissing — трека нет в медиатеке, а его задача закончилась (упала или
-// файл удалили как неслушаемый): файл админа может стать треком.
 func (s *Server) trackMissing(dz string) bool {
 	var missing bool
 	s.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM ingest_jobs WHERE source_ref = $1 AND status IN ('failed', 'done'))`,
@@ -150,8 +133,6 @@ func (s *Server) handleGetDeezerTrackEdit(w http.ResponseWriter, r *http.Request
 		n := int(discNo.Int64)
 		resp.DiscNo = &n
 	}
-	// Deezer недоступен — без исполнителей и метки: окно правки их тогда не
-	// трогает (присылает только изменённое).
 	if resp.trackCreditsState, err = s.trackCreditsOf(dz); err != nil {
 		log.Printf("track %s: credits: %v", dz, err)
 		resp.Artists = []deezer.ArtistRef{}

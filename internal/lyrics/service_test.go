@@ -59,7 +59,6 @@ func lines(sync Sync) *Lyrics {
 
 func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	db := openTestDB(t)
-	// Deezer по словам — сразу ответ, медленный источник не ждём.
 	dz := &fakeProvider{name: "deezer", l: lines(SyncWord)}
 	lc := &fakeProvider{name: "lrclib", l: lines(SyncLine), delay: 2 * time.Second}
 	s := &Service{DB: db, Providers: []Provider{dz, lc}}
@@ -67,12 +66,10 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	if l, err := s.Get(context.Background(), Track{DeezerID: "test-lyrics-1"}); err != nil || l == nil || l.Source != "deezer" || time.Since(started) > time.Second {
 		t.Fatalf("got %+v, %v after %v", l, err, time.Since(started))
 	}
-	// Запомнено: второй раз источники не спрашиваются.
 	if l, _ := s.Get(context.Background(), Track{DeezerID: "test-lyrics-1"}); l == nil || dz.calls.Load() != 1 {
 		t.Fatalf("not cached: deezer calls %d", dz.calls.Load())
 	}
 
-	// По строкам у всех — по порядку: lrc.red, Deezer, LRCLIB.
 	s2 := &Service{DB: db, Providers: []Provider{
 		&fakeProvider{name: "lrclib", l: lines(SyncLine)},
 		&fakeProvider{name: "deezer", l: lines(SyncLine)},
@@ -80,7 +77,6 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	if l, _ := s2.Get(context.Background(), Track{DeezerID: "test-lyrics-2"}); l == nil || l.Source != "deezer" {
 		t.Fatalf("line sync tie: %+v", l)
 	}
-	// Источники спрашиваются одновременно: три медленных — не втрое дольше.
 	slow := func(name string) *fakeProvider {
 		return &fakeProvider{name: name, l: lines(SyncLine), delay: 300 * time.Millisecond}
 	}
@@ -89,7 +85,6 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	if l, _ := sp.Get(context.Background(), Track{DeezerID: "test-lyrics-8"}); l == nil || l.Source != "lrcred" || time.Since(started) > 700*time.Millisecond {
 		t.Fatalf("parallel: %+v after %v", l, time.Since(started))
 	}
-	// Тайминг важнее источника: LRCLIB по строкам лучше текста Deezer.
 	s3 := &Service{DB: db, Providers: []Provider{
 		&fakeProvider{name: "deezer", l: lines(SyncNone)},
 		&fakeProvider{name: "lrcred"},
@@ -98,7 +93,6 @@ func TestService_WordSyncWinsAtOnceOtherwiseBestWithPreferences(t *testing.T) {
 	if l, _ := s3.Get(context.Background(), Track{DeezerID: "test-lyrics-3"}); l == nil || l.Source != "lrclib" {
 		t.Fatalf("timing first: %+v", l)
 	}
-	// Только тексты — полный текст Deezer.
 	s4 := &Service{DB: db, Providers: []Provider{
 		&fakeProvider{name: "deezer", l: lines(SyncNone)},
 		&fakeProvider{name: "lrclib", l: lines(SyncNone)},
@@ -121,7 +115,6 @@ func TestService_MissingIsRememberedUnlessAllFailed(t *testing.T) {
 		t.Errorf("missing lyrics not remembered: %d calls", none.calls.Load())
 	}
 
-	// Источник упал, а другие ничего не нашли — ошибка, ничего не запоминается.
 	down := &fakeProvider{name: "lrclib", err: errors.New("timeout")}
 	s2 := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "deezer"}, down}}
 	for i := 0; i < 2; i++ {
@@ -134,8 +127,6 @@ func TestService_MissingIsRememberedUnlessAllFailed(t *testing.T) {
 	}
 }
 
-// Источник выше по цепочке не ответил — найденное ниже отдаётся, но не
-// запоминается: в следующий раз он может ответить, и текст будет лучше.
 func TestService_BetterSourceDownIsAskedAgain(t *testing.T) {
 	db := openTestDB(t)
 	deezer := &fakeProvider{name: "deezer", err: errors.New("HTTP 503: busy")}
@@ -149,7 +140,6 @@ func TestService_BetterSourceDownIsAskedAgain(t *testing.T) {
 	if deezer.calls.Load() != 2 {
 		t.Errorf("deezer asked %d times, want 2 (result not saved)", deezer.calls.Load())
 	}
-	// Ниже по цепочке не ответил — лучшее уже есть, запоминается.
 	s2 := &Service{DB: db, Providers: []Provider{&fakeProvider{name: "deezer", l: lines(SyncLine)}, &fakeProvider{name: "lrclib", err: errors.New("timeout")}}}
 	s2.Get(context.Background(), Track{DeezerID: "test-lyrics-10"})
 	var n int
@@ -195,7 +185,6 @@ func TestService_SameRecordingOnAnotherReleaseSharesLyrics(t *testing.T) {
 	if p.calls.Load() != 1 {
 		t.Errorf("searched %d times for one recording", p.calls.Load())
 	}
-	// «Найти заново» на альбоме забывает и текст сингла.
 	if err := s.Forget(context.Background(), album.DeezerID, album.ISRC); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +204,7 @@ func TestService_RecheckThatFindsNothingKeepsOldLyrics(t *testing.T) {
 		VALUES ('test-lyrics-30', 'lrclib', 'line', $1, now() - interval '40 days')`, body); err != nil {
 		t.Fatal(err)
 	}
-	p := &fakeProvider{name: "lrclib"} // срок вышел, а теперь не находит
+	p := &fakeProvider{name: "lrclib"}
 	s := &Service{DB: db, Providers: []Provider{p}}
 	l, err := s.Get(context.Background(), Track{DeezerID: "test-lyrics-30"})
 	if err != nil || l == nil || len(l.Lines) != 1 {
@@ -231,9 +220,6 @@ func TestService_RecheckThatFindsNothingKeepsOldLyrics(t *testing.T) {
 	}
 }
 
-// lrc.red выше Deezer: его по словам ждём, даже если Deezer ответил по
-// словам раньше; его по строкам — хуже Deezer по словам. Не ответил —
-// текст Deezer не запоминается.
 func TestService_LRCRedOutranksDeezerWords(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -258,8 +244,6 @@ func TestService_LRCRedOutranksDeezerWords(t *testing.T) {
 	}
 }
 
-// Текст по словам не от lrc.red перепроверяется через месяц, от lrc.red —
-// нет.
 func TestService_OldDeezerWordsAreRechecked(t *testing.T) {
 	db := openTestDB(t)
 	for id, source := range map[string]string{"test-lyrics-43": "deezer", "test-lyrics-44": "lrcred"} {

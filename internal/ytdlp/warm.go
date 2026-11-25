@@ -17,21 +17,11 @@ import (
 	"time"
 )
 
-// helper.py runs yt-dlp as a library in one long-running Python process,
-// so a search or an extraction doesn't pay for starting Python and loading
-// yt-dlp each time (~0.5 s per call on the 1-vCPU server). The API uses it
-// for playing tracks that aren't in the library yet, where every second
-// before the first sound counts; the worker keeps starting yt-dlp per call.
-//
 //go:embed helper.py
 var helperScript string
 
 var warm atomic.Pointer[warmClient]
 
-// EnableWarm makes search and Resolve go through helper.py (started right
-// away, restarted if it dies). Whenever the helper can't be used, they fall
-// back to running yt-dlp as before. The helper sleeps when nobody uses it
-// and is replaced when it has grown (maintain).
 func EnableWarm() {
 	c := &warmClient{}
 	warm.Store(c)
@@ -47,29 +37,17 @@ func EnableWarm() {
 	}()
 }
 
-// errWarmUnavailable: the helper itself failed (not the request) — the
-// caller should run yt-dlp directly instead.
 var errWarmUnavailable = errors.New("ytdlp helper unavailable")
 
-// Если помощник упал, следующий запуск — не раньше чем через это время, а
-// пока запросы идут через обычный yt-dlp (иначе каждый клик ждал бы
-// заведомо неудачный старт).
 const warmRestartDelay = time.Minute
 
-// Память помощника. Python не отдаёт её обратно, а yt-dlp копит кеши (JS
-// плеера YouTube — в каждом из экземпляров YoutubeDL на поток): за полтора
-// часа 50 → 136 МБ на сервере с 2 ГБ. Поэтому:
-//   - полчаса без запросов — помощник выключается (warmSleepAfter), следующий
-//     запрос запускает его заново (~1 с, как без помощника);
-//   - вырос или работает давно — в первую же паузу заменяется свежим
-//     (warmRecycle*), без ожидания для слушателя.
 const (
 	warmSleepAfter   = 30 * time.Minute
 	warmRecycleIdle  = 2 * time.Minute
 	warmRecycleRSS   = 120 << 20
 	warmRecycleAge   = 6 * time.Hour
 	warmCheckEvery   = time.Minute
-	warmMallocArenas = "MALLOC_ARENA_MAX=2" // меньше фрагментации glibc при 4 потоках помощника
+	warmMallocArenas = "MALLOC_ARENA_MAX=2"
 )
 
 type warmClient struct {
@@ -81,19 +59,17 @@ type warmClient struct {
 
 type warmProc struct {
 	stdin   io.WriteCloser
-	dead    chan struct{} // закрыт, когда процесс завершился
+	dead    chan struct{}
 	pid     int
 	started time.Time
-	cookies string // cookiesVersion при запуске: поменялись — нужен новый
+	cookies string
 
 	mu      sync.Mutex
 	nextID  int64
 	pending map[int64]chan warmReply
-	retired bool // выключен (stdin закрыт): новые запросы — в другой процесс
+	retired bool
 }
 
-// procRSS — сколько памяти занимает процесс (VmRSS), 0 — не узнать.
-// Подменяется в тестах.
 var procRSS = func(pid int) int64 {
 	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/status")
 	if err != nil {
@@ -108,8 +84,6 @@ var procRSS = func(pid int) int64 {
 	return 0
 }
 
-// retire выключает помощника, если у него нет запросов в работе: закрытый
-// stdin — конец ввода, Python доделывает начатое и выходит. false — занят.
 func (p *warmProc) retire() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -130,8 +104,6 @@ func (p *warmProc) busy() bool {
 	return len(p.pending) > 0
 }
 
-// maintain усыпляет простаивающего помощника и заменяет разросшегося;
-// EnableWarm вызывает его раз в минуту.
 func (c *warmClient) maintain(now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -141,7 +113,7 @@ func (c *warmClient) maintain(now time.Time) {
 	}
 	select {
 	case <-p.dead:
-		return // упал — разберётся process()
+		return
 	default:
 	}
 	idle := now.Sub(c.lastUse)
@@ -162,7 +134,7 @@ func (c *warmClient) maintain(now time.Time) {
 			return
 		}
 		if !p.retire() {
-			np.retire() // пока запускали, пришёл запрос — заменим в следующую паузу
+			np.retire()
 			return
 		}
 		c.proc = np
@@ -189,8 +161,6 @@ func (c *warmClient) process() (*warmProc, error) {
 			c.proc = nil
 			c.failedAt = time.Now()
 		default:
-			// Админ загрузил или удалил куки: помощник со старыми
-			// заменяется, как только у него не останется запросов.
 			if c.proc.cookies == cookiesVersion() || !c.proc.retire() {
 				return c.proc, nil
 			}
@@ -211,7 +181,7 @@ func (c *warmClient) process() (*warmProc, error) {
 
 func startWarm() (*warmProc, error) {
 	version := cookiesVersion()
-	cookies, dropCookies := cookieCopy() // своя копия на всё время процесса
+	cookies, dropCookies := cookieCopy()
 	cmd := execCommand(context.Background(), "python3", "-c", helperScript)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -223,7 +193,7 @@ func startWarm() (*warmProc, error) {
 		dropCookies()
 		return nil, err
 	}
-	cmd.Stderr = os.Stderr // трейсбек, если помощник упадёт
+	cmd.Stderr = os.Stderr
 	if cmd.Env == nil {
 		cmd.Env = toolEnv(os.Environ())
 	}
@@ -259,9 +229,6 @@ func startWarm() (*warmProc, error) {
 	return p, nil
 }
 
-// call sends one request and waits for its reply. errWarmUnavailable means
-// the helper failed (the caller falls back to the yt-dlp binary); a reply's
-// own error is yt-dlp's answer to this request.
 func (c *warmClient) call(ctx context.Context, req map[string]any) (warmReply, error) {
 	var p *warmProc
 	for attempt := 0; ; attempt++ {
@@ -271,9 +238,8 @@ func (c *warmClient) call(ctx context.Context, req map[string]any) (warmReply, e
 		}
 		p.mu.Lock()
 		if !p.retired {
-			break // p.mu остаётся взятым — запрос регистрируется ниже
+			break
 		}
-		// maintain выключил этот процесс, пока мы его брали: c.proc уже другой.
 		p.mu.Unlock()
 		if attempt > 0 {
 			return warmReply{}, fmt.Errorf("%w: helper retired", errWarmUnavailable)

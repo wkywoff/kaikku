@@ -20,47 +20,31 @@ type Server struct {
 	JWTSecret   []byte
 	MediaSigner *media.Signer
 	Deezer      *deezer.Client
-	// DeezerCache — кеш Deezer в базе (миграция 0033) для страниц артистов,
-	// дискографий и чарта (storedCached); nil — только память.
 	DeezerCache deezer.Store
-	// DeezerSite — описания артистов с сайта Deezer (bio.go); nil — без них.
-	DeezerSite *deezer.Site
-	// StorageDir — тот же каталог, что STORAGE_DIR воркера; нужен API, чтобы
-	// удаление трека/альбома удаляло и файлы. Пусто — файлы не трогаем.
-	StorageDir string
-	// Streams отдаёт ещё не скачанные треки потоком (stream.go); nil — выключено.
-	Streams *StreamHub
-	// Background запускает фоновую работу (скачивание лайкнутого и т.п.);
-	// nil — горутина. Тесты подставляют синхронный запуск.
-	Background func(func())
+	DeezerSite  *deezer.Site
+	StorageDir  string
+	Streams     *StreamHub
+	Background  func(func())
 
-	// Lyrics — тексты песен (handlers_lyrics.go, EnableLyrics); nil — выключено.
 	Lyrics *lyrics.Service
 
-	// Lastfm — скробблинг (lastfm.go); nil — выключено.
 	Lastfm     *lastfm.Client
-	lastfmWake chan struct{} // будит отправку очереди (StartLastfm)
+	lastfmWake chan struct{}
 
-	// FrontendIndex — index.html собранного фронта: в него вставляются
-	// og-теги для превью ссылок (og.go). Пусто — превью выключены.
-	FrontendIndex string
-	// UploadQuotaBytes — сколько своих файлов может лежать у одного
-	// пользователя (кроме админа); 0 — без ограничения.
+	FrontendIndex    string
 	UploadQuotaBytes uint64
-	// PublicURL — адрес сайта (https://…) для абсолютных ссылок в превью
-	// и картинок в Subsonic-приложениях (MEDIA_BASE_URL).
-	PublicURL  string
-	frontIndex fileCache
+	PublicURL        string
+	frontIndex       fileCache
 
-	cache          ttlCache   // ответы Deezer для подсказок и чартов (cache.go)
-	logins         loginGuard // неудачные попытки входа на сайт (loginguard.go)
-	loginNames     loginGuard // потолок неудач на имя со всех адресов (loginguard.go)
-	subsonicLogins loginGuard // то же для приложений: /rest/ без лимита nginx и без дорогого хеша
+	cache          ttlCache
+	logins         loginGuard
+	loginNames     loginGuard
+	subsonicLogins loginGuard
 
-	ogCache       ttlCache         // превью ссылок (og.go)
-	ogMisses      ogMissBudget     // сколько превью идут за данными (og.go)
-	streamStarts  streamStartLimit // новые скачивания на пользователя (stream.go)
-	uploadsOnDisk uploadReserve    // место под загрузки, что ещё идут (uploads_audio.go)
+	ogCache       ttlCache
+	ogMisses      ogMissBudget
+	streamStarts  streamStartLimit
+	uploadsOnDisk uploadReserve
 }
 
 type ctxKey string
@@ -74,13 +58,11 @@ func NewRouter(s *Server) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", s.handleHealth)
-	// Превью ссылок (og.go) — без входа; nginx шлёт сюда только эти адреса.
 	if s.FrontendIndex != "" {
 		mux.HandleFunc("GET /album/{id}", s.handleOG("album"))
 		mux.HandleFunc("GET /artist/{id}", s.handleOG("artist"))
 		mux.HandleFunc("GET /playlist/{id}", s.handleOG("playlist"))
 	}
-	// Subsonic API для приложений (subsonic.go) — свой вход, паролем для приложений.
 	mux.HandleFunc("/rest/{method}", s.handleSubsonic)
 	mux.Handle("GET /api/me/subsonic", s.authed(s.handleSubsonicAccess))
 	mux.Handle("POST /api/me/subsonic", s.authed(s.handleNewSubsonicPassword))
@@ -99,14 +81,10 @@ func NewRouter(s *Server) http.Handler {
 	mux.HandleFunc("POST /api/password-reset", s.handlePasswordReset)
 	mux.Handle("PUT /api/me/password", s.authed(s.handleChangePassword))
 
-	// Каталог (наши строки артистов, альбомов, треков — по Deezer ID)
-	// наполняет воркер; страницы строятся из ответов Deezer, а эти
-	// эндпоинты — для правки админом и удаления.
 	mux.Handle("GET /api/artists/{id}", s.authed(s.handleGetArtist))
 	mux.Handle("PUT /api/artists/{id}", s.authed(s.artistEditor(s.handleUpdateArtist)))
 	mux.Handle("POST /api/artists/{id}/reset", s.adminOnly(s.deezerRowOnly("artists", s.handleResetArtist)))
 	mux.Handle("PUT /api/artists/{id}/picture", s.authed(s.artistEditor(s.handleUploadArtistPicture)))
-	// Правка того, что ещё не скачано: завести строку по Deezer ID (handlers_claim.go).
 	mux.Handle("POST /api/artists/deezer/{id}/claim", s.adminOnly(s.handleClaimArtist))
 	mux.Handle("POST /api/albums/deezer/{id}/claim", s.adminOnly(s.handleClaimAlbum))
 	mux.Handle("GET /api/tracks/deezer/{id}/edit", s.adminOnly(s.handleGetDeezerTrackEdit))
@@ -135,16 +113,11 @@ func NewRouter(s *Server) http.Handler {
 
 	mux.Handle("GET /api/search", s.authed(s.handleSearch))
 	mux.Handle("GET /api/search/artists", s.authed(s.handleSearchArtists))
-	// Что из треков Deezer уже скачано. Ставят на скачивание лайк, сохранение
-	// альбома, плейлист и воспроизведение (handlers_collection.go, stream.go).
 	mux.Handle("GET /api/ingest/lookup", s.authed(s.handleIngestLookup))
 
-	// Трек не из медиатеки — играет, пока скачивается (stream.go). Сам поток
-	// без Bearer: <audio> его не шлёт, авторизация — подписью в ссылке.
 	mux.Handle("GET /api/stream/deezer/{id}/url", s.authed(s.handleDeezerStreamURL))
 	mux.HandleFunc("GET /api/stream/deezer/{id}", s.handleDeezerStream)
 
-	// Личная медиатека (handlers_collection.go).
 	mux.Handle("GET /api/me/collection", s.authed(s.handleCollectionIDs))
 	mux.Handle("GET /api/me/liked", s.authed(s.handleLikedTracks))
 	mux.Handle("PUT /api/me/liked/{id}", s.authed(s.handleLike))
@@ -207,8 +180,6 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("GET /api/discover/albums/{id}", s.authed(s.handleDiscoverAlbum))
 	mux.Handle("GET /api/discover/tracks/{id}", s.authed(s.handleDiscoverTrack))
 
-	// Свои релизы (uploads.go, uploads_audio.go): черновик → треки и поля →
-	// публикация. Правит автор релиза и админ.
 	mux.Handle("GET /api/uploads", s.authed(s.handleUploads))
 	mux.Handle("POST /api/uploads/releases", s.authed(s.handleCreateRelease))
 	mux.Handle("GET /api/uploads/releases/{id}", s.authed(s.handleGetRelease))
@@ -225,18 +196,12 @@ func NewRouter(s *Server) http.Handler {
 	mux.Handle("PUT /api/uploads/tracks/{id}/lyrics", s.authed(s.handlePutOwnLyrics))
 	mux.Handle("POST /api/uploads/artists", s.authed(s.handleCreateArtist))
 
-	// Картинки Deezer через наш домен (images.go); без Bearer, как и /media.
 	mux.HandleFunc("GET /api/img/{kind}/{hash}/{file}", s.handleDeezerImage)
-	// Скачанные обложки нужного размера (covers.go); без Bearer, как /media/covers/.
 	mux.HandleFunc("GET /api/cover/{px}/{key...}", s.handleSizedCover)
 
 	return limitBodies(mux)
 }
 
-// Тела запросов к API — небольшой JSON; без предела nginx пропускал бы до
-// 1 МБ на любой эндпоинт, в том числе без авторизации. Загрузки картинок,
-// аудио и кук YouTube ограничивают себя сами (handlers_edit.go, 1 МБ;
-// handlers_admin.go, uploads_audio.go; handlers_youtube.go, 1 МБ).
 const maxJSONBody = 64 << 10
 
 func limitBodies(next http.Handler) http.Handler {
@@ -252,12 +217,8 @@ func limitBodies(next http.Handler) http.Handler {
 	})
 }
 
-// Version — версия сборки: тег релиза или коммит. Подставляется при сборке
-// (-ldflags "-X kaikku/internal/api.Version=…", Dockerfile), иначе dev.
 var Version = "dev"
 
-// handleHealth is unauthenticated: Docker's healthcheck, and the version for
-// the settings page.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.PingContext(r.Context()); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "db unreachable")
@@ -266,11 +227,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 }
 
-// authed wraps a handler, requiring a valid "Authorization: Bearer <jwt>"
-// header of a user that still exists — the token alone would keep a deleted
-// user in for up to 30 days — and issued after their last password change
-// (handlers_password.go). Whether the user is an admin comes from the same
-// query, so revoking admin takes effect immediately too.
 func (s *Server) authed(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := r.Header.Get("Authorization")
@@ -294,15 +250,10 @@ func (s *Server) authed(next http.HandlerFunc) http.Handler {
 			serverError(w, r, "query failed", err)
 			return
 		}
-		// Токены — с точностью до секунды: выданный в ту же секунду, что и
-		// смена, тоже старый (новый выдаётся со следующей, writeFreshToken).
 		if changed.Valid && claims.Iat <= changed.Time.Unix() {
 			writeError(w, http.StatusUnauthorized, "password was changed, log in again")
 			return
 		}
-		// Скользящий вход: токену больше суток — ответ несёт новый, клиент
-		// его сохраняет (api.js). Не вышло выдать — не страшно, старый ещё
-		// действует.
 		if time.Since(time.Unix(claims.Iat, 0)) > tokenRenewAfter {
 			if fresh, err := auth.IssueToken(claims.UserID, tokenTTL, s.JWTSecret); err == nil {
 				w.Header().Set("X-Auth-Token", fresh)
@@ -314,13 +265,11 @@ func (s *Server) authed(next http.HandlerFunc) http.Handler {
 	})
 }
 
-// currentUser is the id of the user that authed let through.
 func currentUser(r *http.Request) string {
 	id, _ := r.Context().Value(userIDCtxKey).(string)
 	return id
 }
 
-// adminOnly is authed plus users.is_admin.
 func (s *Server) adminOnly(next http.HandlerFunc) http.Handler {
 	return s.authed(func(w http.ResponseWriter, r *http.Request) {
 		if isAdmin, _ := r.Context().Value(isAdminCtxKey).(bool); !isAdmin {

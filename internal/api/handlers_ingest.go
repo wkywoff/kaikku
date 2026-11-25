@@ -13,10 +13,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// enqueueTrack resolves a client-supplied Deezer track ID (the client never
-// sends metadata, only the ID) plus its album, and enqueues it. The dedup
-// check runs first, before any Deezer request. sourceRef is built once from
-// the requested ID and used for both the check and the insert.
 func (s *Server) enqueueTrack(userID, deezerTrackID string) (map[string]any, error) {
 	if !validDeezerID(deezerTrackID) {
 		return nil, errLocalID
@@ -37,8 +33,6 @@ func (s *Server) enqueueTrack(userID, deezerTrackID string) (map[string]any, err
 	return s.insertIngestJob(userID, sourceRef, *track, album)
 }
 
-// enqueueResolved enqueues a track whose metadata already came from Deezer
-// (an album tracklist), so track.ID is authoritative for sourceRef.
 func (s *Server) enqueueResolved(userID string, track deezer.Track, album *deezer.Album) (map[string]any, error) {
 	if !validDeezerID(track.ID) {
 		return nil, errLocalID
@@ -69,7 +63,6 @@ func (s *Server) insertIngestJob(userID, sourceRef string, track deezer.Track, a
 
 	switch {
 	case err == sql.ErrNoRows:
-		// Гонка: кто-то поставил в очередь этот же трек между dedup-проверкой и INSERT.
 		existing, lookupErr := s.existingJob(userID, sourceRef)
 		if lookupErr != nil {
 			return nil, lookupErr
@@ -85,9 +78,8 @@ func (s *Server) insertIngestJob(userID, sourceRef string, track deezer.Track, a
 	return map[string]any{"job_id": jobID, "status": "queued"}, nil
 }
 
-// otherArtists returns the track's artists other than the main one.
 func otherArtists(track deezer.Track) []string {
-	out := []string{} // не nil: pq.Array(nil) — это NULL, а колонка NOT NULL
+	out := []string{}
 	for _, c := range track.Contributors {
 		if c.Name != "" && c.Name != track.Artist && !slices.Contains(out, c.Name) {
 			out = append(out, c.Name)
@@ -96,10 +88,6 @@ func otherArtists(track deezer.Track) []string {
 	return out
 }
 
-// currentTrack re-reads a job's track from Deezer before a retry: jobs
-// queued before migrations 0008 and 0037 don't have the featured artists
-// (without them YouTube may never find the track) and the explicit label.
-// nil (keep what the job has) if Deezer is unavailable.
 func (s *Server) currentTrack(jobID int64) *deezer.Track {
 	var sourceRef string
 	if err := s.DB.QueryRow(`SELECT source_ref FROM ingest_jobs WHERE id = $1`, jobID).Scan(&sourceRef); err != nil {
@@ -123,9 +111,6 @@ func statusFor(result map[string]any) int {
 	return http.StatusAccepted
 }
 
-// existingJob returns nil if sourceRef was never queued. A job that failed,
-// or finished but whose track was since deleted, is put back into the queue
-// (re-adding is the natural way to retry); anything else is a duplicate.
 func (s *Server) existingJob(userID, sourceRef string) (map[string]any, error) {
 	var jobID int64
 	var status string
@@ -147,7 +132,6 @@ func (s *Server) existingJob(userID, sourceRef string) (map[string]any, error) {
 		if requeued {
 			return map[string]any{"job_id": jobID, "status": "queued"}, nil
 		}
-		// Статус успел смениться параллельно — отдаём актуальный.
 		return s.existingJob(userID, sourceRef)
 	}
 
@@ -158,12 +142,8 @@ func (s *Server) existingJob(userID, sourceRef string) (map[string]any, error) {
 	return resp, nil
 }
 
-// requeueJob moves a job from fromStatus back to pending; false if the job
-// was no longer in fromStatus. Задание теперь за userID (пусто — за кем было):
-// кто вернул трек в очередь, тому он и идёт в лимит (queueFull), иначе чужие
-// убранные треки ставились бы мимо него.
 func (s *Server) requeueJob(jobID int64, fromStatus, userID string) (bool, error) {
-	var others, explicit any // NULL — оставить как есть
+	var others, explicit any
 	if t := s.currentTrack(jobID); t != nil {
 		others, explicit = pq.Array(otherArtists(*t)), t.Explicit
 	}
@@ -182,12 +162,6 @@ func (s *Server) requeueJob(jobID int64, fromStatus, userID string) (bool, error
 	return n == 1, nil
 }
 
-// handleIngestLookup reports what the library already has for a list of
-// Deezer track IDs (?ids=1,2,3), so Search/Discover can show "в
-// библиотеке" / "в очереди" instead of an "Добавить" button. IDs that were
-// never queued are absent from the response.
-//
-//	{"<deezer id>": {"job_id": N, "job_status": "pending|processing|done|failed", "track_id": "<uuid>"?}}
 func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 	raw := strings.Split(r.URL.Query().Get("ids"), ",")
 	if len(raw) > 500 {
@@ -212,7 +186,6 @@ func (s *Server) handleIngestLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	result := map[string]any{}
 	if len(own) > 0 {
-		// Свои треки (загрузка) всегда в медиатеке — job'а у них нет.
 		visible, err := s.localTracks(viewerOf(r), own)
 		if err != nil {
 			serverError(w, r, "query failed", err)
@@ -278,8 +251,6 @@ func nullablePositive(n int) any {
 	return n
 }
 
-// nullableDate passes through a valid YYYY-MM-DD; Deezer uses "0000-00-00"
-// for unknown dates.
 func nullableDate(s string) any {
 	if _, err := time.Parse("2006-01-02", s); err != nil {
 		return nil

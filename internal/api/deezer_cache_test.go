@@ -8,7 +8,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// PGStore: запись, перезапись, срок.
 func TestPGStore(t *testing.T) {
 	db := openTestDB(t)
 	db.Exec(`DELETE FROM deezer_cache WHERE key LIKE 'test:%'`)
@@ -31,8 +30,6 @@ func TestPGStore(t *testing.T) {
 	}
 }
 
-// Страница артиста переживает перезапуск API: новый Server на той же базе
-// не спрашивает Deezer.
 func TestStoredCachedSurvivesRestart(t *testing.T) {
 	db, _, _, srv := newTestServer(t)
 	db.Exec(`DELETE FROM deezer_cache WHERE key = 'api:artist:1'`)
@@ -53,7 +50,6 @@ func TestStoredCachedSurvivesRestart(t *testing.T) {
 	}
 }
 
-// «Обновить с Deezer»: альбом и треклист пропадают из кеша в базе.
 func TestRefreshAlbum(t *testing.T) {
 	db, router, token, srv := newTestServer(t)
 	db.Exec(`DELETE FROM deezer_cache WHERE key LIKE 'album:9%' OR key LIKE 'tracklist:9:%'`)
@@ -73,7 +69,6 @@ func TestRefreshAlbum(t *testing.T) {
 	}
 }
 
-// Запись из базы живёт в памяти до своего срока в базе, а не ещё полный ttl.
 func TestStoredCachedKeepsStoreExpiry(t *testing.T) {
 	_, _, _, srv := newTestServer(t)
 	srv.DeezerCache = soonStore{"api:artist:1": `{"id":"1","name":"Stored Artist"}`}
@@ -87,7 +82,6 @@ func TestStoredCachedKeepsStoreExpiry(t *testing.T) {
 	}
 }
 
-// soonStore — записи, которые устаревают через 50 мс.
 type soonStore map[string]string
 
 func (s soonStore) Get(key string) ([]byte, time.Time, bool) {
@@ -97,7 +91,6 @@ func (s soonStore) Get(key string) ([]byte, time.Time, bool) {
 func (s soonStore) Put(string, []byte, time.Time) {}
 func (s soonStore) Forget(string)                 {}
 
-// fixedStore — Store с заранее положенными записями.
 type fixedStore map[string]string
 
 func (s fixedStore) Get(key string) ([]byte, time.Time, bool) {
@@ -107,7 +100,6 @@ func (s fixedStore) Get(key string) ([]byte, time.Time, bool) {
 func (s fixedStore) Put(string, []byte, time.Time) {}
 func (s fixedStore) Forget(string)                 {}
 
-// Поиск берёт фиты из кеша, а не запросом на каждый трек.
 func TestSearchContributorsFromCache(t *testing.T) {
 	_, router, token, srv := newTestServer(t)
 	srv.Deezer.WithStore(fixedStore{

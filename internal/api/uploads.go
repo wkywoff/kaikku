@@ -18,34 +18,17 @@ import (
 	"kaikku/internal/lyrics"
 )
 
-// Загрузка своих релизов — того, чего нет в Deezer. Релиз заводится
-// черновиком (его видят автор и админ), в него загружаются треки
-// (uploads_audio.go), заполняются название, исполнители, тип, дата и
-// обложка (её можно и не ставить — будет заглушка, placeholder.go), и он публикуется — тогда его видят все, как релиз Deezer
-// (local.go). ID у своих артистов, релизов и треков — «k…» (helpers.go).
-// В треклист можно добавить и уже существующие треки — Deezer или с других
-// своих релизов (albums.tracklist, local.go: arrangeOwn), а релиз — привязать
-// версией к другому (versions.go).
-//
-// Загружать может любой пользователь (canUpload), править релиз — его автор
-// и админ, своего артиста (имя, фото) — тот, кто его завёл, и админ.
-
-// canUpload — кто может загружать: с 16.10.2026 — все пользователи
-// (сначала был только админ). Закрыть загрузку — поменять здесь.
 func canUpload(r *http.Request) bool {
 	return currentUser(r) != ""
 }
 
-// releaseRow — свой релиз, который зритель вправе править.
 type releaseRow struct {
-	id        string // k-ID
+	id        string
 	libraryID string
 	owner     string
 	draft     bool
 }
 
-// releaseFor loads an own release the viewer may edit, answering 404 (no
-// such release, or a stranger's draft) or 403 itself when not.
 func (s *Server) releaseFor(w http.ResponseWriter, r *http.Request) (releaseRow, bool) {
 	return s.releaseByID(w, r, r.PathValue("id"))
 }
@@ -73,23 +56,18 @@ func (s *Server) releaseByID(w http.ResponseWriter, r *http.Request, id string) 
 	return rel, true
 }
 
-// editorViewer — автор или админ видит черновик, который правит.
 func editorViewer(r *http.Request) viewer {
 	v := viewerOf(r)
 	v.adminMode = true
 	return v
 }
 
-// --- список и черновик ---
-
 type uploadCard struct {
 	deezer.Album
 	Draft bool   `json:"draft"`
-	Owner string `json:"owner,omitempty"` // кто загрузил — админу у чужих релизов
+	Owner string `json:"owner,omitempty"`
 }
 
-// handleUploads — мои релизы (с черновиками), новые сверху; админу — все
-// загруженные, и без режима админа: это его рабочий список.
 func (s *Server) handleUploads(w http.ResponseWriter, r *http.Request) {
 	v := viewerOf(r)
 	rows, err := s.DB.Query(
@@ -130,8 +108,6 @@ func (s *Server) handleUploads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"releases": out})
 }
 
-// handleCreateRelease заводит пустой черновик: сегодняшняя дата, тип
-// «сингл» (фронт поправит по числу треков). Треки и всё остальное — потом.
 func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	if !canUpload(r) {
 		writeError(w, http.StatusForbidden, "uploads are not available")
@@ -149,15 +125,13 @@ func (s *Server) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
-// --- состояние окна загрузки ---
-
 type uploadTrack struct {
 	ID         string             `json:"id"`
 	Title      string             `json:"title"`
 	DurationMs int                `json:"duration_ms"`
 	Explicit   bool               `json:"explicit"`
-	Artists    []deezer.ArtistRef `json:"artists"`         // null — как у релиза
-	Other      bool               `json:"other,omitempty"` // добавлен с другого релиза: не правится здесь
+	Artists    []deezer.ArtistRef `json:"artists"`
+	Other      bool               `json:"other,omitempty"`
 	Disc       int                `json:"disc"`
 }
 
@@ -169,8 +143,8 @@ type releaseState struct {
 	ReleaseDate string             `json:"release_date"`
 	CoverURL    string             `json:"cover_url"`
 	Draft       bool               `json:"draft"`
-	Owner       string             `json:"owner,omitempty"` // кто загрузил, если правит не он (админ)
-	VersionOf   *deezer.Album      `json:"version_of"`      // карточка основного релиза (versions.go) или null
+	Owner       string             `json:"owner,omitempty"`
+	VersionOf   *deezer.Album      `json:"version_of"`
 	Tracks      []uploadTrack      `json:"tracks"`
 }
 
@@ -191,7 +165,7 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 			st.Owner = "?"
 		}
 	}
-	own := map[string]bool{} // у каких треков свои исполнители (track_overrides)
+	own := map[string]bool{}
 	rows, err := s.DB.Query(
 		`SELECT o.deezer_id FROM track_overrides o JOIN tracks t ON t.deezer_id = o.deezer_id
 		  WHERE t.album_id = $1 AND o.artist_ids IS NOT NULL`, rel.libraryID)
@@ -222,8 +196,6 @@ func (s *Server) releaseState(r *http.Request, rel releaseRow) (*releaseState, e
 		st.Tracks = append(st.Tracks, ut)
 	}
 	if album.VersionOf != "" {
-		// Основной релиз после привязки могли снять с публикации: его нынешние
-		// название и обложку видит тот же, кто видит сам релиз.
 		if s.albumVisibleTo(viewerOf(r), album.VersionOf) {
 			st.VersionOf = s.albumCard(album.VersionOf)
 		}
@@ -247,35 +219,28 @@ func (s *Server) handleGetRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
-// --- сохранение и публикация ---
-
 type releaseEdit struct {
 	Title       string             `json:"title"`
-	Artists     []string           `json:"artists"` // ID по порядку, основной первый: свои (k…) и Deezer
+	Artists     []string           `json:"artists"`
 	RecordType  string             `json:"record_type"`
-	ReleaseDate string             `json:"release_date"` // YYYY-MM-DD или ""
-	Tracks      []releaseTrackEdit `json:"tracks"`       // все треки релиза, по порядку, с добавленными с других релизов
-	VersionOf   *string            `json:"version_of"`   // ID основного релиза (versions.go), "" — отвязать; нет — не менять
-	Published   *bool              `json:"published"`    // true — опубликовать, false — снять; нет — не менять
+	ReleaseDate string             `json:"release_date"`
+	Tracks      []releaseTrackEdit `json:"tracks"`
+	VersionOf   *string            `json:"version_of"`
+	Published   *bool              `json:"published"`
 }
 
-// releaseTrackEdit — трек релиза. У трека с другого релиза (Deezer или
-// свой чужой) значим только ID: его самого здесь не правят.
 type releaseTrackEdit struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
-	Artists  []string `json:"artists"` // null — как у релиза
+	Artists  []string `json:"artists"`
 	Explicit bool     `json:"explicit"`
-	Disc     int      `json:"disc"` // 1…99, по порядку не убывает; нет — первый
+	Disc     int      `json:"disc"`
 }
 
 const maxTitle = 300
 
 func tooLong(s string) bool { return len([]rune(s)) > maxTitle }
 
-// handleSaveRelease сохраняет всё окно разом. Черновик можно сохранить
-// недозаполненным; публикация проверяет, что есть всё нужное, и иначе
-// отвечает 400 со списком missing — фронт подсвечивает эти поля.
 func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 	rel, ok := s.releaseFor(w, r)
 	if !ok {
@@ -325,8 +290,6 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		writeSaveError(w, r, err)
 		return
 	}
-	// Диски: по порядку треков номер не убывает (диск 2 — после диска 1);
-	// номер трека — место на своём диске.
 	trackNos := make([]int, len(req.Tracks))
 	onDisc := map[int]int{}
 	for i, t := range req.Tracks {
@@ -393,8 +356,8 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "the release's tracks changed meanwhile, reload the page")
 		return
 	}
-	var tracklist []string // свой порядок нужен, только когда есть треки с других релизов
-	var discs []int64      // и диск каждого места в нём: у добавленных он только здесь
+	var tracklist []string
+	var discs []int64
 	if len(other) > 0 {
 		tracklist = sent
 		for _, t := range req.Tracks {
@@ -426,7 +389,7 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var placeholder string // нарисованная заглушка обложки: не сохранили — удалить
+	var placeholder string
 	defer func() {
 		if placeholder != "" {
 			s.removeStorageFiles(placeholder)
@@ -438,7 +401,6 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "the release is not complete", "missing": missing})
 				return
 			}
-			// Публикуют без обложки — ставим заглушку (placeholder.go).
 			if !cover.Valid && s.StorageDir != "" {
 				if placeholder, err = s.writePlaceholderCover(rel.id); err != nil {
 					serverError(w, r, "save failed", err)
@@ -470,8 +432,6 @@ func (s *Server) handleSaveRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
-// saveOwnTrack пишет поля своего трека: название, метку E и исполнителей
-// (nil — как у релиза; тогда и без E запись в track_overrides не нужна).
 func saveOwnTrack(tx *sql.Tx, id, title string, explicit bool, artists []string) error {
 	if _, err := tx.Exec(`UPDATE tracks SET title = $2 WHERE deezer_id = $1`, id, title); err != nil {
 		return err
@@ -487,9 +447,6 @@ func saveOwnTrack(tx *sql.Tx, id, title string, explicit bool, artists []string)
 	return err
 }
 
-// otherTracks checks the tracks added to the release from other releases —
-// those in tracks that aren't its own (have): each must be a real track the
-// viewer can see (Deezer, or a published own one), and none may repeat.
 func (s *Server) otherTracks(v viewer, releaseID string, tracks []releaseTrackEdit, have []string) (map[string]bool, error) {
 	other := map[string]bool{}
 	seen := map[string]bool{}
@@ -516,9 +473,6 @@ func (s *Server) otherTracks(v viewer, releaseID string, tracks []releaseTrackEd
 	return other, nil
 }
 
-// missingForPublish — чего не хватает для публикации (те же коды проверяет
-// фронт, lib/uploads.js). Названия треков с других релизов не проверяются:
-// они не отсюда. Обложка не обязательна: без неё ставится заглушка.
 func missingForPublish(req releaseEdit, other map[string]bool, artists []string) []string {
 	missing := []string{}
 	if req.Title == "" {
@@ -580,8 +534,6 @@ func idsIn(q querier, query string, args ...any) ([]string, error) {
 	return ids, rows.Err()
 }
 
-// --- обложка ---
-
 func (s *Server) handleReleaseCover(w http.ResponseWriter, r *http.Request) {
 	rel, ok := s.releaseFor(w, r)
 	if !ok {
@@ -599,16 +551,12 @@ func (s *Server) handleReleaseCover(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"cover_url": "/media/" + key})
 }
 
-// handleDeleteReleaseCover убирает обложку своего релиза: у черновика её
-// просто не будет (при публикации поставится заглушка), у опубликованного
-// сразу встаёт заглушка (placeholder.go) — релиз без картинки в списках
-// и приложениях смотрелся бы сломанным.
 func (s *Server) handleDeleteReleaseCover(w http.ResponseWriter, r *http.Request) {
 	rel, ok := s.releaseFor(w, r)
 	if !ok {
 		return
 	}
-	var next any // новый cover_key: NULL или заглушка
+	var next any
 	var placeholder string
 	if !rel.draft && s.StorageDir != "" {
 		var err error
@@ -642,9 +590,6 @@ func (s *Server) handleDeleteReleaseCover(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"cover_url": url})
 }
 
-// setReleaseCover ставит обложку релиза; replace=false — только если её ещё
-// нет (обложка из тегов файла не заменяет выбранную). Прежний файл и снимки
-// в медиатеке слушателей обновляются.
 func (s *Server) setReleaseCover(rel releaseRow, key string, replace bool) error {
 	var old sql.NullString
 	err := s.DB.QueryRow(
@@ -662,11 +607,6 @@ func (s *Server) setReleaseCover(rel releaseRow, key string, replace bool) error
 	return nil
 }
 
-// --- удаление ---
-
-// handleDeleteRelease удаляет релиз отовсюду: треки, их файлы и обложку,
-// лайки, места в плейлистах, сохранения, историю, тексты. Мягкий вариант —
-// снять с публикации (handleSaveRelease, published:false).
 func (s *Server) handleDeleteRelease(w http.ResponseWriter, r *http.Request) {
 	rel, ok := s.releaseFor(w, r)
 	if !ok {
@@ -681,9 +621,6 @@ func (s *Server) handleDeleteRelease(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// deleteOwn удаляет свой релиз (trackID == "") или один его трек вместе со
-// всем, что на них ссылается, и возвращает ключи файлов — их удаляют после
-// коммита. Обложка релиза удаляется сразу.
 func (s *Server) deleteOwn(albumID, libraryID, trackID string) ([]string, error) {
 	tx, err := s.DB.Begin()
 	if err != nil {
@@ -704,8 +641,6 @@ func (s *Server) deleteOwn(albumID, libraryID, trackID string) ([]string, error)
 		`DELETE FROM plays WHERE deezer_id = ANY($1)`,
 		`DELETE FROM lyrics WHERE deezer_id = ANY($1)`,
 		`DELETE FROM track_overrides WHERE deezer_id = ANY($1)`,
-		// добавлен в треклист других релизов (arrangeOwn) — убрать оттуда
-		// вместе с его диском (tracklist_discs — по тем же местам)
 		`UPDATE albums a SET tracklist = k.ids, tracklist_discs = k.discs
 		   FROM (SELECT al.id,
 		                array_agg(x.id ORDER BY x.n) FILTER (WHERE x.id <> ALL($1)) AS ids,
@@ -747,10 +682,6 @@ func (s *Server) deleteOwn(albumID, libraryID, trackID string) ([]string, error)
 	return keys, nil
 }
 
-// --- свои артисты ---
-
-// handleCreateArtist заводит своего артиста (только имя; фото — как у
-// любого артиста, PUT /api/artists/{id}/picture).
 func (s *Server) handleCreateArtist(w http.ResponseWriter, r *http.Request) {
 	if !canUpload(r) {
 		writeError(w, http.StatusForbidden, "uploads are not available")
@@ -771,8 +702,6 @@ func (s *Server) handleCreateArtist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, a)
 }
 
-// artistEditor пускает к правке артиста (имя, фото) админа и того, кто
-// завёл своего артиста.
 func (s *Server) artistEditor(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var owner string
@@ -792,12 +721,6 @@ func (s *Server) artistEditor(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// --- снимки в медиатеке ---
-
-// syncLocalSnapshots переписывает снимки своего релиза и его треков в
-// лайках, плейлистах и сохранённых альбомах: названия и исполнители и так
-// накладываются при чтении, а обложку и длительность плейлист берёт прямо
-// из снимка (мозаика, общее время).
 func (s *Server) syncLocalSnapshots(albumID string) {
 	v := viewer{adminMode: true}
 	tracks, err := s.localTracks(v, mustIDs(s.DB, `SELECT t.deezer_id FROM tracks t JOIN albums a ON a.id = t.album_id WHERE a.deezer_id = $1`, albumID))
@@ -834,10 +757,6 @@ func mustIDs(db *sql.DB, query string, args ...any) []string {
 	return ids
 }
 
-// --- один свой трек (правка из меню трека) ---
-
-// ownTrackState — свой трек для окна правки трека: его поля, как в окне
-// загрузки, и релиз, на котором он (исполнители релиза — для «как у релиза»).
 type ownTrackState struct {
 	uploadTrack
 	AlbumID        string             `json:"album_id"`
@@ -871,8 +790,6 @@ func (s *Server) handleGetOwnTrack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
-// handleSaveOwnTrack сохраняет один свой трек: {"title", "artists" (null —
-// как у релиза), "explicit"}. Порядок и диски — в окне загрузки.
 func (s *Server) handleSaveOwnTrack(w http.ResponseWriter, r *http.Request) {
 	rel, trackID, ok := s.ownTrackFor(w, r)
 	if !ok {
@@ -923,10 +840,6 @@ func (s *Server) handleSaveOwnTrack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
-// --- тексты своих треков ---
-
-// handleGetOwnLyrics — текст своего трека для окна загрузки: как его
-// вводили (LRC, если есть время).
 func (s *Server) handleGetOwnLyrics(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.ownTrackFor(w, r); !ok {
 		return
@@ -943,8 +856,6 @@ func (s *Server) handleGetOwnLyrics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"text": text})
 }
 
-// handlePutOwnLyrics сохраняет текст своего трека: {"text": "..."} — LRC
-// или просто строки; пустой — убрать.
 func (s *Server) handlePutOwnLyrics(w http.ResponseWriter, r *http.Request) {
 	_, trackID, ok := s.ownTrackFor(w, r)
 	if !ok {

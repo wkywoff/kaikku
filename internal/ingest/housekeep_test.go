@@ -16,11 +16,6 @@ import (
 	"kaikku/internal/ytdlp"
 )
 
-// fakeYouTube подменяет поиск и скачивание: поиск отдаёт found (или
-// ErrNoMatch, если пусто), скачивание — 3 с синуса для id без префикса
-// gone (видео недоступно), blocked (YouTube не пускает сервер) или age
-// (видео только вошедшим, 18+).
-// Возвращает, что спрашивали.
 func fakeYouTube(t *testing.T, found ...string) (searches *int, downloads *[]string) {
 	t.Helper()
 	ffmpeg, err := exec.LookPath("ffmpeg")
@@ -93,25 +88,20 @@ func TestProcessJob_VideoChoice(t *testing.T) {
 		return
 	}
 
-	// Видео от админа — без поиска.
 	searches, downloads := fakeYouTube(t, "found1")
 	if st, e, v, _ := run("deezer:501", "manual1", ""); st != "done" || v != "manual1" || *searches != 0 {
 		t.Fatalf("manual: %s %q video %q, searches %d", st, e, v, *searches)
 	}
-	// Видео админа не скачалось — ошибка, поиска нет.
 	if st, _, _, n := run("deezer:502", "goneManual", ""); st != "failed" || *searches != 0 || n != 1 {
 		t.Fatalf("gone manual: %s, searches %d, attempts %d", st, *searches, n)
 	}
-	// Известное видео — сначала оно.
 	if st, _, v, _ := run("deezer:503", "", "known1"); st != "done" || v != "known1" || *searches != 0 {
 		t.Fatalf("known: %s video %q, searches %d", st, v, *searches)
 	}
-	// Известное удалили — обычный поиск.
 	if st, _, v, _ := run("deezer:504", "", "goneKnown"); st != "done" || v != "found1" || *searches != 1 {
 		t.Fatalf("known gone: %s video %q, searches %d, downloads %v", st, v, *searches, *downloads)
 	}
 
-	// Не нашлось — failed, попытка засчитана, вид — not_found.
 	fakeYouTube(t)
 	st, e, _, n := run("deezer:505", "", "")
 	if st != "failed" || n != 1 || FailureKind(e) != "not_found" {
@@ -119,8 +109,6 @@ func TestProcessJob_VideoChoice(t *testing.T) {
 	}
 }
 
-// processRef ставит задачу ref (known — видео, с которого уже качали) и
-// прогоняет её, как воркер.
 func processRef(t *testing.T, db *sql.DB, ref, known string) {
 	t.Helper()
 	if _, err := db.Exec(
@@ -146,9 +134,6 @@ func jobState(t *testing.T, db *sql.DB, ref string) (status, errText string, att
 	return status, e.String, attempts
 }
 
-// YouTube не пускает сервер: попытки не тратятся, другие видео не
-// пробуются; раз в час — одна пробная задача; первое удачное скачивание
-// возвращает в очередь остальные.
 func TestProcessJob_BlockedByYouTube(t *testing.T) {
 	db := openTestDB(t)
 	searches, downloads := fakeYouTube(t, "blocked1", "found1")
@@ -164,7 +149,6 @@ func TestProcessJob_BlockedByYouTube(t *testing.T) {
 		t.Fatalf("downloads %v, searches %d: after a refusal nothing else is tried", *downloads, *searches)
 	}
 
-	// Housekeep: одна пробная — та, которой отказали раньше.
 	db.Exec(`UPDATE ingest_jobs SET updated_at = now() - interval '21 hours' WHERE source_ref = 'deezer:601'`)
 	Housekeep(db, t.TempDir(), 3*24*time.Hour)
 	if st, _, _ := jobState(t, db, "deezer:601"); st != "pending" {
@@ -174,7 +158,6 @@ func TestProcessJob_BlockedByYouTube(t *testing.T) {
 		t.Fatalf("only one probe an hour: deezer:602 is %s", st)
 	}
 
-	// Скачалось — отказанные снова в очереди.
 	fakeYouTube(t, "found1")
 	processRef(t, db, "deezer:603", "")
 	if st, e, _ := jobState(t, db, "deezer:603"); st != "done" {
@@ -185,8 +168,6 @@ func TestProcessJob_BlockedByYouTube(t *testing.T) {
 	}
 }
 
-// Лучшее видео — 18+, следующее недоступно: задача — «нужен вход», с тем
-// видео, которое отдали бы вошедшему; куки загрузили — снова в очереди.
 func TestProcessJob_NeedsSignIn(t *testing.T) {
 	db := openTestDB(t)
 	_, downloads := fakeYouTube(t, "ageBest", "goneNext")
@@ -237,8 +218,6 @@ func TestHousekeep_RetriesFailedJobs(t *testing.T) {
 	}
 }
 
-// Неслушаемое аудио удаляется; задача помнит видео; общий файл живёт, пока
-// на него ссылается другой трек; своё, админское и правленое не трогается.
 func TestHousekeep_EvictsAudioNobodyPlays(t *testing.T) {
 	db := openTestDB(t)
 	storage := t.TempDir()
@@ -261,7 +240,7 @@ func TestHousekeep_EvictsAudioNobodyPlays(t *testing.T) {
 	track("10", "old.m4a", "5 days", false, false)
 	track("11", "fresh.m4a", "1 day", false, false)
 	track("12", "shared.m4a", "5 days", false, false)
-	track("13", "shared.m4a", "1 day", false, false) // та же запись на другом релизе, слушали вчера
+	track("13", "shared.m4a", "1 day", false, false)
 	track("14", "admin.m4a", "30 days", true, false)
 	track("15", "edited.m4a", "30 days", false, true)
 	track("k99", "uploads/own.m4a", "30 days", false, false)
@@ -293,7 +272,6 @@ func TestHousekeep_EvictsAudioNobodyPlays(t *testing.T) {
 	if status != "done" || known == nil || *known != "vid10" || result != nil {
 		t.Fatalf("job of an evicted track: %s known %v result %v", status, known, result)
 	}
-	// Задача удалённого трека не считается мёртвой: по ней трек скачается снова.
 	db.Exec(`UPDATE ingest_jobs SET updated_at = now() - interval '30 days' WHERE source_ref = 'deezer:10'`)
 	Housekeep(db, storage, 3*24*time.Hour)
 	var n int

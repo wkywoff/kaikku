@@ -12,16 +12,8 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Свой треклист релиза (админ, миграция 0020): треки в своём порядке и
-// треки с других релизов вместо его собственных — Deezer залил не ту версию
-// (цензурную, ремастер, битую), и по ссылке подставляется нужная.
-// Подставленный трек — настоящий трек Deezer со своим ISRC, длительностью,
-// аудио и текстом; в треклисте он под названием и обложкой этого релиза.
-
 const maxTracklist = 300
 
-// albumTracks returns the release's tracklist with the admin's edit applied;
-// arranged — whether there was one (the numbers then follow the new order).
 func (s *Server) albumTracks(album *deezer.Album) (tracks []deezer.Track, arranged bool, err error) {
 	tracks, err = s.Deezer.GetAlbumTracks(album, 200)
 	if err != nil {
@@ -35,10 +27,6 @@ func (s *Server) albumTracks(album *deezer.Album) (tracks []deezer.Track, arrang
 	return s.arrangeTracks(tracks, list, from), true, nil
 }
 
-// arrangeTracks puts the album's Deezer tracks in the edited order, fetching
-// the ones from other releases. Tracks Deezer added after the edit (in
-// neither list) go to the end; a track Deezer dropped but the edit keeps is
-// fetched on its own.
 func (s *Server) arrangeTracks(tracks []deezer.Track, list, from []string) []deezer.Track {
 	own := make(map[string]deezer.Track, len(tracks))
 	for _, t := range tracks {
@@ -65,8 +53,6 @@ func (s *Server) arrangeTracks(tracks []deezer.Track, list, from []string) []dee
 	return out
 }
 
-// renumber numbers an arranged tracklist by position within each disc. A
-// track from another release joins the disc of the track before it.
 func renumber(tracks []deezer.Track, albumID string) {
 	next := map[int]int{}
 	disc := 1
@@ -81,8 +67,6 @@ func renumber(tracks []deezer.Track, albumID string) {
 	}
 }
 
-// saveTracklist stores the release's tracklist (Deezer track IDs in order);
-// the same as Deezer's clears the edit.
 func (s *Server) saveTracklist(albumDeezerID string, ids []string) error {
 	if len(ids) == 0 || len(ids) > maxTracklist {
 		return &badRequest{fmt.Sprintf("tracklist must have 1 to %d tracks", maxTracklist)}
@@ -123,9 +107,6 @@ func (s *Server) saveTracklist(albumDeezerID string, ids []string) error {
 	return err
 }
 
-// handleReplaceAlbumTrack — «заменить трек по ссылке» из окна правки трека:
-// в треклисте релиза трек track встаёт на место with. Ответ — треклист
-// релиза, как в /api/discover/albums/{id}.
 func (s *Server) handleReplaceAlbumTrack(w http.ResponseWriter, r *http.Request) {
 	dz := r.PathValue("id")
 	var req struct {

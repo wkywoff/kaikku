@@ -42,7 +42,7 @@ func TestOnRepeatAndForgotten(t *testing.T) {
 	for i := range 6 {
 		taste = append(taste, tt(fmt.Sprint(10+i), "1", 2+i, 2+i, 2+i, now, time.Time{}))
 	}
-	taste = append(taste, tt("99", "2", 1, 1, 1, now, time.Time{})) // разок — не «на повторе»
+	taste = append(taste, tt("99", "2", 1, 1, 1, now, time.Time{}))
 	p, ok := onRepeatMix(taste, now)
 	if !ok || len(p.tracks) != 6 || p.tracks[0].ID != "15" || p.Artists[0] != "A1" {
 		t.Fatalf("on repeat: %v %+v", ok, p)
@@ -51,9 +51,9 @@ func TestOnRepeatAndForgotten(t *testing.T) {
 		t.Fatal("nothing is forgotten yet")
 	}
 	for i := range 5 {
-		taste = append(taste, tt(fmt.Sprint(50+i), "3", 0, 0, 0, time.Time{}, old)) // лайкнул давно, не слушал
+		taste = append(taste, tt(fmt.Sprint(50+i), "3", 0, 0, 0, time.Time{}, old))
 	}
-	taste = append(taste, tt("60", "3", 0, 0, 0, time.Time{}, now)) // лайкнул вчера — не забытое
+	taste = append(taste, tt("60", "3", 0, 0, 0, time.Time{}, now))
 	p, ok = forgottenMix(taste, now, dailyRand("u", "forgotten", now))
 	if !ok || len(p.tracks) != 5 || slices.ContainsFunc(p.tracks, func(x deezer.Track) bool { return x.ID == "60" }) {
 		t.Fatalf("forgotten: %v %+v", ok, p.tracks)
@@ -64,7 +64,6 @@ func TestOnRepeatAndForgotten(t *testing.T) {
 	}
 }
 
-// Жанр — где у человека хотя бы два артиста; почти тот же состав — повтор.
 func TestTagMixes(t *testing.T) {
 	now := time.Now()
 	taste := []tasteTrack{tt("1", "1", 9, 9, 9, now, time.Time{}), tt("2", "2", 5, 5, 5, now, time.Time{}), tt("3", "3", 1, 1, 1, now, now)}
@@ -114,8 +113,6 @@ func TestMixes_API(t *testing.T) {
 		t.Fatalf("mixes: %+v", list.Mixes)
 	}
 
-	// Жанровый: по кругу от каждого артиста — его треки у человека, потом
-	// хиты Deezer (у артиста 1 — трек 888).
 	var got struct {
 		Mix    mix
 		Tracks []deezer.Track
@@ -131,14 +128,12 @@ func TestMixes_API(t *testing.T) {
 	call(t, router, "GET", "/api/me/mixes/tag-jazz", token, "", http.StatusNotFound)
 	call(t, router, "GET", "/api/me/mixes/Tag-Phonk", token, "", http.StatusNotFound)
 
-	// Включённое из микса — в «Недавно прослушанном» карточкой микса.
 	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888","context":{"kind":"mix","id":"tag-phonk"}}`, http.StatusOK)
 	var recent struct{ Items []recentItem }
 	json.Unmarshal(call(t, router, "GET", "/api/me/recent", token, "", http.StatusOK), &recent)
 	if len(recent.Items) == 0 || recent.Items[0].Kind != "mix" || recent.Items[0].Mix.Tag != "phonk" {
 		t.Fatalf("recent: %+v", recent.Items)
 	}
-	// Несуществующий микс — как трек альбома.
 	call(t, router, "POST", "/api/me/plays", token, `{"deezer_id":"888","context":{"kind":"mix","id":"tag-jazz"}}`, http.StatusOK)
 	var kind string
 	db.QueryRow(`SELECT context_kind FROM plays ORDER BY id DESC LIMIT 1`).Scan(&kind)
@@ -147,7 +142,6 @@ func TestMixes_API(t *testing.T) {
 	}
 }
 
-// План миксов кешируется на минуту, но лайк его сбрасывает.
 func TestMixes_CachedUntilLike(t *testing.T) {
 	db, router, token, _ := newTestServer(t)
 	db.Exec(`TRUNCATE plays, liked_tracks, artist_tags`)
@@ -187,8 +181,6 @@ func TestMixes_CachedUntilLike(t *testing.T) {
 	}
 }
 
-// Совместный трек в топе у двух артистов попадает в список один раз:
-// повтор ронял страницу жанра.
 func TestInterleaveSkipsRepeats(t *testing.T) {
 	tr := func(id string) deezer.Track { return deezer.Track{ID: id} }
 	got := interleave([][]deezer.Track{{tr("1"), tr("shared"), tr("2")}, {tr("shared"), tr("3")}}, 10)

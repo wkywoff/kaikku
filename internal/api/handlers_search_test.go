@@ -14,14 +14,11 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Поиск не ждёт фитов (запрос к Deezer на каждый трек): они догружаются
-// фоном и видны со следующего поиска. Брошенный поиск их не заказывает, но
-// выдачу запоминает: за неё уже заплачено.
 func TestSearch_ContributorsInBackground(t *testing.T) {
-	old := enrichLimit.Swap(deezer.NewLimiter(100, time.Second)) // не ждать общей доли
+	old := enrichLimit.Swap(deezer.NewLimiter(100, time.Second))
 	t.Cleanup(func() { enrichLimit.Store(old) })
 	var trackCalls, searchCalls atomic.Int32
-	var leave atomic.Pointer[context.CancelFunc] // клиент уходит, пока идёт поиск
+	var leave atomic.Pointer[context.CancelFunc]
 	mux := http.NewServeMux()
 	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		searchCalls.Add(1)
@@ -63,7 +60,6 @@ func TestSearch_ContributorsInBackground(t *testing.T) {
 	if n := searchCalls.Load(); n != 1 {
 		t.Errorf("the abandoned search was not cached: Deezer searched %d times", n)
 	}
-	// Фиты — фоном (enrich.go), не дольше пары секунд.
 	for i := 0; trackCalls.Load() == 0 && i < 40; i++ {
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -71,8 +67,6 @@ func TestSearch_ContributorsInBackground(t *testing.T) {
 		t.Fatalf("featured artists not fetched in the background: %d track requests", trackCalls.Load())
 	}
 
-	// Тот же запрос ещё раз (с другим регистром) — из кеша, Deezer не
-	// спрашивается, а фиты уже есть.
 	before := searchCalls.Load()
 	rec := request(router, http.MethodGet, "/api/search?q=Song", token)
 	if rec.Code != http.StatusOK {
@@ -90,8 +84,6 @@ func TestSearch_ContributorsInBackground(t *testing.T) {
 	}
 }
 
-// У небольших артистов Deezer ищет альбомы, а их треков в поиске треков нет:
-// тогда треки берутся из найденных альбомов.
 func TestSearch_TracksFromAlbums(t *testing.T) {
 	var tracklists atomic.Int32
 	mux := http.NewServeMux()
@@ -100,7 +92,6 @@ func TestSearch_TracksFromAlbums(t *testing.T) {
 			w.Write([]byte(`{"data":[{"id":7,"title":"Hit","duration":100,"artist":{"id":9,"name":"Big"},"album":{"id":8,"title":"Hits"}}],"total":1}`))
 			return
 		}
-		// чужие треки с похожим именем, как Mortician на «mortrivial»
 		w.Write([]byte(`{"data":[{"id":41,"title":"Rabid","duration":100,"artist":{"id":1,"name":"Mortician"},"album":{"id":2,"title":"B"}}],"total":1}`))
 	})
 	mux.HandleFunc("/search/artist", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[],"total":0}`)) })
@@ -148,23 +139,18 @@ func TestSearch_TracksFromAlbums(t *testing.T) {
 		return ids
 	}
 
-	// Название и исполнитель — только этот трек, другие с альбома нет; чужие — после.
 	if got := search("mortrivial time distortion"); !slices.Equal(got, []string{"51 TIME DISTORTION", "41 Rabid"}) {
 		t.Errorf("artist and title: %v", got)
 	}
-	// Одно имя — все его треки с найденных альбомов.
 	if got := search("Mortrivial"); !slices.Equal(got, []string{"51 TIME DISTORTION", "52 SAW", "41 Rabid"}) {
 		t.Errorf("artist only: %v", got)
 	}
-	// Поиск треков нашёл подходящий — альбомы не открываются.
 	before := tracklists.Load()
 	if got := search("big hit"); !slices.Equal(got, []string{"7 Hit"}) || tracklists.Load() != before {
 		t.Errorf("a good track search still opened albums: %v, %d tracklists", got, tracklists.Load()-before)
 	}
 }
 
-// Свежий сингл: в поиске Deezer его ещё нет, а в списке релизов артиста уже
-// есть. Список релизов спрашивается один раз на артиста, пока человек печатает.
 func TestSearch_TracksFromFreshReleases(t *testing.T) {
 	var releaseLists, byName atomic.Int32
 	today := time.Now().Format("2006-01-02")
@@ -173,7 +159,6 @@ func TestSearch_TracksFromFreshReleases(t *testing.T) {
 		w.Write([]byte(`{"data":[{"id":41,"title":"Казино","duration":100,"artist":{"id":3,"name":"5opka"},"album":{"id":2,"title":"Казино"}}],"total":1}`))
 	})
 	mux.HandleFunc("/search/album", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[],"total":0}`)) })
-	// Как у Deezer: артист находится только по своему имени, не по «имя название».
 	mux.HandleFunc("/search/artist", func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("q") {
 		case "5opka":
@@ -222,29 +207,23 @@ func TestSearch_TracksFromFreshReleases(t *testing.T) {
 		return ids
 	}
 
-	// Одно имя — список релизов не нужен.
 	if got := search("5opka"); !slices.Equal(got, []string{"41 Казино"}) || releaseLists.Load() != 0 {
 		t.Errorf("artist only: %v, %d release lists", got, releaseLists.Load())
 	}
-	// Печатает по буквам — поиск артиста по имени и список релизов по разу.
 	for _, q := range []string{"5opka р", "5opka русс", "5opka русский", "5opka Русский Канье"} {
 		if got := search(q); !slices.Equal(got, []string{"51 Русский Канье", "41 Казино"}) {
 			t.Errorf("%q: %v", q, got)
 		}
 	}
-	// Артиста по имени Deezer уже искал на запросе «5opka»: берётся из кеша.
 	if releaseLists.Load() != 1 || byName.Load() != 1 {
 		t.Errorf("Deezer asked %d times for the release list and %d for the artist", releaseLists.Load(), byName.Load())
 	}
-	// Сразу «имя название», без набора по буквам: артист по имени — один запрос.
 	if got := search("5OPKA канье"); !slices.Equal(got, []string{"51 Русский Канье", "41 Казино"}) {
 		t.Errorf("typed at once: %v", got)
 	}
-	// Слов из названия нет ни в одном свежем релизе — ничего не добавляется.
 	if got := search("5opka завоз"); !slices.Equal(got, []string{"41 Казино"}) {
 		t.Errorf("no such release: %v", got)
 	}
-	// Без имени артиста в начале свежий трек не ищется: непонятно, у кого.
 	for _, q := range []string{"русский канье", "русский канье 5opka"} {
 		if got := search(q); slices.Contains(got, "51 Русский Канье") {
 			t.Errorf("%q: %v", q, got)
@@ -252,8 +231,6 @@ func TestSearch_TracksFromFreshReleases(t *testing.T) {
 	}
 }
 
-// Пустая выдача — пустые массивы, не null: страница поиска читает
-// artists.length и с null зависала на «Ищем…».
 func TestSearch_EmptyListsNotNull(t *testing.T) {
 	empty := func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[],"total":0}`)) }
 	dz := httptest.NewServer(http.HandlerFunc(empty))

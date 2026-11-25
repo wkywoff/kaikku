@@ -43,8 +43,6 @@ func TestReadTags_ID3Lyrics(t *testing.T) {
 	}
 }
 
-// Файл человека — не то, что шлёт YouTube: 96 кГц и 5.1 становятся 48 кГц
-// стерео AAC, обложка из файла — квадратным JPEG, плейлист — отказ.
 func TestPrepareUpload(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
@@ -93,8 +91,6 @@ func TestPrepareUpload(t *testing.T) {
 		t.Errorf("cover = %q, want a 200×200 JPEG", got)
 	}
 
-	// Float WAV с пиками +12 dBFS: без среза кодер терял ~1 дБ сверх того,
-	// что срезал бы плеер, и громкость файла расходилась с gain_db.
 	hot := filepath.Join(dir, "hot.wav")
 	run("-f", "lavfi", "-i", "anoisesrc=d=5:c=pink:a=0.5:r=44100", "-af", "volume=12dB", "-c:a", "pcm_f32le", hot)
 	hotInfo, err := ProbeUpload(ctx, hot)
@@ -106,7 +102,7 @@ func TestPrepareUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cut := filepath.Join(dir, "cut.wav") // то же, но без сжатия
+	cut := filepath.Join(dir, "cut.wav")
 	run("-i", hot, "-af", clipOversFilter, "-c:a", "pcm_f32le", cut)
 	wantLufs, _, err := measureLoudness(ctx, cut)
 	if err != nil {

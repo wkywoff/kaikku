@@ -14,21 +14,12 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Свои релизы (загрузка, uploads.go) в тех же ответах, что и каталог Deezer:
-// страницы альбома и артиста, трек, медиатека, поиск. ID у них «k…»
-// (helpers.go), строки помечены edited/cover_custom/picture_custom, так что
-// название, обложку, исполнителей и explicit подставляет overlayFor, как
-// правки админа. Сборщики здесь задают остальное (длительность, номера,
-// число треков) и решают, видно ли зрителю черновик.
-
-// errNotFound — своего объекта нет или зрителю его не видно (чужой черновик).
 var errNotFound = errors.New("not found")
 
-// viewer — кто смотрит.
 type viewer struct {
 	userID    string
-	admin     bool // может править всё
-	adminMode bool // админ в режиме админа: видит черновики и скрытое
+	admin     bool
+	adminMode bool
 }
 
 func viewerOf(r *http.Request) viewer {
@@ -38,17 +29,12 @@ func viewerOf(r *http.Request) viewer {
 
 func (v viewer) owns(owner string) bool { return owner != "" && owner == v.userID }
 
-// sees: черновик видят автор и админ в режиме админа.
 func (v viewer) sees(draft bool, owner string) bool { return !draft || v.owns(owner) || v.adminMode }
 
-// mayEdit: свой релиз или артиста правят автор и админ.
 func (v viewer) mayEdit(owner string) bool { return v.owns(owner) || v.admin }
 
-// editable: показывать ли кнопку правки — автору всегда, админу в режиме
-// админа (как остальные его инструменты).
 func (v viewer) editable(owner string) bool { return v.owns(owner) || v.adminMode }
 
-// writeCatalogError — как writeDeezerError, но и для своих релизов.
 func writeCatalogError(w http.ResponseWriter, prefix string, err error) {
 	if errors.Is(err, errNotFound) {
 		writeError(w, http.StatusNotFound, prefix+": not found")
@@ -57,16 +43,12 @@ func writeCatalogError(w http.ResponseWriter, prefix string, err error) {
 	writeDeezerError(w, prefix, err)
 }
 
-// localRelease — то, что знает о своём релизе только наша база.
 type localRelease struct {
 	libraryID string
-	owner     string // "" — автора нет (удалён)
+	owner     string
 	draft     bool
 }
 
-// localAlbum is an own release with its tracklist, as the album page shows
-// it. A draft the viewer may not see is errNotFound; one they may see is not
-// marked hidden (it would be greyed out for its own author).
 func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track, localRelease, error) {
 	var rel localRelease
 	a := deezer.Album{ID: id}
@@ -115,7 +97,7 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 		a.DurationSec += t.DurationMs / 1000
 	}
 	a.Explicit = slices.ContainsFunc(tracks, func(t deezer.Track) bool { return t.Explicit })
-	if rel.draft { // видит автор или админ — не серым
+	if rel.draft {
 		a.Hidden = false
 		for i := range tracks {
 			tracks[i].Hidden = false
@@ -124,15 +106,6 @@ func (s *Server) localAlbum(v viewer, id string) (*deezer.Album, []deezer.Track,
 	return &a, tracks, rel, nil
 }
 
-// arrangeOwn puts an own release's tracks in its tracklist's order
-// (albums.tracklist: own tracks and tracks from other releases — Deezer or
-// own — added in the upload editor). An added track keeps its ID, audio and
-// album, but shows under this release's title and cover, as on a Deezer
-// album with an edited tracklist (tracklist.go). Own tracks not in the list
-// (uploaded after the last save) go to the end; a track that's gone, or a
-// stranger's draft, is skipped. discs — the disc of each place in list
-// (albums.tracklist_discs); a place without one stays on the disc before
-// it. Numbers follow the order within each disc.
 func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list []string, discs []sql.NullInt64) []deezer.Track {
 	byID := make(map[string]deezer.Track, len(own))
 	for _, t := range own {
@@ -166,7 +139,7 @@ func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list 
 	}
 	for _, t := range own {
 		if !placed[t.ID] {
-			t.DiscNo = max(t.DiscNo, disc) // загружен на последний диск (uploads_audio.go)
+			t.DiscNo = max(t.DiscNo, disc)
 			out = append(out, t)
 		}
 	}
@@ -178,11 +151,6 @@ func (s *Server) arrangeOwn(v viewer, a *deezer.Album, own []deezer.Track, list 
 	return out
 }
 
-// localAlbumCards — свои релизы карточками (дискография, медиатека), в
-// порядке ids; чего нет — пропускается. Черновики помечены скрытыми
-// (overlay.go), списки каталога их отбрасывают сами. Треки, добавленные с
-// других релизов (arrangeOwn), идут в число треков, длительность и метку
-// explicit (как на странице релиза: хоть один трек explicit).
 func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -245,8 +213,6 @@ func (s *Server) localAlbumCards(ids []string) ([]deezer.Album, error) {
 	return out, nil
 }
 
-// trackDurations — длительность треков (ms по ID): из базы (свои и
-// скачанные), остальные — из Deezer (кеш). Чего не узнать — нет в ответе.
 func (s *Server) trackDurations(ids []string) map[string]int {
 	out := map[string]int{}
 	rows, err := s.DB.Query(`SELECT deezer_id, duration_ms FROM tracks WHERE deezer_id = ANY($1) AND duration_ms > 0`, pq.Array(ids))
@@ -273,8 +239,6 @@ func (s *Server) trackDurations(ids []string) map[string]int {
 	return out
 }
 
-// explicitTracks — какие из треков explicit: правка (track_overrides), иначе
-// метка Deezer (кеш). Своему треку без правки метки нет.
 func (s *Server) explicitTracks(ids []string) map[string]bool {
 	out := map[string]bool{}
 	edited := map[string]bool{}
@@ -302,8 +266,6 @@ func (s *Server) explicitTracks(ids []string) map[string]bool {
 	return out
 }
 
-// localTracks — свои треки по ID, в том же порядке; чужие черновики и то,
-// чего нет, пропускаются.
 func (s *Server) localTracks(v viewer, ids []string) ([]deezer.Track, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -346,8 +308,6 @@ func (s *Server) localTracks(v viewer, ids []string) ([]deezer.Track, error) {
 	return out, nil
 }
 
-// localArtist — свой артист (k…). Черновиков у артистов нет: его видно,
-// даже пока у него нет ни одного релиза.
 func (s *Server) localArtist(id string) (*deezer.Artist, string, error) {
 	a := deezer.Artist{ID: id}
 	var owner string
@@ -362,8 +322,6 @@ func (s *Server) localArtist(id string) (*deezer.Artist, string, error) {
 	return &a, owner, nil
 }
 
-// localArtistTracks — треки релизов, где он исполнитель (новые релизы
-// первыми), без черновиков.
 func (s *Server) localArtistTracks(v viewer, artistID string, limit int) ([]deezer.Track, error) {
 	rows, err := s.DB.Query(
 		`SELECT t.deezer_id FROM tracks t JOIN albums a ON a.id = t.album_id
@@ -389,9 +347,6 @@ func (s *Server) localArtistTracks(v viewer, artistID string, limit int) ([]deez
 	return s.localTracks(v, ids)
 }
 
-// --- Deezer или свой каталог ---
-
-// catalogTrack — трек со всеми правками, откуда бы он ни был.
 func (s *Server) catalogTrack(v viewer, id string) (*deezer.Track, error) {
 	if isLocalID(id) {
 		tracks, err := s.localTracks(v, []string{id})
@@ -412,9 +367,6 @@ func (s *Server) catalogTrack(v viewer, id string) (*deezer.Track, error) {
 	return &tracks[0], nil
 }
 
-// catalogTracks — треки по ID в том же порядке. Треки Deezer — без правок
-// (их накладывает вызывающий, как и раньше), свои — уже с правками.
-// Любая ошибка Deezer — ошибка всего списка; своего трека нет — errNotFound.
 func (s *Server) catalogTracks(v viewer, ids []string) ([]deezer.Track, error) {
 	var dz, mine []string
 	for _, id := range ids {
@@ -453,7 +405,6 @@ func (s *Server) catalogTracks(v viewer, ids []string) ([]deezer.Track, error) {
 	return out, nil
 }
 
-// catalogAlbum — карточка альбома (без треклиста).
 func (s *Server) catalogAlbum(v viewer, id string) (*deezer.Album, error) {
 	if isLocalID(id) {
 		a, _, _, err := s.localAlbum(v, id)
@@ -467,7 +418,6 @@ func (s *Server) catalogAlbum(v viewer, id string) (*deezer.Album, error) {
 	return a, nil
 }
 
-// catalogArtist — артист (имя, фото) с правками.
 func (s *Server) catalogArtist(id string) (*deezer.Artist, error) {
 	if isLocalID(id) {
 		a, _, err := s.localArtist(id)
@@ -481,10 +431,6 @@ func (s *Server) catalogArtist(id string) (*deezer.Artist, error) {
 	return &a, nil
 }
 
-// --- страницы своего артиста ---
-
-// localArtistPage — то же, что handleDiscoverArtist, для своего артиста:
-// его релизы из базы, «Популярное» — прослушивания здесь, потом его треки.
 func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id string) {
 	v := viewerOf(r)
 	artist, owner, err := s.localArtist(id)
@@ -500,7 +446,6 @@ func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id stri
 		return
 	}
 	top := popularTracks(played, own)
-	// Релизы Deezer, перенесённые к нему, — с правками, как у артиста Deezer.
 	s.overlayFor(nil, albumPtrs(albums), top)
 	if albums == nil {
 		albums = []deezer.Album{}
@@ -511,8 +456,6 @@ func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id stri
 	})
 }
 
-// localArtistRadio — «радио» своего артиста: похожих у нас не знает никто,
-// так что это его треки вперемешку.
 func (s *Server) localArtistRadio(w http.ResponseWriter, r *http.Request, id string) {
 	tracks, err := s.localArtistTracks(viewerOf(r), id, 100)
 	if err != nil {
@@ -526,12 +469,8 @@ func (s *Server) localArtistRadio(w http.ResponseWriter, r *http.Request, id str
 	writeJSON(w, http.StatusOK, map[string]any{"tracks": tracks})
 }
 
-// deezerRowOnly guards the admin's tools for catalogue rows by library ID
-// (reset to Deezer, credits and tracklist edits, deletion that leaves the
-// library alone): own uploads have their own editor and deletion
-// (uploads.go). table is one of the catalogue tables, never user input.
 func (s *Server) deezerRowOnly(table string, next http.HandlerFunc) http.HandlerFunc {
-	query := `SELECT deezer_id FROM ` + table + ` WHERE id = $1` // как в обработчиках: UUID в любом написании
+	query := `SELECT deezer_id FROM ` + table + ` WHERE id = $1`
 	return func(w http.ResponseWriter, r *http.Request) {
 		var dz string
 		if err := s.DB.QueryRow(query, r.PathValue("id")).Scan(&dz); err == nil && isLocalID(dz) {
@@ -541,8 +480,6 @@ func (s *Server) deezerRowOnly(table string, next http.HandlerFunc) http.Handler
 		next(w, r)
 	}
 }
-
-// --- поиск по своим ---
 
 type localResults struct {
 	tracks  []deezer.Track
@@ -554,14 +491,6 @@ func (l localResults) empty() bool {
 	return len(l.tracks) == 0 && len(l.artists) == 0 && len(l.albums) == 0
 }
 
-// searchLocal ищет свои релизы, треки и артистов (без учёта регистра;
-// своего каталога немного, индекс не нужен). Черновики не ищутся.
-//
-// Релизы и треки — по словам запроса, как в поиске Deezer: каждое слово
-// должно встретиться в названии или в именах исполнителей, и хотя бы одно —
-// в названии. Так «исполнитель название» находит трек, а запрос из одного
-// имени исполнителя не поднимает все его загрузки над выдачей Deezer (сам
-// артист и так есть в списке артистов). Название с запросом целиком — первым.
 func (s *Server) searchLocal(v viewer, q string, limit int) (localResults, error) {
 	var out localResults
 	words := strings.Fields(q)
@@ -594,7 +523,6 @@ func (s *Server) searchLocal(v viewer, q string, limit int) (localResults, error
 	if out.albums, err = s.localAlbumCards(albumIDs); err != nil {
 		return out, err
 	}
-	// Исполнители трека — свои (track_overrides), иначе как у релиза.
 	trackIDs, err := ids(`SELECT t.deezer_id FROM tracks t JOIN albums a ON a.id = t.album_id
 		WHERE t.deezer_id LIKE 'k%' AND NOT a.draft AND NOT a.hidden
 		  AND EXISTS (SELECT 1 FROM unnest($3::text[]) w WHERE strpos(lower(t.title), lower(w)) > 0)
@@ -614,9 +542,6 @@ func (s *Server) searchLocal(v viewer, q string, limit int) (localResults, error
 	return out, err
 }
 
-// searchOwnArtists — свои артисты по подстроке имени. В общем поиске — те, у
-// кого есть опубликованный релиз; при выборе исполнителей (picker) — ещё и
-// созданные этим человеком, пока без релизов.
 func (s *Server) searchOwnArtists(v viewer, q string, limit int, picker bool) ([]deezer.Artist, error) {
 	rows, err := s.DB.Query(`
 		SELECT ar.deezer_id FROM artists ar
@@ -641,6 +566,6 @@ func (s *Server) searchOwnArtists(v viewer, q string, limit int, picker bool) ([
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	s.overlayFor(artistPtrs(artists), nil, nil) // имя и фото (edited, picture_custom)
+	s.overlayFor(artistPtrs(artists), nil, nil)
 	return artists, nil
 }

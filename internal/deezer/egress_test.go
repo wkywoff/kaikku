@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// countRT считает запросы через выход; fail — отвечать ошибкой соединения.
 type countRT struct {
 	n    atomic.Int32
 	fail bool
@@ -33,8 +32,6 @@ func trackServer(t *testing.T, body string) *httptest.Server {
 
 const okTrack = `{"id":1,"title":"One","duration":100,"artist":{"id":7,"name":"A"}}`
 
-// clientWithProxy — прямой выход и «прокси» (свой RoundTripper), по n
-// запросов за 5 с каждый.
 func clientWithProxy(apiURL string, n int) (*Client, *countRT, *countRT) {
 	direct, proxy := &countRT{}, &countRT{}
 	c := NewClientWithBaseURL(apiURL).WithRateLimit(n, 5*time.Second)
@@ -43,7 +40,6 @@ func clientWithProxy(apiURL string, n int) (*Client, *countRT, *countRT) {
 	return c, direct, proxy
 }
 
-// Место кончилось на прямом — следующий запрос идёт через прокси, не ждёт.
 func TestEgress_SplitsRequests(t *testing.T) {
 	srv := trackServer(t, okTrack)
 	c, direct, proxy := clientWithProxy(srv.URL, 1)
@@ -64,13 +60,11 @@ func TestEgress_SplitsRequests(t *testing.T) {
 	}
 }
 
-// Прокси не отвечает — запрос уходит напрямую, прокси минуту не трогается.
 func TestEgress_ProxyDown(t *testing.T) {
 	srv := trackServer(t, okTrack)
 	direct, proxy := &countRT{}, &countRT{fail: true}
 	c := NewClientWithBaseURL(srv.URL).WithRateLimit(10, 5*time.Second)
 	c.egresses[0].http = &http.Client{Transport: direct}
-	// Прокси — первым, чтобы его попробовали.
 	c.egresses = append([]*egress{{name: "proxy", proxy: true, limiter: newRateLimiter(10, 5*time.Second),
 		http: &http.Client{Transport: proxy}}}, c.egresses...)
 	if c.Capacity() != 20 {
@@ -91,8 +85,6 @@ func TestEgress_ProxyDown(t *testing.T) {
 	}
 }
 
-// После паузы через прокси идёт одна проба; не прошла — пауза вдвое
-// длиннее, прошла — прокси снова в деле.
 func TestEgress_ProxyProbe(t *testing.T) {
 	old := proxyDownFor
 	proxyDownFor = 50 * time.Millisecond
@@ -104,9 +96,9 @@ func TestEgress_ProxyProbe(t *testing.T) {
 	p := &egress{name: "proxy", proxy: true, http: &http.Client{Transport: proxy}}
 	c.egresses = append([]*egress{p}, c.egresses...)
 
-	c.GetTrack("1") // сбой → пауза 50 мс
+	c.GetTrack("1")
 	time.Sleep(60 * time.Millisecond)
-	c.GetTrack("2") // проба, снова сбой → пауза 100 мс
+	c.GetTrack("2")
 	if proxy.n.Load() != 2 {
 		t.Fatalf("proxy tried %d times, want 2 (first try and one probe)", proxy.n.Load())
 	}
@@ -120,7 +112,7 @@ func TestEgress_ProxyProbe(t *testing.T) {
 	}
 	proxy.fail = false
 	time.Sleep(60 * time.Millisecond)
-	c.GetTrack("4") // проба проходит
+	c.GetTrack("4")
 	if !p.up() {
 		t.Fatal("a successful probe did not bring the proxy back")
 	}
@@ -130,7 +122,6 @@ func TestEgress_ProxyProbe(t *testing.T) {
 	}
 }
 
-// Пока проба в пути, остальные запросы идут напрямую.
 func TestEgress_OneProbe(t *testing.T) {
 	p := &egress{name: "proxy", proxy: true, fails: 1}
 	if !p.claim() {
@@ -145,7 +136,6 @@ func TestEgress_OneProbe(t *testing.T) {
 	}
 }
 
-// Запросы, упавшие вместе, — один сбой; следующий считается после паузы.
 func TestEgress_BurstIsOneFailure(t *testing.T) {
 	p := &egress{name: "proxy", proxy: true}
 	boom := errors.New("unexpected status 403")
@@ -165,7 +155,6 @@ func TestEgress_BurstIsOneFailure(t *testing.T) {
 	}
 }
 
-// Прямой выход закрыт — пауза прокси не растёт: без него не работают списки.
 func TestRegion_OnlyWayKeepsPauseShort(t *testing.T) {
 	old := proxyOnlyWayDownFor
 	proxyOnlyWayDownFor = 30 * time.Millisecond
@@ -187,7 +176,6 @@ func TestRegion_OnlyWayKeepsPauseShort(t *testing.T) {
 	}
 }
 
-// Не тот ответ через прокси (не 200) — повтор напрямую.
 func TestEgress_ProxyBadStatus(t *testing.T) {
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
 	t.Cleanup(bad.Close)
@@ -203,13 +191,11 @@ func TestEgress_ProxyBadStatus(t *testing.T) {
 	}
 }
 
-// «Квота» через прокси — повтор напрямую.
 func TestEgress_ProxyOverQuota(t *testing.T) {
 	quota := trackServer(t, `{"error":{"type":"Exception","message":"Quota limit exceeded","code":4}}`)
 	ok := trackServer(t, okTrack)
 	c := NewClientWithBaseURL(ok.URL)
 	quotaURL, _ := url.Parse(quota.URL)
-	// «Прокси» ведёт на сервер, который отвечает «квота».
 	c.egresses = append([]*egress{{name: "proxy", proxy: true, limiter: newRateLimiter(10, 5*time.Second),
 		http: &http.Client{Transport: rewriteRT{quotaURL}}}}, c.egresses...)
 	tr, err := c.GetTrack("1")
@@ -218,7 +204,6 @@ func TestEgress_ProxyOverQuota(t *testing.T) {
 	}
 }
 
-// rewriteRT шлёт запрос на другой хост.
 type rewriteRT struct{ to *url.URL }
 
 func (rt rewriteRT) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -227,8 +212,6 @@ func (rt rewriteRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(r)
 }
 
-// regionServer — Deezer, каким его видит IP из страны, где он открыт или нет:
-// /infos говорит open, альбомы есть только там, где открыт.
 func regionServer(t *testing.T, open bool) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var albums atomic.Int32
@@ -250,7 +233,6 @@ func regionServer(t *testing.T, open bool) (*httptest.Server, *atomic.Int32) {
 	return srv, &albums
 }
 
-// clientVia: прямой выход ведёт на directURL, прокси — на proxyURL.
 func clientVia(t *testing.T, directURL, proxyURL string) (*Client, *egress) {
 	t.Helper()
 	to, err := url.Parse(proxyURL)
@@ -263,8 +245,6 @@ func clientVia(t *testing.T, directURL, proxyURL string) (*Client, *egress) {
 	return c, p
 }
 
-// Страна прямого выхода закрыта — релизы приходят через прокси, а пустой
-// ответ напрямую даже не запрашивается.
 func TestRegion_ClosedDirectGoesThroughProxy(t *testing.T) {
 	closed, closedHits := regionServer(t, false)
 	open, _ := regionServer(t, true)
@@ -282,7 +262,6 @@ func TestRegion_ClosedDirectGoesThroughProxy(t *testing.T) {
 	}
 }
 
-// Закрыто всё — ошибка, а не пустой список, который лёг бы в кеш.
 func TestRegion_AllClosedIsAnError(t *testing.T) {
 	closed, closedHits := regionServer(t, false)
 	c := NewClientWithBaseURL(closed.URL)
@@ -295,7 +274,6 @@ func TestRegion_AllClosedIsAnError(t *testing.T) {
 	}
 }
 
-// Закрыто всё — альбом, его треклист, артист и трек всё равно приходят.
 func TestRegion_ObjectsThroughClosed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -325,7 +303,6 @@ func TestRegion_ObjectsThroughClosed(t *testing.T) {
 	}
 }
 
-// Прокси открыт — отдельные объекты идут через него, а не через закрытый.
 func TestRegion_ObjectsPreferOpen(t *testing.T) {
 	closed, closedHits := regionServer(t, false)
 	open := trackServer(t, okTrack)
@@ -339,8 +316,6 @@ func TestRegion_ObjectsPreferOpen(t *testing.T) {
 	}
 }
 
-// Прокси упал, прямой закрыт: трек приходит напрямую, а список — нет, и наружу
-// — настоящая причина.
 func TestRegion_ProxyDownDirectClosed(t *testing.T) {
 	closed, closedHits := regionServer(t, false)
 	c := NewClientWithBaseURL(closed.URL)
@@ -354,7 +329,6 @@ func TestRegion_ProxyDownDirectClosed(t *testing.T) {
 	if closedHits.Load() != 0 {
 		t.Errorf("%d requests went through the closed way out", closedHits.Load())
 	}
-	// Прокси на паузе, идти не через что.
 	if _, err := c.GetArtistAlbums("27", 10); !errors.Is(err, errProxyPaused) {
 		t.Errorf("got %v during the pause, want errProxyPaused", err)
 	}
@@ -369,7 +343,6 @@ func TestRegion_ProxyDownDirectClosed(t *testing.T) {
 	}
 }
 
-// «Квота» через прокси, прямой закрыт — повтор через тот же прокси.
 func TestRegion_ProxyQuotaDirectClosed(t *testing.T) {
 	closed, _ := regionServer(t, false)
 	var calls atomic.Int32
@@ -388,8 +361,6 @@ func TestRegion_ProxyQuotaDirectClosed(t *testing.T) {
 	}
 }
 
-// Закрытый выход не считается в ёмкости; открылся — снова в деле. Нет ответа
-// от /infos — состояние не меняется.
 func TestRegion_ReopensAndKeepsStateWithoutAnswer(t *testing.T) {
 	var open atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

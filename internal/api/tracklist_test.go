@@ -31,9 +31,6 @@ func trackIDs(tracks []tracklistTrack) string {
 	return s
 }
 
-// Свой треклист релиза: порядок, трек с другого релиза по ссылке (под
-// названием этого релиза, номер — по месту), как у Deezer — правки нет.
-// Mock: релиз 77 — треки 501 (диск 1) и 502 (диск 2); 12345 — с релиза 9.
 func TestAlbumTracklist_ReorderAndReplace(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	var id string
@@ -60,9 +57,9 @@ func TestAlbumTracklist_ReorderAndReplace(t *testing.T) {
 	if got := tracks[1]; got.Album != "Compilation" || got.DiscNo != 2 || got.TrackNo != 2 {
 		t.Errorf("track from another release: %+v", got)
 	}
-	replace(`{"track":"502","with":"404"}`, http.StatusBadRequest)   // нет на Deezer
-	replace(`{"track":"502","with":"12345"}`, http.StatusBadRequest) // уже в треклисте
-	replace(`{"track":"501","with":"888"}`, http.StatusBadRequest)   // 501 уже заменён
+	replace(`{"track":"502","with":"404"}`, http.StatusBadRequest)
+	replace(`{"track":"502","with":"12345"}`, http.StatusBadRequest)
+	replace(`{"track":"501","with":"888"}`, http.StatusBadRequest)
 
 	var edited struct{ Edited bool }
 	getJSON(t, router, "/api/albums/"+id, token, false, &edited)
@@ -70,7 +67,6 @@ func TestAlbumTracklist_ReorderAndReplace(t *testing.T) {
 		t.Error("an album with its own tracklist must be marked edited")
 	}
 
-	// Как у Deezer — правка снимается.
 	put(t, router, "/api/albums/"+id, token, `{"title":"Compilation","tracklist":["501","502"]}`, http.StatusOK)
 	var n int
 	db.QueryRow(`SELECT count(*) FROM albums WHERE id = $1 AND tracklist IS NULL`, id).Scan(&n)
@@ -79,7 +75,6 @@ func TestAlbumTracklist_ReorderAndReplace(t *testing.T) {
 	}
 	put(t, router, "/api/albums/"+id, token, `{"title":"Compilation","tracklist":["501","501"]}`, http.StatusBadRequest)
 
-	// «Сбросить» снимает и треклист.
 	put(t, router, "/api/albums/"+id, token, `{"title":"Compilation","tracklist":["502"]}`, http.StatusOK)
 	if rec := postJSON(router, "/api/albums/"+id+"/reset", "", token); rec.Code != http.StatusOK {
 		t.Fatalf("reset: %d %s", rec.Code, rec.Body.String())
@@ -91,7 +86,7 @@ func TestAlbumTracklist_ReorderAndReplace(t *testing.T) {
 
 func TestArrangeTracks_DeezerAddedTracksGoLast(t *testing.T) {
 	_, _, _, srv := newTestServer(t)
-	own := []deezer.Track{{ID: "501"}, {ID: "502"}, {ID: "503"}} // 503 Deezer добавил после правки
+	own := []deezer.Track{{ID: "501"}, {ID: "502"}, {ID: "503"}}
 	got := srv.arrangeTracks(own, []string{"502", "501"}, []string{"501", "502"})
 	ids := ""
 	for _, t := range got {
@@ -102,8 +97,6 @@ func TestArrangeTracks_DeezerAddedTracksGoLast(t *testing.T) {
 	}
 }
 
-// Трек, подставленный в треклист релиза и сыгранный с него, засчитывается
-// этому релизу: в «Недавних» — его название и обложка, не сингла.
 func TestTracklistPlayCountsForTheAlbum(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	var id string
@@ -119,7 +112,6 @@ func TestTracklistPlayCountsForTheAlbum(t *testing.T) {
 		t.Errorf("play snapshot: album %s %q, want 77 Compilation", albumID, album)
 	}
 
-	// Прослушивание, записанное до этого (снимок — с релиза трека).
 	db.Exec(`UPDATE plays SET meta = meta || '{"album_id":"9","album":"Test Album","cover_url":"http://example.com/cover.jpg"}'`)
 	var recent struct {
 		Items []struct {

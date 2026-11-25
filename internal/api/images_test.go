@@ -22,7 +22,7 @@ func TestDeezerImageProxy(t *testing.T) {
 	router := NewRouter(&Server{})
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil)) // без Bearer: так грузит <img>
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		return rec
 	}
 
@@ -36,18 +36,16 @@ func TestDeezerImageProxy(t *testing.T) {
 	if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
 		t.Errorf("Cache-Control = %q", cc)
 	}
-	// 200 — карточки на обычном (не «ретина») экране, srcset фронта.
 	if rec := get("/api/img/cover/" + hash + "/200x200-000000-80-0-0.jpg"); rec.Code != http.StatusOK || gotPath != "/images/cover/"+hash+"/200x200-000000-80-0-0.jpg" {
 		t.Errorf("200 px: status %d, upstream %q", rec.Code, gotPath)
 	}
 
-	// Только картинки Deezer, не произвольные пути.
 	for _, bad := range []string{
 		"/api/img/artist/" + hash + "/x.jpg",
 		"/api/img/artist/not-a-hash/1000x1000-000000-80-0-0.jpg",
 		"/api/img/secret/" + hash + "/1000x1000-000000-80-0-0.jpg",
 		"/api/img/artist/" + hash + "/1000x1000-000000-80-0-0.php",
-		"/api/img/artist/" + hash + "/9999x9999-000000-80-0-0.jpg", // размеры — только те, что нужны сайту
+		"/api/img/artist/" + hash + "/9999x9999-000000-80-0-0.jpg",
 		"/api/img/artist/" + hash + "/1000x500-000000-80-0-0.jpg",
 	} {
 		gotPath = ""

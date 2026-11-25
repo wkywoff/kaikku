@@ -17,59 +17,43 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Миксы — плейлисты, которые собираются сами из истории и лайков человека
-// (своя база, без Deezer: персональные подборки Deezer без входа в его
-// аккаунт недоступны):
-//
-//   on-repeat   «На повторе» — что слушаешь чаще всего последний месяц;
-//   forgotten   «Давно не звучало» — любимое, что не играло два месяца;
-//   tag-<жанр>  «<Жанр> микс» — жанр по тегам Last.fm (tags.go) среди тех,
-//               кого слушаешь: твои треки этих артистов и их хиты на Deezer.
-//
-// Пересчитываются при каждом открытии (данных у человека немного), порядок
-// внутри дня не меняется.
-
 const (
-	mixMinTracks    = 5  // меньше — микса нет
-	mixMaxTracks    = 50 // как у Spotify
-	mixTagMixes     = 4  // жанровых — не больше
-	mixTagArtists   = 10 // артистов в жанровом миксе
-	mixPerArtist    = 5  // треков одного артиста в жанровом миксе
-	mixOwnPerArtist = 3  // из них — твоих (слушал, лайкнул)
-	mixTasteDays    = 90 // вкус — по прослушиваниям за столько дней и всем лайкам
+	mixMinTracks    = 5
+	mixMaxTracks    = 50
+	mixTagMixes     = 4
+	mixTagArtists   = 10
+	mixPerArtist    = 5
+	mixOwnPerArtist = 3
+	mixTasteDays    = 90
 	mixRepeatDays   = 30
 	mixForgetDays   = 60
-	mixTopArtists   = 30 // жанры — по столько самым слушаемым артистам
-	mixLikeWeight   = 3  // лайк весит как три прослушивания
+	mixTopArtists   = 30
+	mixLikeWeight   = 3
 )
 
-// mix — карточка микса. Название клиент составляет сам по kind и tag.
 type mix struct {
 	ID      string   `json:"id"`
-	Kind    string   `json:"kind"`          // on_repeat | forgotten | tag
-	Tag     string   `json:"tag,omitempty"` // для tag — имя тега Last.fm
-	Artists []string `json:"artists"`       // главные исполнители — подпись карточки
-	Covers  []string `json:"covers"`        // обложки для картинки, первая — главная
+	Kind    string   `json:"kind"`
+	Tag     string   `json:"tag,omitempty"`
+	Artists []string `json:"artists"`
+	Covers  []string `json:"covers"`
 }
 
-// tasteTrack — трек из истории или лайков человека.
 type tasteTrack struct {
 	deezer.Track
 	plays, plays30, plays90 int
-	last, liked             time.Time // нули — не слушал / не лайкал
+	last, liked             time.Time
 }
 
-// mixPlan — микс и то, из чего строить его треки.
 type mixPlan struct {
 	mix
-	tracks  []deezer.Track // готовые (on-repeat, forgotten)
-	artists []string       // для tag: ID артистов по весу
+	tracks  []deezer.Track
+	artists []string
 	own     map[string][]deezer.Track
 }
 
 var mixIDRe = regexp.MustCompile(`^(on-repeat|forgotten|tag-[a-z0-9-]{1,60})$`)
 
-// tagSlug — тег в адресе: «russian hip-hop» → russian-hip-hop, «r&b» → r-b.
 func tagSlug(tag string) string {
 	var b strings.Builder
 	dash := false
@@ -85,8 +69,6 @@ func tagSlug(tag string) string {
 	return strings.TrimSuffix(b.String(), "-")
 }
 
-// tasteOf — всё, что человек слушал или лайкал, с правками админа; скрытые
-// релизы — только админу в режиме админа.
 func (s *Server) tasteOf(r *http.Request, userID string) ([]tasteTrack, error) {
 	rows, err := s.DB.Query(`
 		WITH p AS (
@@ -137,29 +119,22 @@ func (s *Server) tasteOf(r *http.Request, userID string) ([]tasteTrack, error) {
 			kept = append(kept, out[i])
 		}
 	}
-	// Порядок строк из базы не задан — для одинаковых миксов при равных весах.
 	sort.SliceStable(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
 	return kept, nil
 }
 
-// dailyRand — случайность, одна и та же для человека и микса весь день.
 func dailyRand(userID, mixID string, now time.Time) *rand.Rand {
 	h := fnv.New64a()
 	h.Write([]byte(userID + "|" + mixID + "|" + now.UTC().Format("2006-01-02")))
 	return rand.New(rand.NewPCG(h.Sum64(), 0))
 }
 
-// План миксов живёт минуту: им же проверяется контекст каждого
-// прослушивания из микса (mixCard), а пересчёт — вся история человека.
-// Лайк сбрасывает его сразу (forgetMixes): лайки меняют миксы заметно.
 const mixesTTL = time.Minute
 
 func mixesKey(userID string) string { return "mixes:" + userID + ":" }
 
 func (s *Server) forgetMixes(userID string) { s.cache.forget(mixesKey(userID)) }
 
-// planMixes — какие миксы есть у человека сейчас. Результат общий (кеш) —
-// только читать.
 func (s *Server) planMixes(r *http.Request, userID string) ([]mixPlan, error) {
 	return cached(&s.cache, fmt.Sprintf("%s%t", mixesKey(userID), showHidden(r)), mixesTTL, func() ([]mixPlan, error) {
 		return s.computeMixes(r, userID)
@@ -190,8 +165,6 @@ func (s *Server) computeMixes(r *http.Request, userID string) ([]mixPlan, error)
 	return plans, nil
 }
 
-// distinctCovers: главная обложка у каждого микса своя, если есть из чего
-// выбрать, — иначе на полке два одинаковых квадрата.
 func distinctCovers(plans []mixPlan) {
 	used := map[string]bool{}
 	for i := range plans {
@@ -221,8 +194,6 @@ func onRepeatMix(taste []tasteTrack, now time.Time) (mixPlan, bool) {
 	return finishPlan(mix{ID: "on-repeat", Kind: "on_repeat"}, picked)
 }
 
-// forgottenMix — лайкнутое или слушанное хотя бы трижды, но не игравшее
-// mixForgetDays дней (и лайкнутое не вчера). Порядок — на день вперемешку.
 func forgottenMix(taste []tasteTrack, now time.Time, rnd *rand.Rand) (mixPlan, bool) {
 	cut := now.AddDate(0, 0, -mixForgetDays)
 	var picked []tasteTrack
@@ -236,7 +207,6 @@ func forgottenMix(taste []tasteTrack, now time.Time, rnd *rand.Rand) (mixPlan, b
 	return finishPlan(mix{ID: "forgotten", Kind: "forgotten"}, picked)
 }
 
-// finishPlan: не больше mixMaxTracks треков, подпись — частые исполнители.
 func finishPlan(m mix, picked []tasteTrack) (mixPlan, bool) {
 	if len(picked) < mixMinTracks {
 		return mixPlan{}, false
@@ -266,7 +236,6 @@ func finishPlan(m mix, picked []tasteTrack) (mixPlan, bool) {
 	return mixPlan{mix: m, tracks: tracks}, true
 }
 
-// coversOf — до четырёх разных обложек.
 func coversOf(tracks []deezer.Track) []string {
 	covers := []string{}
 	for _, t := range tracks {
@@ -280,7 +249,6 @@ func coversOf(tracks []deezer.Track) []string {
 	return covers
 }
 
-// artistWeights — насколько человек слушает каждого основного исполнителя.
 func artistWeights(taste []tasteTrack) (map[string]int, map[string]string) {
 	w := map[string]int{}
 	names := map[string]string{}
@@ -315,14 +283,10 @@ func topArtists(w map[string]int, n int) []string {
 	return ids[:min(len(ids), n)]
 }
 
-// tagMixes — жанры, в которых у человека хотя бы два артиста; вес жанра —
-// сумма весов артистов, умноженных на вес тега у артиста. Жанр, чьи
-// артисты почти те же, что у уже выбранного («rap» после «hip-hop»), —
-// повтор, его пропускаем.
 func tagMixes(taste []tasteTrack, weights map[string]int, names map[string]string, top []string, tags map[string][]artistTag) []mixPlan {
 	score := map[string]float64{}
 	members := map[string][]string{}
-	for _, id := range top { // top — по убыванию веса, так и члены жанра
+	for _, id := range top {
 		for _, t := range tags[id] {
 			score[t.Name] += float64(weights[id]) * float64(t.Count) / 100
 			members[t.Name] = append(members[t.Name], id)
@@ -341,7 +305,7 @@ func tagMixes(taste []tasteTrack, weights map[string]int, names map[string]strin
 		return order[i] < order[j]
 	})
 
-	own := map[string][]deezer.Track{} // артист → его треки у человека, частые сначала
+	own := map[string][]deezer.Track{}
 	byArtist := map[string][]tasteTrack{}
 	for _, t := range taste {
 		byArtist[t.ArtistID] = append(byArtist[t.ArtistID], t)
@@ -384,7 +348,6 @@ func tagMixes(taste []tasteTrack, weights map[string]int, names map[string]strin
 	return plans
 }
 
-// overlap — доля общих артистов (от меньшего из двух списков).
 func overlap(a, b []string) float64 {
 	n := 0
 	for _, x := range a {
@@ -395,8 +358,6 @@ func overlap(a, b []string) float64 {
 	return float64(n) / float64(min(len(a), len(b)))
 }
 
-// tagMixTracks — треки жанрового микса: по кругу от каждого артиста (самые
-// слушаемые первыми) — твои его треки и хиты Deezer, на день вперемешку.
 func (s *Server) tagMixTracks(p mixPlan, rnd *rand.Rand) []deezer.Track {
 	tops := make([][]deezer.Track, len(p.artists))
 	var wg sync.WaitGroup
@@ -412,7 +373,7 @@ func (s *Server) tagMixTracks(p mixPlan, rnd *rand.Rand) []deezer.Track {
 			defer func() { <-sem }()
 			guard("mix artist top", func() error {
 				if top, err := s.artistTop(id); err == nil {
-					tops[i] = slices.Clone(top) // кеш общий — не портить
+					tops[i] = slices.Clone(top)
 				}
 				return nil
 			})
@@ -444,10 +405,6 @@ func (s *Server) tagMixTracks(p mixPlan, rnd *rand.Rand) []deezer.Track {
 	return interleave(per, mixMaxTracks)
 }
 
-// interleave — по кругу: первый трек каждого артиста, потом второй…, не
-// больше max: артисты чередуются, а не идут блоками. Трек, который уже
-// есть (совместный — в топе у обоих), второй раз не берётся: повтор в
-// списке ронял страницу жанра (ключи строк на фронте — ID трека).
 func interleave(per [][]deezer.Track, max int) []deezer.Track {
 	var out []deezer.Track
 	seen := map[string]bool{}
@@ -469,7 +426,6 @@ func interleave(per [][]deezer.Track, max int) []deezer.Track {
 	return out
 }
 
-// GET /api/me/mixes — миксы человека для главной.
 func (s *Server) handleMixes(w http.ResponseWriter, r *http.Request) {
 	plans, err := s.planMixes(r, currentUser(r))
 	if err != nil {
@@ -485,7 +441,6 @@ func (s *Server) handleMixes(w http.ResponseWriter, r *http.Request) {
 
 var errNoMix = errors.New("no such mix")
 
-// mixTracks — микс id человека и его треки; errNoMix — такого сейчас нет.
 func (s *Server) mixTracks(r *http.Request, userID, id string) (mix, []deezer.Track, error) {
 	if !mixIDRe.MatchString(id) {
 		return mix{}, nil, errNoMix
@@ -502,13 +457,11 @@ func (s *Server) mixTracks(r *http.Request, userID, id string) (mix, []deezer.Tr
 	if p.Kind != "tag" {
 		return p.mix, p.tracks, nil
 	}
-	// Копия: треки человека в плане общие с кешем, а overlay правит на месте.
 	tracks := cloneTracks(s.tagMixTracks(p, dailyRand(userID, id, time.Now())))
 	s.overlayFor(nil, nil, tracks)
 	return p.mix, visibleTracks(r, tracks), nil
 }
 
-// mixCard — карточка микса id, если он сейчас есть у человека.
 func (s *Server) mixCard(r *http.Request, userID, id string) (mix, bool) {
 	if !mixIDRe.MatchString(id) {
 		return mix{}, false
@@ -524,7 +477,6 @@ func (s *Server) mixCard(r *http.Request, userID, id string) (mix, bool) {
 	return plans[i].mix, true
 }
 
-// GET /api/me/mixes/{id} — микс с треками.
 func (s *Server) handleMix(w http.ResponseWriter, r *http.Request) {
 	m, tracks, err := s.mixTracks(r, currentUser(r), r.PathValue("id"))
 	if errors.Is(err, errNoMix) {

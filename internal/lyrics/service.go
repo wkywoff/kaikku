@@ -11,19 +11,11 @@ import (
 )
 
 const (
-	// Не нашли нигде — спросим снова через неделю (тексты добавляют).
 	retryMissing = 7 * 24 * time.Hour
-	// Нашли без тайминга по словам (или по словам, но не у lrc.red) — через
-	// месяц: могли появиться лучше.
-	retryBasic = 30 * 24 * time.Hour
-	// Сколько ждать источники (вместе с повтором в do).
-	findTimeout = 8 * time.Second
+	retryBasic   = 30 * 24 * time.Hour
+	findTimeout  = 8 * time.Second
 )
 
-// Service ищет текст по источникам и запоминает результат в таблице lyrics.
-// Текст — один на запись: у одной записи на разных релизах (сингл, альбом)
-// разные Deezer ID, но общий ISRC, и найденный для одного релиза подходит
-// всем.
 type Service struct {
 	DB        *sql.DB
 	Providers []Provider
@@ -38,8 +30,6 @@ type call struct {
 	err  error
 }
 
-// Get отдаёт текст трека (nil — текста нет). Одновременные запросы одной
-// записи ждут один поиск.
 func (s *Service) Get(ctx context.Context, t Track) (*Lyrics, error) {
 	old, fresh, err := s.load(ctx, t)
 	if err != nil {
@@ -69,13 +59,8 @@ func (s *Service) Get(ctx context.Context, t Track) (*Lyrics, error) {
 	s.inflight[key] = c
 	s.mu.Unlock()
 
-	// Поиск не обрывается, если слушатель ушёл: результат пригодится ему же
-	// при следующем открытии.
 	var complete bool
 	c.res, complete, c.err = s.find(context.WithoutCancel(ctx), t)
-	// Повторный поиск (прошёл срок) не нашёл лучше — оставить прежний текст,
-	// а не терять его: источник мог не найти по названию этого релиза
-	// («… (Radio Edit)») то, что нашёлся по другому.
 	if old != nil && c.err == nil && (c.res == nil || better(old, c.res)) {
 		c.res, complete = old, true
 	}
@@ -91,21 +76,9 @@ func (s *Service) Get(ctx context.Context, t Track) (*Lyrics, error) {
 	return c.res, c.err
 }
 
-// find опрашивает все источники сразу (по очереди три источника по 6 с не
-// укладывались в тогдашние 15 с WriteTimeout API: ответ обрывался, хотя текст
-// потом находился): текст с таймингом по словам или подробнее — сразу ответ,
-// если источники выше по порядку уже ответили; иначе лучший из найденного
-// (better). Ошибка — только если ничего не
-// нашлось, а какой-то источник был недоступен (тогда не запоминаем «текста
-// нет»).
-//
-// complete=false — источник, который мог дать лучше, не ответил (LRCLIB
-// «занят»): найденное отдаётся, но не запоминается, и в следующий раз
-// источники спрашиваются снова. Иначе на месяц оставался бы худший текст,
-// хотя лучший источник просто был занят.
 func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, findTimeout)
-	defer cancel() // ответ уже есть — остальные запросы обрываются
+	defer cancel()
 	type result struct {
 		name string
 		l    *Lyrics
@@ -158,7 +131,6 @@ func (s *Service) find(ctx context.Context, t Track) (best *Lyrics, complete boo
 	return best, complete, nil
 }
 
-// outranked: кто-то из sources выше по порядку, чем источник l.
 func outranked(l *Lyrics, sources map[string]bool) bool {
 	for name := range sources {
 		if sourceOrder[name] > sourceOrder[l.Source] {
@@ -168,13 +140,8 @@ func outranked(l *Lyrics, sources map[string]bool) bool {
 	return false
 }
 
-// Порядок источников: lrc.red, Deezer, потом LRCLIB. Текст со
-// временем (по словам или строкам) важнее текста без времени — его не
-// прокрутить в такт, по словам — важнее, чем по строкам; дальше решает
-// порядок.
 var sourceOrder = map[string]int{"lrcred": 3, "deezer": 2, "lrclib": 1}
 
-// topSource — лучший источник: его текст по словам не перепроверяется.
 const topSource = "lrcred"
 
 func better(a, b *Lyrics) bool {
@@ -190,8 +157,6 @@ func better(a, b *Lyrics) bool {
 	return a.Sync.Rank() > b.Sync.Rank()
 }
 
-// load — сохранённый текст этого релиза или той же записи на другом:
-// найденный важнее «не нашли», дальше — более свежий.
 func (s *Service) load(ctx context.Context, t Track) (*Lyrics, bool, error) {
 	var body []byte
 	var sync string
@@ -213,10 +178,8 @@ func (s *Service) load(ctx context.Context, t Track) (*Lyrics, bool, error) {
 	}
 	var l Lyrics
 	if err := json.Unmarshal(body, &l); err != nil {
-		return nil, false, nil // испорчено — найдём заново
+		return nil, false, nil
 	}
-	// По словам от источника ниже lrc.red — тоже раз в месяц: у lrc.red
-	// мог найтись подробнее (слоги, подпевки, дуэт).
 	return &l, Sync(sync).Rank() >= SyncWord.Rank() && l.Source == topSource || age < retryBasic, nil
 }
 
@@ -237,9 +200,6 @@ func (s *Service) save(ctx context.Context, t Track, l *Lyrics) error {
 	return err
 }
 
-// Stored — сохранённый текст трека как есть, без поиска и без срока
-// годности: у своих треков (загрузка) текст задаёт автор, и источники его
-// не заменяют. nil — текста нет.
 func (s *Service) Stored(ctx context.Context, deezerID string) (*Lyrics, error) {
 	var body []byte
 	err := s.DB.QueryRowContext(ctx, `SELECT body FROM lyrics WHERE deezer_id = $1`, deezerID).Scan(&body)
@@ -256,7 +216,6 @@ func (s *Service) Stored(ctx context.Context, deezerID string) (*Lyrics, error) 
 	return &l, nil
 }
 
-// Put сохраняет текст своего трека (nil — убрать).
 func (s *Service) Put(ctx context.Context, deezerID string, l *Lyrics) error {
 	if l == nil {
 		_, err := s.DB.ExecContext(ctx, `DELETE FROM lyrics WHERE deezer_id = $1`, deezerID)
@@ -265,7 +224,6 @@ func (s *Service) Put(ctx context.Context, deezerID string, l *Lyrics) error {
 	return s.save(ctx, Track{DeezerID: deezerID}, l)
 }
 
-// Forget забывает текст записи на всех её релизах — «найти заново» (админ).
 func (s *Service) Forget(ctx context.Context, deezerID, isrc string) error {
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM lyrics WHERE deezer_id = $1 OR ($2 <> '' AND isrc = $2)`, deezerID, isrc)
 	return err

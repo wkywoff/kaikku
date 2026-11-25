@@ -16,30 +16,12 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Превью ссылок (Telegram, iMessage, WhatsApp): ссылка на альбом, артиста
-// или публичный плейлист — страница фронта (index.html) с og-тегами этого
-// альбома. Боты, которые строят превью, не входят на сайт и не выполняют
-// скрипты, поэтому теги вставляет сервер. Сам сайт по-прежнему только для
-// своих: здесь видны лишь название и обложка — как в любой ссылке Spotify.
-// Подписи — по-английски: превью строит бот мессенджера, один раз на всех
-// в чате, и языка читателя не знает.
-// Ссылка «Поделиться» на трек (/album/<id>?track=<id>) — превью трека: его
-// название и исполнители, обложка релиза.
-// Приватный плейлист, скрытый релиз, чужой черновик или ошибка — страница
-// без подробностей (только «kaikku»). nginx шлёт сюда /album/…, /artist/…
-// и /playlist/… (docker/nginx.conf.template), остальное отдаёт сам.
-
 const ogTTL = 10 * time.Minute
 
-// ogMissesPerMinute — сколько превью в минуту идут за данными (Deezer, база;
-// превью трека — это два запроса: релиз и трек).
-// Страницы открыты без входа, а бюджет Deezer общий: подбор ID не должен
-// тормозить каталог всем. Сверх лимита — страница без подробностей.
 const ogMissesPerMinute = 30
 
 var errOGBusy = errors.New("too many link previews")
 
-// ogMissBudget считает промахи в текущей минуте; нулевое значение готово к работе.
 type ogMissBudget struct {
 	mu    sync.Mutex
 	start time.Time
@@ -63,8 +45,6 @@ type ogMeta struct {
 	Title, Description, Image, Type string
 }
 
-// handleOG — index.html с og-тегами для kind (album | artist | playlist);
-// у альбома с ?track=<id> — теги этого трека.
 func (s *Server) handleOG(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		page, err := s.frontIndex.read(s.FrontendIndex)
@@ -78,10 +58,9 @@ func (s *Server) handleOG(kind string) http.HandlerFunc {
 		if tr := r.URL.Query().Get("track"); kind == "album" && validCatalogID(id) && validCatalogID(tr) {
 			key, path, track = "track:"+id+":"+tr, path+"?track="+tr, tr
 		}
-		// Кеш свой: перебор ID не должен вытеснять общий кеш страниц (s.cache).
 		meta, err := cached(&s.ogCache, key, ogTTL, func() (ogMeta, error) {
 			if !s.ogMisses.take(time.Now()) {
-				return ogMeta{}, errOGBusy // ошибка не кешируется: потом превью будет с данными
+				return ogMeta{}, errOGBusy
 			}
 			return s.ogMetaFor(kind, id, track), nil
 		})
@@ -89,13 +68,11 @@ func (s *Server) handleOG(kind string) http.HandlerFunc {
 			meta = ogMeta{}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache") // как index.html у nginx: после деплоя — новая сборка
+		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(injectOG(page, s.ogTags(meta, path)))
 	}
 }
 
-// ogMetaFor — что показать в превью; track — трек из ссылки на альбом
-// (пусто — сам альбом).
 func (s *Server) ogMetaFor(kind, id, track string) ogMeta {
 	switch kind {
 	case "album":
@@ -111,7 +88,6 @@ func (s *Server) ogMetaFor(kind, id, track string) ogMeta {
 			return ogMeta{}
 		}
 		if track != "" {
-			// Трек не с этого релиза — превью альбома: его и откроет ссылка.
 			if m := s.ogTrackMeta(a, track); m.Title != "" {
 				return m
 			}
@@ -163,15 +139,12 @@ func (s *Server) ogMetaFor(kind, id, track string) ogMeta {
 	return ogMeta{}
 }
 
-// ogTrackMeta — превью трека id на странице релиза a; пусто, если трека на
-// этом релизе нет.
 func (s *Server) ogTrackMeta(a *deezer.Album, id string) ogMeta {
 	t, err := s.catalogTrack(viewer{}, id)
 	if err != nil || t == nil {
 		return ogMeta{}
 	}
 	if t.AlbumID != a.ID {
-		// Трек с другого релиза, подставленный в треклист этого (tracklist.go).
 		var listed bool
 		if s.DB.QueryRow(`SELECT $2 = ANY(tracklist) FROM albums WHERE deezer_id = $1 AND tracklist IS NOT NULL`,
 			a.ID, id).Scan(&listed) != nil || !listed {
@@ -184,7 +157,7 @@ func (s *Server) ogTrackMeta(a *deezer.Album, id string) ogMeta {
 	} else if t.Artist != "" {
 		desc = append(desc, t.Artist)
 	}
-	if !strings.EqualFold(a.Title, t.Title) { // у сингла название то же
+	if !strings.EqualFold(a.Title, t.Title) {
 		desc = append(desc, a.Title)
 	}
 	image := a.CoverURL
@@ -213,7 +186,6 @@ func songsCount(n int) string {
 	return strconv.Itoa(n) + " songs"
 }
 
-// ogTags — блок тегов; пустой meta — только «kaikku» и иконка.
 func (s *Server) ogTags(m ogMeta, path string) string {
 	base := strings.TrimRight(s.PublicURL, "/")
 	abs := func(u string) string {
@@ -251,8 +223,6 @@ var (
 	ogEnd   = []byte("<!--/og-->")
 )
 
-// injectOG ставит теги на место блока <!--og-->…<!--/og--> (index.html), а
-// если его нет — перед </head>.
 func injectOG(page []byte, tags string) []byte {
 	if i := bytes.Index(page, ogStart); i >= 0 {
 		if j := bytes.Index(page[i:], ogEnd); j >= 0 {
@@ -265,7 +235,6 @@ func injectOG(page []byte, tags string) []byte {
 	return page
 }
 
-// fileCache — index.html фронта, перечитывается, когда файл сменился (деплой).
 type fileCache struct {
 	mu    sync.Mutex
 	mtime time.Time

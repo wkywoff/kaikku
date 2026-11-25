@@ -20,8 +20,6 @@ import (
 	"kaikku/internal/lyrics"
 )
 
-// Звук, картинки, скробблинг и тексты для приложений.
-
 func init() {
 	subsonicRoute("stream", subsonicStream)
 	subsonicRoute("download", subsonicStream)
@@ -31,9 +29,6 @@ func init() {
 	subsonicRoute("getLyrics", subsonicLyrics)
 }
 
-// stream — та же ссылка, что у плеера сайта (handleDeezerStreamURL):
-// скачанный трек отдаёт nginx, нескачанный — API потоком, пока качает.
-// Перекодирования нет: всегда AAC .m4a, maxBitRate и format не важны.
 func subsonicStream(c *subCtx) error {
 	id, err := c.catalogParam("id", subTrack)
 	if err != nil {
@@ -52,11 +47,6 @@ func subsonicStream(c *subCtx) error {
 	return nil
 }
 
-// --- обложки ---
-
-// getCoverArt: id — альбом, трек (обложка его альбома), артист или
-// плейлист; size — сторона квадрата. Картинку Deezer отдаёт наш прокси
-// (images.go), свою — covers.go.
 func subsonicCoverArt(c *subCtx) error {
 	id := c.param("id")
 	if id == "" {
@@ -70,7 +60,6 @@ func subsonicCoverArt(c *subCtx) error {
 		}
 	}
 	if u == "" {
-		// Нет картинки — заглушка, а не битая картинка в приложении.
 		placeholder(c.w, strings.HasPrefix(id, subArtist))
 		return nil
 	}
@@ -99,7 +88,6 @@ func subsonicCoverArt(c *subCtx) error {
 	return nil
 }
 
-// albumCard — карточка альбома, если он виден этому пользователю.
 func (c *subCtx) albumCard(id string) *deezer.Album {
 	if !c.s.albumVisibleTo(viewerOf(c.r), id) {
 		return nil
@@ -107,7 +95,6 @@ func (c *subCtx) albumCard(id string) *deezer.Album {
 	return c.s.albumCard(id)
 }
 
-// coverURL — картинка объекта, какой её видят на сайте (с правками).
 func (c *subCtx) coverURL(id string) (string, error) {
 	kind, raw := parseSubID(id)
 	switch {
@@ -157,8 +144,6 @@ func (c *subCtx) coverURL(id string) (string, error) {
 
 var deezerImageRe = regexp.MustCompile(`^https://(?:cdn-images|e-cdns-images)\.dzcdn\.net/images/([a-z]+)/([0-9a-f]{32})/[0-9]+x[0-9]+-(.+)$`)
 
-// deezerImageAt — путь картинки Deezer для прокси (images.go) в размере
-// не меньше size из тех, что он отдаёт; 0 — самый большой.
 func deezerImageAt(u string, size int) (kind, hash, file string, ok bool) {
 	m := deezerImageRe.FindStringSubmatch(u)
 	if m == nil {
@@ -171,8 +156,6 @@ func deezerImageAt(u string, size int) (kind, hash, file string, ok bool) {
 	return m[1], m[2], fmt.Sprintf("%dx%d-%s", px, px, m[3]), true
 }
 
-// fitSize — наименьший из sizes (по возрастанию), не меньше size; 0 —
-// size не задан или больше всех.
 func fitSize(size int, sizes []int) int {
 	if size <= 0 {
 		return 0
@@ -185,11 +168,6 @@ func fitSize(size int, sizes []int) int {
 	return 0
 }
 
-// --- прослушивания ---
-
-// scrobble: submission=false — трек начал играть («сейчас играет» в
-// Last.fm), иначе — дослушан: в историю (миксы, итоги года) и в Last.fm.
-// time — когда начал играть, мс.
 func subsonicScrobble(c *subCtx) error {
 	ids := c.params("id")
 	if len(ids) == 0 {
@@ -224,8 +202,6 @@ func subsonicScrobble(c *subCtx) error {
 	return c.ok("", nil)
 }
 
-// --- тексты ---
-
 type subLyricsLine struct {
 	Start *int64 `xml:"start,attr,omitempty" json:"start,omitempty"`
 	Value string `xml:",chardata" json:"value"`
@@ -239,7 +215,6 @@ type subStructuredLyrics struct {
 	Lines         []subLyricsLine `xml:"line" json:"line"`
 }
 
-// lyricsOf — текст трека, как на сайте (handleLyrics); nil — его нет.
 func (c *subCtx) lyricsOf(id string) (*lyrics.Lyrics, error) {
 	var out struct {
 		Lyrics *lyrics.Lyrics `json:"lyrics"`
@@ -248,7 +223,6 @@ func (c *subCtx) lyricsOf(id string) (*lyrics.Lyrics, error) {
 	return out.Lyrics, err
 }
 
-// getLyricsBySongId (OpenSubsonic songLyrics) — с временем строк, если оно есть.
 func subsonicLyricsBySongID(c *subCtx) error {
 	id, err := c.catalogParam("id", subTrack)
 	if err != nil {
@@ -256,7 +230,6 @@ func subsonicLyricsBySongID(c *subCtx) error {
 	}
 	l, err := c.lyricsOf(id)
 	if err != nil {
-		// Источники не ответили — для приложения текста просто нет.
 		log.Printf("subsonic lyrics %s: %v", id, err)
 		l = nil
 	}
@@ -282,7 +255,6 @@ func subsonicLyricsBySongID(c *subCtx) error {
 	return c.ok("lyricsList", list{[]subStructuredLyrics{out}})
 }
 
-// getLyrics (старый): по исполнителю и названию — первый трек поиска.
 func subsonicLyrics(c *subCtx) error {
 	type plain struct {
 		Artist string `xml:"artist,attr,omitempty" json:"artist,omitempty"`
@@ -312,8 +284,6 @@ func subsonicLyrics(c *subCtx) error {
 	return c.ok("lyrics", plain{Artist: t.Artist, Title: t.Title, Value: strings.Join(lines, "\n")})
 }
 
-// placeholder — серая заглушка, как на сайте: силуэт для артиста,
-// пластинка для остального.
 func placeholder(w http.ResponseWriter, artist bool) {
 	img := placeholderDisc
 	if artist {
@@ -340,8 +310,6 @@ var (
 	})
 )
 
-// drawPlaceholder — квадрат 600×600 цвета пустых обложек сайта, на нём
-// фигура inside (координаты 0…1).
 func drawPlaceholder(inside func(x, y float64) bool) []byte {
 	const side = 600
 	bg, fg := color.RGBA{0x28, 0x28, 0x28, 0xff}, color.RGBA{0x7f, 0x7f, 0x7f, 0xff}

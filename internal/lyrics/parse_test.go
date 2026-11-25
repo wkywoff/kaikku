@@ -33,7 +33,6 @@ func TestParseLRC_RepeatsGapsAndMeta(t *testing.T) {
 	if parseLRC("Просто текст\nбез времени", 100) != nil {
 		t.Error("text without stamps is not LRC")
 	}
-	// Все отметки нулевые — это текст.
 	if z := parseLRC("[00:00.00]Раз\n[00:00.00]Два", 100); z == nil || z.Sync != SyncNone || len(z.Lines) != 2 {
 		t.Errorf("zero stamps: %+v", z)
 	}
@@ -49,7 +48,6 @@ func TestPlainText(t *testing.T) {
 	}
 }
 
-// fakeJWT — токен с exp через час (подпись не проверяется).
 func fakeJWT() string {
 	claims, _ := json.Marshal(map[string]int64{"exp": time.Now().Add(time.Hour).Unix()})
 	return "e30." + base64.RawURLEncoding.EncodeToString(claims) + ".sig"
@@ -112,7 +110,7 @@ func TestLRCLIB_SyncedPlainMissing(t *testing.T) {
 	busy := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("track_name") {
-		case "busy": // перегружен — со второго раза отвечает
+		case "busy":
 			if busy++; busy == 1 {
 				http.Error(w, `{"name":"ServerOverloaded"}`, http.StatusServiceUnavailable)
 				return

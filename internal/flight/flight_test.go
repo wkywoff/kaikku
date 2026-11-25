@@ -36,7 +36,6 @@ func TestDo_SharesOneCall(t *testing.T) {
 			t.Errorf("result %d", r)
 		}
 	}
-	// После завершения — новый вызов.
 	g.Do("k", func() (int, error) { calls.Add(1); return 0, nil })
 	if calls.Load() != 2 {
 		t.Error("a finished call was reused")

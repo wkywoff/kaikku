@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// Эталонные значения PBKDF2-HMAC-SHA256 (как у RFC 7914 / Python hashlib).
 func TestDerive_KnownVectors(t *testing.T) {
 	cases := []struct {
 		password, salt string
@@ -18,7 +17,6 @@ func TestDerive_KnownVectors(t *testing.T) {
 	}{
 		{"password", "salt", 1, "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"},
 		{"password", "salt", 4096, "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"},
-		// Пароль длиннее блока HMAC (64 байта) — ключ HMAC сначала хешируется.
 		{strings.Repeat("x", 100), "salt", 3, "59bfa49750dd5462ce38370a1e7abe0736ff334cf1c2f0d84f23a03435d660d1"},
 	}
 	for _, c := range cases {
@@ -29,8 +27,6 @@ func TestDerive_KnownVectors(t *testing.T) {
 	}
 }
 
-// legacyPBKDF2 — прежняя самописная реализация (до этого коммита): хеши,
-// сохранённые ею, должны проверяться и дальше.
 func legacyPBKDF2(password string, salt []byte, iterations int) []byte {
 	prf := func() hash.Hash { return hmac.New(sha256.New, []byte(password)) }
 	h := prf()

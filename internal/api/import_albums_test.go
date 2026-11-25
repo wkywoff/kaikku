@@ -9,8 +9,6 @@ import (
 	"kaikku/internal/deezer"
 )
 
-// Как Deezer раздал песни Dua Lipa по релизам при поиске (проверено живьём,
-// 2026-10): обычный альбом, делюкс, сингл и чужой сборник вперемешку.
 func TestSettleAlbums(t *testing.T) {
 	song := func(id, album, isrc string) deezer.Track {
 		return deezer.Track{ID: id, Title: id, ArtistID: "dua", AlbumID: album, ISRC: isrc}

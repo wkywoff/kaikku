@@ -21,7 +21,6 @@ func openTestDB(t *testing.T) *sql.DB {
 	if err := db.Ping(); err != nil {
 		t.Fatalf("db ping: %v", err)
 	}
-	// LIFO: Close регистрируется первым, чтобы TRUNCATE ещё имел соединение.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(func() {
 		if _, err := db.Exec(`TRUNCATE ingest_jobs, tracks, albums, artists, users, track_edits RESTART IDENTITY CASCADE`); err != nil {
@@ -44,7 +43,7 @@ func TestFindOrCreateArtist_SeparatesNamesakes(t *testing.T) {
 	if again != first {
 		t.Errorf("second lookup by deezer_id returned a different row")
 	}
-	other, err := findOrCreateArtist(db, "999001", "Nirvana") // 60-е, другая группа
+	other, err := findOrCreateArtist(db, "999001", "Nirvana")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +137,6 @@ func TestFindOrCreateAlbum_KeepsManualEdits(t *testing.T) {
 	}
 }
 
-// Админ поправил трек, пока его не было в медиатеке (track_edits), — при
-// скачивании правка переходит в строку трека.
 func TestSaveTrack_AppliesEditsMadeBeforeDownload(t *testing.T) {
 	db := openTestDB(t)
 	db.Exec(`INSERT INTO track_edits (deezer_id, title, track_no) VALUES ('501', 'Edited One', 7)`)

@@ -43,7 +43,6 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 	user := invitedUser(t, router, admin, "cookies-user")
 	call(t, router, "PUT", "/api/admin/youtube/cookies", user, testCookies, http.StatusForbidden)
 
-	// Не те файлы — страница по reason объясняет, что не так.
 	for body, reason := range map[string]string{
 		`[{"domain": ".youtube.com", "name": "SID"}]`: "json",
 		"hello": "format",
@@ -56,7 +55,6 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 		}
 	}
 
-	// YouTube всё равно не пускает: куки сохранены, задача ждёт.
 	type upload struct {
 		Cookies  ytdlp.CookiesInfo
 		Check    string
@@ -72,7 +70,6 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 		t.Fatalf("refused job: %s", st)
 	}
 
-	// Пускает — отказанная задача снова в очереди.
 	checkErr = nil
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
 	if up.Check != "ok" || up.Requeued != 1 {
@@ -82,14 +79,11 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 		t.Fatalf("refused job after the check: %s", st)
 	}
 
-	// Отказанных нет (куки загружают заранее) — проверяется видео, которое
-	// уже скачивалось, и в очередь ничего не возвращается.
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
 	if up.Check != "ok" || up.Requeued != 0 || checked[len(checked)-1] != "doneVideo01" {
 		t.Fatalf("check without refused jobs: %+v, checked %v", up, checked)
 	}
 
-	// «Не нашлось» показывает, что куки есть; сами значения сервер не отдаёт.
 	body := call(t, router, "GET", "/api/admin/missing", admin, "", http.StatusOK)
 	if strings.Contains(string(body), "secret") {
 		t.Fatalf("cookie values leaked: %s", body)
@@ -107,7 +101,6 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 		t.Fatalf("after removing: %+v", list.Cookies)
 	}
 
-	// Не на чем проверить (новая установка): просто сохранены.
 	db.Exec(`DELETE FROM ingest_jobs`)
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
 	if up.Check != "skipped" {
@@ -115,8 +108,6 @@ func TestYouTubeCookies_UploadCheckAndRemove(t *testing.T) {
 	}
 }
 
-// Песни, которым нужен вход (18+): с новыми куками проверяется и их видео;
-// аккаунт без подтверждённого возраста — так и сказать, задачи ждут.
 func TestYouTubeCookies_SignInSongs(t *testing.T) {
 	db, router, admin, _ := newTestServer(t)
 	ytdlp.SetCookiesFile(filepath.Join(t.TempDir(), "youtube-cookies.txt"))
@@ -147,7 +138,6 @@ func TestYouTubeCookies_SignInSongs(t *testing.T) {
 		Requeued      int
 	}
 
-	// Без подтверждённого возраста: YouTube пускает сервер, но не к 18+.
 	var up upload
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
 	if up.Check != "ok" || up.Signin != "age" || up.Requeued != 0 {
@@ -157,7 +147,6 @@ func TestYouTubeCookies_SignInSongs(t *testing.T) {
 		t.Fatalf("the 18+ song after unconfirmed cookies: %s", st)
 	}
 
-	// Возраст подтверждён — песня снова в очереди, с попытками заново.
 	ageConfirmed = true
 	json.Unmarshal(call(t, router, "PUT", "/api/admin/youtube/cookies", admin, testCookies, http.StatusOK), &up)
 	if up.Check != "ok" || up.Signin != "ok" || up.Requeued != 1 {
