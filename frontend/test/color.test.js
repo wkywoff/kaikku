@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickColor, clusterColours, paletteFrom, rgbToHsl, hslToRgb, DEFAULT_PALETTE } from '../src/lib/color.js';
+import { pickColor, averageDown, clusterColours, paletteFrom, rgbToHsl, hslToRgb, DEFAULT_PALETTE } from '../src/lib/color.js';
 
 function image(pixels) {
   const out = [];
@@ -135,4 +135,37 @@ test('hslToRgb reads the palette strings back', () => {
   const back = rgbToHsl(hslToRgb('hsl(250 20% 31%)'));
   assert.ok(Math.abs(back.h - 250) < 2 && Math.abs(back.l - 0.31) < 0.01, JSON.stringify(back));
   assert.deepEqual(hslToRgb('nonsense'), { r: 40, g: 40, b: 40 });
+});
+
+function canvasPixels(width, height, at) {
+  const out = [];
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) out.push(...at(x, y));
+  return out;
+}
+
+test('averageDown mixes every source pixel, so a noisy cover gives one stable colour', () => {
+  const noisy = canvasPixels(300, 300, (x, y) => ((x + y) % 2 ? [0, 0, 255, 255] : [100, 100, 155, 255]));
+  const shifted = canvasPixels(300, 300, (x, y) => ((x + y) % 2 ? [100, 100, 155, 255] : [0, 0, 255, 255]));
+  const a = pickColor(averageDown(noisy, 300, 300, 32));
+  const b = pickColor(averageDown(shifted, 300, 300, 32));
+  for (const c of ['r', 'g', 'b']) assert.ok(Math.abs(a[c] - b[c]) <= 2, `${JSON.stringify(a)} ${JSON.stringify(b)}`);
+  assert.ok(Math.abs(a.r - 50) <= 2 && Math.abs(a.b - 205) <= 2, JSON.stringify(a));
+});
+
+test('averageDown keeps the layout of sizes that do not divide evenly', () => {
+  const halves = canvasPixels(50, 37, (x) => (x < 25 ? [200, 0, 0, 255] : [0, 0, 200, 255]));
+  const out = averageDown(halves, 50, 37, 2);
+  assert.deepEqual([...out], [200, 0, 0, 255, 0, 0, 200, 255, 200, 0, 0, 255, 0, 0, 200, 255]);
+});
+
+test('averageDown fills the grid from an image smaller than it', () => {
+  const out = averageDown([10, 20, 30, 255], 1, 1, 4);
+  assert.equal(out.length, 64);
+  for (let i = 0; i < out.length; i += 4) assert.deepEqual([...out.slice(i, i + 4)], [10, 20, 30, 255]);
+});
+
+test('averageDown ignores the colour of transparent pixels', () => {
+  const out = averageDown([200, 100, 0, 255, 0, 0, 255, 0], 2, 1, 1);
+  assert.deepEqual([...out], [200, 100, 0, 128]);
+  assert.deepEqual([...averageDown([0, 0, 255, 0], 1, 1, 1)], [0, 0, 0, 0]);
 });

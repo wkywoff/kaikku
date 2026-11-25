@@ -272,6 +272,54 @@ export function paletteForImage(url) {
   return cache.get(url);
 }
 
+const PALETTE_GRID = 32;
+const MAX_READ_SIDE = 640;
+
+function readPixels(img) {
+  const scale = Math.min(1, MAX_READ_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, width, height);
+  return ctx.getImageData(0, 0, width, height);
+}
+
+function cellSpan(index, cells, length) {
+  const start = Math.floor((index * length) / cells);
+  const end = Math.floor(((index + 1) * length) / cells);
+  return [start, Math.max(end, start + 1)];
+}
+
+export function averageDown(pixels, width, height, size) {
+  const out = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    const [top, bottom] = cellSpan(y, size, height);
+    for (let x = 0; x < size; x++) {
+      const [left, right] = cellSpan(x, size, width);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let alpha = 0;
+      for (let sy = top; sy < bottom; sy++) {
+        for (let sx = left; sx < right; sx++) {
+          const i = (sy * width + sx) * 4;
+          const a = pixels[i + 3];
+          r += pixels[i] * a;
+          g += pixels[i + 1] * a;
+          b += pixels[i + 2] * a;
+          alpha += a;
+        }
+      }
+      if (!alpha) continue;
+      out.set([r / alpha, g / alpha, b / alpha, alpha / ((bottom - top) * (right - left))], (y * size + x) * 4);
+    }
+  }
+  return out;
+}
+
 async function loadPalette(url) {
   try {
     const img = new Image();
@@ -279,13 +327,8 @@ async function loadPalette(url) {
     img.decoding = 'async';
     img.src = url;
     await img.decode();
-    const size = 32;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0, size, size);
-    const data = ctx.getImageData(0, 0, size, size).data;
+    const { data: pixels, width, height } = readPixels(img);
+    const data = averageDown(pixels, width, height, PALETTE_GRID);
     return paletteFrom(pickColor(data), clusterColours(data));
   } catch {
     return DEFAULT_PALETTE;
