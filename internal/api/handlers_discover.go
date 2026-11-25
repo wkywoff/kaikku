@@ -105,9 +105,11 @@ func (s *Server) artistTopByPlays(id string) ([]deezer.Track, error) {
 }
 
 func creditedTo(id string, tracks []deezer.Track) []deezer.Track {
-	return slices.DeleteFunc(tracks, func(t deezer.Track) bool {
-		return t.ArtistID != id && !slices.ContainsFunc(t.Contributors, func(c deezer.ArtistRef) bool { return c.ID == id })
-	})
+	return slices.DeleteFunc(tracks, func(t deezer.Track) bool { return !isCredited(id, t) })
+}
+
+func isCredited(artistID string, t deezer.Track) bool {
+	return t.ArtistID == artistID || slices.ContainsFunc(t.Contributors, func(c deezer.ArtistRef) bool { return c.ID == artistID })
 }
 
 func popularTracks(played, deezerTop []deezer.Track) []deezer.Track {
@@ -168,7 +170,10 @@ func (s *Server) handleDiscoverArtist(w http.ResponseWriter, r *http.Request) {
 	s.overlayFor(nil, nil, top)
 	albums, top = s.creditedDiscography(id, cloneAlbums(albums)), popularTracks(played, creditedTo(id, top))
 	s.overlayFor([]*deezer.Artist{&artist}, albumPtrs(albums), nil)
-	writeJSON(w, http.StatusOK, map[string]any{"artist": artist, "albums": visibleAlbums(r, albums), "top": visibleTracks(r, top)})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"artist": artist, "albums": visibleAlbums(r, albums), "top": visibleTracks(r, top),
+		"liked": s.likedOf(currentUser(r), id),
+	})
 }
 
 func (s *Server) handleDiscoverArtistAlbums(w http.ResponseWriter, r *http.Request) {

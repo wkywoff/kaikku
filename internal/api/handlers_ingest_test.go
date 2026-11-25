@@ -97,7 +97,13 @@ func mockDeezerServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{"id":11,"title":"Late Album","release_date":"` + time.Now().Format("2006-01-02") + `","record_type":"album","artist":{"id":1,"name":"Test Artist"},
 			"contributors":[{"id":1,"name":"Test Artist","role":"Main"},{"id":2,"name":"Other Artist","role":"Main"},{"id":3,"name":"Feat Artist","role":"Featured"}]}`))
 	})
+	mux.HandleFunc("/artist/3", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":3,"name":"Feat Artist"}`))
+	})
 	mux.HandleFunc("/artist/3/albums", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[],"total":0}`))
+	})
+	mux.HandleFunc("/artist/3/top", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":[],"total":0}`))
 	})
 	mux.HandleFunc("/album/11/tracks", func(w http.ResponseWriter, r *http.Request) {

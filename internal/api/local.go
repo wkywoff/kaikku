@@ -452,7 +452,7 @@ func (s *Server) localArtistPage(w http.ResponseWriter, r *http.Request, id stri
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"artist": artist, "albums": visibleAlbums(r, albums), "top": visibleTracks(r, top),
-		"editable": v.editable(owner),
+		"liked": s.likedOf(v.userID, id), "editable": v.editable(owner),
 	})
 }
 

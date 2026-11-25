@@ -265,11 +265,18 @@ func (s *Server) handleUnsaveAlbum(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSavedAlbums(w http.ResponseWriter, r *http.Request) {
-	userID := currentUser(r)
-	rows, err := s.DB.Query(`SELECT meta FROM saved_albums WHERE user_id = $1 ORDER BY added_at DESC`, userID)
+	albums, err := s.savedAlbums(`SELECT meta FROM saved_albums WHERE user_id = $1 ORDER BY added_at DESC`, currentUser(r))
 	if err != nil {
 		serverError(w, r, "query failed", err)
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"albums": albums})
+}
+
+func (s *Server) savedAlbums(query string, args ...any) ([]deezer.Album, error) {
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	albums := []deezer.Album{}
@@ -281,11 +288,10 @@ func (s *Server) handleSavedAlbums(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		serverError(w, r, "query failed", err)
-		return
+		return nil, err
 	}
 	s.overlayFor(nil, albumPtrs(albums), nil)
-	writeJSON(w, http.StatusOK, map[string]any{"albums": albums})
+	return albums, nil
 }
 
 type playlistOwner struct {
