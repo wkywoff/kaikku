@@ -33,13 +33,21 @@ const CONTEXT_PATHS = {
   playlist: (id) => paths.playlist(id),
   mix: (id) => paths.mix(id),
   artist: (id) => paths.artist(id),
-  liked: () => paths.liked(),
+  liked: (artistId) => (artistId ? paths.artistLiked(artistId) : paths.liked()),
 };
+
+export function contextTitle(entry, tr) {
+  const ctx = entry?.context;
+  if (!ctx) return '';
+  if (ctx.title) return ctx.title;
+  if (ctx.kind === 'liked') return tr('liked.title');
+  return (ctx.kind === 'album' && entry.album) || '';
+}
 
 export function playingFrom(entry, tr) {
   const ctx = entry?.context;
   if (!ctx || !CONTEXT_PATHS[ctx.kind]) return null;
-  const title = ctx.kind === 'liked' ? tr('liked.title') : ctx.title || (ctx.kind === 'album' ? entry.album : '');
+  const title = contextTitle(entry, tr);
   if (!title) return null;
   return { title, href: ctx.kind === 'liked' || ctx.id ? CONTEXT_PATHS[ctx.kind](ctx.id) : null };
 }

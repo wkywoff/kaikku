@@ -60,6 +60,7 @@ test('the panel header names and links where the track was started from', () => 
   assert.deepEqual(playingFrom({ album: 'Album', context: { kind: 'album', id: '42' } }, tr), { title: 'Album', href: '/album/42' });
   assert.deepEqual(playingFrom({ context: { kind: 'playlist', id: 'p-1', title: 'Road' } }, tr), { title: 'Road', href: '/playlist/p-1' });
   assert.deepEqual(playingFrom({ context: { kind: 'liked', id: '' } }, tr), { title: 'Liked Songs', href: '/collection/tracks' });
+  assert.deepEqual(playingFrom({ context: { kind: 'liked', id: '7', title: 'Liked Songs by X' } }, tr), { title: 'Liked Songs by X', href: '/artist/7/liked' });
   assert.deepEqual(playingFrom({ context: { kind: 'mix', id: 'on-repeat', title: 'On Repeat' } }, tr), { title: 'On Repeat', href: '/mix/on-repeat' });
   assert.equal(playingFrom({ context: { kind: 'artist', id: '7' } }, tr), null);
   assert.equal(playingFrom({ context: { kind: 'search', id: 'x', title: 'X' } }, tr), null);

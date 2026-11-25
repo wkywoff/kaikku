@@ -2,6 +2,8 @@ import { get, writable } from 'svelte/store';
 import { DEFAULT_PALETTE, paletteForImage, paletteFrom } from '../color.js';
 import { navStore } from './nav.js';
 
+export const LIKED_TINT = { r: 255, g: 77, b: 46 };
+
 export const pagePalette = writable(DEFAULT_PALETTE);
 
 const NONE = { ...DEFAULT_PALETTE, base: '#121212', dark: '#121212', header: '#121212', page: '#121212' };

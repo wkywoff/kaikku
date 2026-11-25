@@ -1,6 +1,7 @@
 <script>
   import { sized } from '../imageproxy.js';
   import { player, queueState } from '../stores/player.js';
+  import { contextTitle } from '../stores/sidePlayer.js';
   import { settings } from '../stores/settings.js';
   import { t } from '../i18n.js';
   import Shuffle from '@lucide/svelte/icons/shuffle';
@@ -22,9 +23,7 @@
   ].filter((sec) => sec.list.length);
 
   function fromLabel(cur, tr) {
-    const ctx = cur?.context;
-    if (!ctx) return '';
-    const name = ctx.kind === 'liked' ? tr('liked.title') : ctx.title || (ctx.kind === 'album' ? cur.album : '');
+    const name = contextTitle(cur, tr);
     return name ? tr('queue.from', { name }) : '';
   }
 

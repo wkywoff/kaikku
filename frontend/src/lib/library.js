@@ -69,16 +69,16 @@ export function isContext(ctx, kind, id = '') {
 
 export function syncContext(kind, id, rows) {
   const state = get(libraryState);
-  dropContext(kind, id, (entry) => rows.some((r) => isCurrentRow(r, entry, state)));
+  dropContext((ctx) => isContext(ctx, kind, id), (entry) => rows.some((r) => isCurrentRow(r, entry, state)));
 }
 
 export function syncLikedContext(ids) {
-  dropContext('liked', '', (entry) => ids.has(entry.deezerId));
+  dropContext((ctx) => ctx?.kind === 'liked', (entry) => ids.has(entry.deezerId));
 }
 
-function dropContext(kind, id, stillThere) {
+function dropContext(matches, stillThere) {
   for (const entry of get(player).queue) {
-    if (isContext(entry.context, kind, id) && !stillThere(entry)) player.patchEntry(entry, { context: null });
+    if (matches(entry.context) && !stillThere(entry)) player.patchEntry(entry, { context: null });
   }
 }
 

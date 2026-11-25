@@ -109,6 +109,7 @@ export const api = {
   saveAlbum: (deezerAlbumId) => request(`/me/albums/${enc(deezerAlbumId)}`, { method: 'PUT' }),
   unsaveAlbum: (deezerAlbumId) => request(`/me/albums/${enc(deezerAlbumId)}`, { method: 'DELETE' }),
   followedArtists: () => request('/me/artists'),
+  artistLiked: (deezerArtistId) => request(`/me/artists/${enc(deezerArtistId)}/liked`),
   follow: (deezerArtistId) => request(`/me/artists/${enc(deezerArtistId)}`, { method: 'PUT' }),
   unfollow: (deezerArtistId) => request(`/me/artists/${enc(deezerArtistId)}`, { method: 'DELETE' }),
   newReleases: () => request('/me/releases'),

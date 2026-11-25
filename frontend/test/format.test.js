@@ -1,7 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { messages } from '../src/lib/i18n.js';
-import { albumArtists, plural, tracksCount, longDuration, year, compactNumber, fansLabel, recordCategory, recordTypeLabel, wrappedSeasonYear } from '../src/lib/format.js';
+import {
+  albumArtists,
+  plural,
+  tracksCount,
+  longDuration,
+  year,
+  shortDate,
+  compactNumber,
+  fansLabel,
+  recordCategory,
+  recordTypeLabel,
+  wrappedSeasonYear,
+} from '../src/lib/format.js';
 
 test('russian plurals', () => {
   const forms = ['трек', 'трека', 'треков'];
@@ -27,6 +39,12 @@ test('year ignores Deezer placeholder dates', () => {
   assert.equal(year('2013-05-17'), '2013');
   assert.equal(year('0000-00-00'), '');
   assert.equal(year(undefined), '');
+});
+
+test('date a song was added', () => {
+  assert.match(shortDate('2026-08-14T12:00:00Z'), /^14 авг\. 2026/);
+  assert.equal(shortDate('2026-08-14T12:00:00Z', 'en'), 'Aug 14, 2026');
+  assert.equal(shortDate(null), '');
 });
 
 test('compact numbers and fans', () => {

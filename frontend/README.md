@@ -17,6 +17,7 @@ any unknown path, so direct links open.
 /mix/<id>                           mix: on-repeat, forgotten, tag-<genre>
 /genre/<slug>                       genre (Last.fm tags)
 /artist/<id>                        artist: top, discography, similar, follow, radio
+/artist/<id>/liked                  the artist's songs you liked and releases you saved
 /artist/<id>/discography/<filter>   full discography (all | album | ep | single)
 /album/<id>                         album (?track=<id> highlights a track)
 /album/<id>/edit                    edit a release: own (author, admin) or Deezer (admin)
@@ -47,7 +48,8 @@ How it fits together:
 - **Where it plays from**: each queue item has a `context` (album,
   playlist, artist, liked songs, mix). History is recorded from it (after
   30 s), and Play buttons in headers and cards know whether they are playing
-  (`src/lib/library.js`: `playingContext`, `playFrom`).
+  (`src/lib/library.js`: `playingContext`, `playFrom`). The liked songs of one
+  artist are `liked` with the artist's ID; history counts them as liked songs.
 - **Track rows** (`src/lib/rows.js`) come from Deezer responses; downloaded
   tracks play from the server, the rest stream while the server downloads
   them (`library.js` → `playRows`).

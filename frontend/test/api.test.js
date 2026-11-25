@@ -68,6 +68,7 @@ test('ids are encoded in every path', async () => {
   await api.removeFromPlaylist('p 1', 'i#2');
   await api.ingestLookup(['1', '2&3']);
   await api.artistBio('27', 'ru');
+  await api.artistLiked('2/7');
   reply = { status: 200, body: '{}', headers: {} };
   await api.uploadTrackAudio('5/6', file);
   assert.deepEqual(fetched, [
@@ -76,6 +77,7 @@ test('ids are encoded in every path', async () => {
     '/api/playlists/p%201/tracks/i%232',
     '/api/ingest/lookup?ids=1,2%263',
     '/api/discover/artists/27/bio?lang=ru',
+    '/api/me/artists/2%2F7/liked',
   ]);
   assert.deepEqual(sent, [{ method: 'PUT', url: '/api/tracks/deezer/5%2F6/audio' }]);
 });

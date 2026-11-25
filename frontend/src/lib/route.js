@@ -21,6 +21,7 @@ export function parseRoute(pathname, search = '') {
   if (a === 'artist' && b && c === 'discography') {
     return { view: 'discography', id: b, filter: DISCOGRAPHY_FILTERS.includes(d) ? d : 'all' };
   }
+  if (a === 'artist' && b && c === 'liked') return { view: 'artistLiked', id: b };
   if (a === 'artist' && b) {
     const disc = new URLSearchParams(search).get('disc');
     return ['album', 'ep', 'single'].includes(disc) ? { view: 'artist', id: b, disc } : { view: 'artist', id: b };
@@ -52,6 +53,7 @@ export const paths = {
   mix: (id) => `/mix/${enc(id)}`,
   genre: (slug) => `/genre/${enc(slug)}`,
   artist: (deezerId, disc = '') => `/artist/${enc(deezerId)}${disc ? `?disc=${enc(disc)}` : ''}`,
+  artistLiked: (deezerId) => `/artist/${enc(deezerId)}/liked`,
   discography: (deezerId, filter = 'all') => `/artist/${enc(deezerId)}/discography/${enc(filter)}`,
   album: (deezerId) => `/album/${enc(deezerId)}`,
   albumTrack: (albumHref, trackId) => `${albumHref}?track=${enc(trackId)}`,

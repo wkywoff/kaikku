@@ -58,10 +58,17 @@ export function fansLabel(n, lang = 'ru') {
   return `${compactNumber(n, lang)} ${word} на Deezer`;
 }
 
+const locale = (lang) => (lang === 'en' ? 'en-US' : 'ru-RU');
+
 export function longDate(date, lang = 'ru') {
   if (!year(date)) return '';
   const d = new Date(`${date}T00:00:00`);
-  return d.toLocaleDateString(lang === 'en' ? 'en-US' : 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(locale(lang), { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+export function shortDate(time, lang = 'ru') {
+  if (!time) return '';
+  return new Date(time).toLocaleDateString(locale(lang), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function wrappedSeasonYear(now = new Date()) {

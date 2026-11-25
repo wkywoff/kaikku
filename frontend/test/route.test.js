@@ -13,6 +13,8 @@ test('every path builder round-trips through parseRoute', () => {
     [paths.search('касания болезненны'), { view: 'search', q: 'касания болезненны' }],
     [paths.artist('27'), { view: 'artist', id: '27' }],
     [paths.artist('27', 'album'), { view: 'artist', id: '27', disc: 'album' }],
+    [paths.artistLiked('27'), { view: 'artistLiked', id: '27' }],
+    [paths.artistLiked('k7'), { view: 'artistLiked', id: 'k7' }],
     [paths.discography('27'), { view: 'discography', id: '27', filter: 'all' }],
     [paths.discography('27', 'single'), { view: 'discography', id: '27', filter: 'single' }],
     [paths.discography('27', 'ep'), { view: 'discography', id: '27', filter: 'ep' }],

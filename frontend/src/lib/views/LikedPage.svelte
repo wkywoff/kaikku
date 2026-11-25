@@ -4,7 +4,7 @@
   import { paths, link } from '../stores/nav.js';
   import { lang } from '../stores/settings.js';
   import { t } from '../i18n.js';
-  import { pageTint } from '../stores/theme.js';
+  import { pageTint, LIKED_TINT } from '../stores/theme.js';
   import { refresh, playRows, playingContext, isContext } from '../library.js';
   import { likedIds } from '../stores/collection.js';
   import { me } from '../stores/me.js';
@@ -26,7 +26,7 @@
   let loading = true;
   let error = '';
 
-  pageTint().color({ r: 255, g: 77, b: 46 });
+  pageTint().color(LIKED_TINT);
 
   async function load() {
     try {

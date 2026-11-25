@@ -876,6 +876,22 @@ test('an unliked song no longer counts as playing from Liked', async () => {
   assert.deepEqual(s.queue.map((e) => e.context), [null, null, LIKED], 'после загрузки медиатеки — по лайкам с сервера');
 });
 
+test('an unliked song no longer counts as playing from the liked songs of its artist', async () => {
+  const { playRows, playingContext, isContext } = await import('../src/lib/library.js');
+  const { likedIds, toggleLike } = await import('../src/lib/stores/collection.js');
+  const { get } = await import('svelte/store');
+  const ctx = { kind: 'liked', id: '27', title: 'Liked Songs by X' };
+  await playRows([{ deezerId: 'al1', title: 'A' }, { deezerId: 'al2', title: 'B' }], 0, ctx);
+  likedIds.set(new Set(['al1', 'al2']));
+  assert.equal(isContext(get(playingContext), 'liked', '27'), true);
+  assert.equal(isContext(get(playingContext), 'liked'), false, 'all liked songs are another place');
+
+  await toggleLike('al1');
+  let s;
+  player.subscribe((v) => (s = v))();
+  assert.deepEqual(s.queue.map((e) => e.context), [null, ctx]);
+});
+
 test('"play next" goes right after the playing song, in the order songs were added', async () => {
   await player.playQueue([{ id: 'n1', title: 'N1' }, { id: 'n2', title: 'N2' }, { id: 'n3', title: 'N3' }], 0);
   await player.playNext({ id: 'pn1', title: 'PN1' });

@@ -101,6 +101,7 @@
     genre: () => import('./lib/views/GenrePage.svelte'),
     artist: () => import('./lib/views/ArtistPage.svelte'),
     discography: () => import('./lib/views/DiscographyPage.svelte'),
+    artistLiked: () => import('./lib/views/ArtistLikedPage.svelte'),
     album: () => import('./lib/views/AlbumPage.svelte'),
     nowPlaying: () => import('./lib/components/NowPlaying.svelte'),
     queuePanel: () => import('./lib/components/QueuePanel.svelte'),
@@ -114,7 +115,7 @@
     user: () => import('./lib/views/UserPage.svelte'),
   };
   const RARE = ['settings', 'wrapped', 'wrappedAlbums', 'uploads', 'releaseEdit', 'missing'];
-  const BY_ID = ['playlist', 'mix', 'genre', 'artist', 'discography', 'album', 'releaseEdit', 'user'];
+  const BY_ID = ['playlist', 'mix', 'genre', 'artist', 'discography', 'artistLiked', 'album', 'releaseEdit', 'user'];
   let loaded = {};
   const loading = new Set();
   function need(name, onFail) {

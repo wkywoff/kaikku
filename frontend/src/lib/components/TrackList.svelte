@@ -4,12 +4,13 @@
   import { longpress } from '../longpress.js';
   import { player, formatTime, nowPlaying, isPlaying as playerPlaying } from '../stores/player.js';
   import { link, fromHistory, paths } from '../stores/nav.js';
-  import { settings } from '../stores/settings.js';
+  import { settings, lang } from '../stores/settings.js';
   import { t } from '../i18n.js';
   import { libraryState, playRows, playWithSimilar, isCurrentRow } from '../library.js';
   import { likedIds, toggleLike } from '../stores/collection.js';
   import { openMenu } from '../stores/contextMenu.js';
   import { trackMenuItems, trackMenuHeader } from '../trackMenu.js';
+  import { shortDate } from '../format.js';
   import ArtistLinks from './ArtistLinks.svelte';
   import { createEventDispatcher, tick, onDestroy } from 'svelte';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
@@ -24,6 +25,7 @@
   const restored = fromHistory();
   export let showCover = false;
   export let showAlbum = false;
+  export let showAdded = false;
   export let numbered = true;
   export let header = true;
   export let view = null;
@@ -185,13 +187,14 @@
 
 <svelte:window on:pointerdown={onWindowPointer} />
 
-<div class="tracklist" class:compact class:with-album={showAlbum} class:reorderable class:dragging={drag?.active} class:album-numbers={numbered && !showCover} bind:this={listEl}>
+<div class="tracklist" class:compact class:with-album={showAlbum} class:with-added={showAdded} class:reorderable class:dragging={drag?.active} class:album-numbers={numbered && !showCover} bind:this={listEl}>
   {#if header}
     <div class="head">
       <span class="c-num">{numbered ? '#' : ''}</span>
       <span>{$t('tracks.title')}</span>
       {#if compact}<span class="c-artist">{$t('tracks.artist')}</span>{/if}
       {#if showAlbum}<span class="c-album">{$t('tracks.album')}</span>{/if}
+      {#if showAdded}<span class="c-added">{$t('tracks.added')}</span>{/if}
       <span></span>
       <span class="c-dur" title={$t('tracks.duration')}><Clock3 size={16} /></span>
       <span></span>
@@ -260,6 +263,10 @@
         </span>
       {/if}
 
+      {#if showAdded}
+        <span class="c-added">{shortDate(row.addedAt, $lang)}</span>
+      {/if}
+
       <span class="c-like" class:liked>
         {#if row.deezerId}
           <button
@@ -324,6 +331,25 @@
   }
   .tracklist.compact.with-album {
     --cols: 40px minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr) 32px 48px 32px;
+  }
+  .c-added {
+    display: none;
+  }
+  .tracklist.with-added {
+    container-type: inline-size;
+  }
+  @container (min-width: 760px) {
+    .with-added .c-added {
+      display: block;
+    }
+    .with-added .head,
+    .with-added .row {
+      --cols: 40px minmax(0, 4fr) minmax(0, 3fr) minmax(0, 2fr) 32px 48px 32px;
+    }
+    .with-added.compact .head,
+    .with-added.compact .row {
+      --cols: 40px minmax(0, 4fr) minmax(0, 2fr) minmax(0, 2fr) minmax(0, 2fr) 32px 48px 32px;
+    }
   }
   .compact .artists {
     display: none;
@@ -449,7 +475,8 @@
   .title,
   .artists,
   .c-artist,
-  .c-album {
+  .c-album,
+  .c-added {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -463,7 +490,8 @@
   }
   .artists,
   .c-artist,
-  .c-album {
+  .c-album,
+  .c-added {
     font-size: 13px;
     color: var(--text-dim);
   }
