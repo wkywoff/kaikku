@@ -319,6 +319,18 @@
     .side > :global(.label) {
       grid-column: 1 / -1;
     }
+    .side > :global(.cover) {
+      grid-column: 1;
+      grid-row: 2 / span 2;
+    }
+    .side > :global(.summary) {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    .side > :global(.remove) {
+      grid-column: 2;
+      grid-row: 3;
+    }
   }
   @media (max-width: 720px) {
     .head {
