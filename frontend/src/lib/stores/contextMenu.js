@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
-import { backCloses } from './nav.js';
+import { backCloses, holdBack } from './nav.js';
+import { appleTouch } from '../platform.js';
 
 // Одно контекстное меню на всё приложение (components/ContextMenu.svelte).
 // items: [{ label, icon?, onClick?, href?, submenu?: items, danger?, checked?, separator?, heading? }]
@@ -14,22 +15,12 @@ export const contextMenu = writable(null); // { x, y, items, header, sheet }
 const PHONE = '(max-width: 768px)';
 
 // Шторка закрывается и кнопкой или жестом «назад».
-//
-// Chrome на Android на жест «назад» показывает переход между записями
-// истории: текущая страница уезжает вбок, под ней — снимок предыдущей
-// записи. Заведи шторка свою запись (backCloses, как окна) — вбок уезжала бы
-// страница вместе со шторкой, а под ней лежала бы та же страница. Поэтому
-// там, где есть CloseWatcher (Chrome), «назад» отдаёт нам сам браузер, без
-// записи в истории: шторка закрывается на месте. В остальных браузерах
-// (iPhone) — запись в истории; она снимается здесь же, в closeMenu, а не
-// когда шторка уедет с экрана: пункт меню может сразу открыть окно со своей
-// записью.
 let release = null;
 // Меню закрыли жестом «назад» (а не нажатием): MenuSheet на iPhone тогда
 // убирает шторку без анимации.
 let byBack = false;
 export const closedByBack = () => byBack;
-function dropHistoryEntry() {
+function stopWatchingBack() {
   release?.();
   release = null;
 }
@@ -38,6 +29,7 @@ function onBack() {
   closeMenu();
 }
 function watchBack() {
+  if (appleTouch) return holdBack(onBack);
   if (typeof CloseWatcher === 'function') {
     try {
       const watcher = new CloseWatcher();
@@ -63,13 +55,13 @@ export function openMenu(event, items, header = null) {
     y = r.bottom + 4;
   }
   const sheet = typeof matchMedia === 'function' && matchMedia(PHONE).matches;
-  if (!sheet) dropHistoryEntry();
+  if (!sheet) stopWatchingBack();
   else release ??= watchBack();
   byBack = false;
   contextMenu.set({ x, y, items, header, sheet });
 }
 
 export function closeMenu() {
-  dropHistoryEntry();
+  stopWatchingBack();
   contextMenu.set(null);
 }

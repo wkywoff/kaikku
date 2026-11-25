@@ -69,9 +69,6 @@
   }
 </script>
 
-<!-- У шторки своя запись в истории: «назад» закрывает её через
-     stores/contextMenu.js, а popstate от снятия этой записи приходит уже
-     после закрытия и не должен закрыть следующее меню. -->
 <svelte:window on:keydown={onKey} on:resize={onResize} on:blur={closeMenu} on:popstate={() => !menu?.sheet && closeMenu()} />
 
 {#if menu?.sheet}

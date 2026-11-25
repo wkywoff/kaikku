@@ -28,6 +28,13 @@ if (history.state?.overlay) {
   history.replaceState(rest, '');
 }
 
+const entryPos = () => history.state?.pos || 0;
+let pos = entryPos();
+function pushEntry(state, path) {
+  history.pushState({ ...state, pos: pos + 1 }, '', path);
+  pos = entryPos();
+}
+
 const overlays = []; // открытые окна, последнее — сверху: { id, close }
 let overlaySeq = 0;
 let skipPops = 0;
@@ -39,7 +46,7 @@ export function backCloses(close) {
   overlays.push(entry);
   settled(() => {
     if (!overlays.includes(entry)) return; // закрыли раньше, чем дошла очередь
-    history.pushState({ ...history.state, overlay: entry.id }, '');
+    pushEntry({ ...history.state, overlay: entry.id });
     entry.pushed = true;
   });
   return () => {
@@ -51,6 +58,19 @@ export function backCloses(close) {
     // заменил, и overlay в состоянии нет.
     if (entry.pushed && history.state?.overlay >= entry.id) popOverlayEntries(1);
   };
+}
+
+let heldBack = null;
+export function holdBack(close) {
+  heldBack = close;
+  return () => {
+    if (heldBack === close) heldBack = null;
+  };
+}
+
+function returnTo(from) {
+  skipPops++;
+  history.go(from - pos || 1);
 }
 
 // Закрылись сразу несколько окон (плеер вместе с очередью в нём) — снять
@@ -106,9 +126,11 @@ export function guardLeave(fn) {
 const mayLeave = () => !leaveGuard || leaveGuard();
 
 window.addEventListener('popstate', () => {
+  const from = pos;
+  pos = entryPos();
   if (replaceAfterBack) {
     // Запись окна снята (navigate ниже) — теперь заменить саму страницу.
-    history.replaceState({}, '', replaceAfterBack);
+    history.replaceState({ pos }, '', replaceAfterBack);
     replaceAfterBack = null;
     cameFromHistory = false;
     navStore.set(parseRoute(location.pathname, location.search));
@@ -119,14 +141,20 @@ window.addEventListener('popstate', () => {
     runWaiting();
     return;
   }
+  if (heldBack) {
+    heldBack();
+    heldBack = null;
+    if (pos <= from) {
+      returnTo(from);
+      return;
+    }
+  }
   if (overlays.length) {
     overlays.pop().close();
     return;
   }
   if (!mayLeave()) {
-    // «Назад» уже сменил адрес — вернуться вперёд, страница остаётся.
-    skipPops++;
-    history.go(1);
+    returnTo(from);
     return;
   }
   // История уже переключилась — отложенная запись позиции ушла бы в чужую запись.
@@ -159,8 +187,8 @@ export function navigate(path, { replace = false } = {}) {
     }
     replace = true;
   }
-  if (replace) history.replaceState({ scroll: history.state?.scroll || 0 }, '', path);
-  else history.pushState({}, '', path);
+  if (replace) history.replaceState({ scroll: history.state?.scroll || 0, pos }, '', path);
+  else pushEntry({}, path);
   navStore.set(parseRoute(location.pathname, location.search));
 }
 
