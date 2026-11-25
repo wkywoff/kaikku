@@ -12,7 +12,7 @@
   import { appleTouch } from '../platform.js';
   import { player, formatTime, isPlaying } from '../stores/player.js';
   import { settings } from '../stores/settings.js';
-  import { link, backCloses } from '../stores/nav.js';
+  import { link, backCloses, reopening, reopensOnForward } from '../stores/nav.js';
   import { marquee } from '../marquee.js';
   import { t } from '../i18n.js';
   import PlayButton from './PlayButton.svelte';
@@ -63,6 +63,8 @@
   // не может, и он сам уводит плеер вбок за пальцем. Анимация закрытия
   // после него показала бы плеер ещё раз — закрываемся сразу.
   let closedByBack = false;
+  const reopened = reopening('player');
+  const flyIn = (node) => (reopened && appleTouch ? { duration: 0 } : fly(node, { y: 40, duration: 220 }));
   const flyOut = (node) => (closedByBack && appleTouch ? { duration: 0 } : fly(node, { y: 40, duration: 220 }));
 
   // Текст и очередь — режимы плеера, как в Apple Music: справа от обложки на
@@ -91,7 +93,7 @@
       releaseQueueBack = backCloses(() => {
         releaseQueueBack = null;
         showQueue = false;
-      });
+      }, 'queue');
     } else if (!on && releaseQueueBack) {
       const release = releaseQueueBack;
       releaseQueueBack = null;
@@ -236,7 +238,8 @@
     const closedByOther = backCloses(() => {
       closedByBack = true;
       close();
-    });
+    }, 'player');
+    const forgetQueue = reopensOnForward('queue', () => (showQueue = true));
     window.addEventListener('pointerdown', wake, true);
     window.addEventListener('keydown', wake, true);
     window.addEventListener('click', onClickCapture, true);
@@ -260,6 +263,7 @@
     return () => {
       releaseQueueBack?.(); // очередь — запись поверх плеерной; обе снимаются разом
       closedByOther();
+      forgetQueue();
       clearTimeout(dockTimer);
       window.removeEventListener('pointerdown', wake, true);
       window.removeEventListener('keydown', wake, true);
@@ -276,7 +280,7 @@
 
 <!-- Фон — снаружи прокручиваемой части: внутри неё Safari на iPhone
      растягивал его только до отступов под «чёлкой» и полосой жестов. -->
-<div class="np-shell" use:swipeDown use:focusTrap in:fly={{ y: 40, duration: 220 }} out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
+<div class="np-shell" use:swipeDown use:focusTrap in:flyIn out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
   <MeshBackground cover={track?.coverUrl || null} animated={$settings.animatedBg && !dragging && s.isPlaying} />
   <div class="now-playing" class:dock-hidden={dockHidden}>
     <!-- На компьютере — «свернуть» слева, на телефоне — «ручка» шторки по центру. -->

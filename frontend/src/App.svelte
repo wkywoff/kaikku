@@ -10,7 +10,7 @@
   import { auth } from './lib/stores/auth.js';
   import { clearAccountData } from './lib/signout.js';
   import { api } from './lib/api.js';
-  import { navStore, scrollMemory, fromHistory } from './lib/stores/nav.js';
+  import { navStore, scrollMemory, fromHistory, reopensOnForward } from './lib/stores/nav.js';
   import { player, nowPlaying, isPlaying } from './lib/stores/player.js';
   import { pagePalette } from './lib/stores/theme.js';
   import { lyricsOpen } from './lib/stores/lyrics.js';
@@ -109,6 +109,12 @@
 
   let queueOpen = false;
   let fullView = null; // null | 'overlay' | 'fullscreen'
+  onDestroy(
+    reopensOnForward('player', () => {
+      if (hasTrack) fullView = 'overlay';
+      return hasTrack;
+    }),
+  );
 
   // Экраны, кроме главной и входа, и полноэкранный плеер — отдельными
   // кусками сборки: при открытии сайта браузер качает и разбирает только

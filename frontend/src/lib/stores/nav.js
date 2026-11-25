@@ -35,29 +35,48 @@ function pushEntry(state, path) {
   pos = entryPos();
 }
 
-const overlays = []; // открытые окна, последнее — сверху: { id, close }
-let overlaySeq = 0;
+const address = () => location.pathname + location.search;
+let shownAddress = address();
+function showPage() {
+  shownAddress = address();
+  navStore.set(parseRoute(location.pathname, location.search));
+}
+
+const overlays = [];
 let skipPops = 0;
 let replaceAfterBack = null; // адрес, которым заменить страницу под окном
 
+const reopeners = new Map();
+export function reopensOnForward(kind, reopen) {
+  reopeners.set(kind, reopen);
+  return () => {
+    if (reopeners.get(kind) === reopen) reopeners.delete(kind);
+  };
+}
+
+export const reopening = (kind) => history.state?.overlay === kind && !overlays.some((o) => o.pos === pos);
+
 /** Окно открылось: «назад» вызовет close. Вернёт функцию «окно закрылось». */
-export function backCloses(close) {
-  const entry = { id: ++overlaySeq, close, pushed: false };
+export function backCloses(close, kind = 'window') {
+  const entry = { close, pos: null };
   overlays.push(entry);
   settled(() => {
     if (!overlays.includes(entry)) return; // закрыли раньше, чем дошла очередь
-    pushEntry({ ...history.state, overlay: entry.id });
-    entry.pushed = true;
+    if (!reopening(kind)) pushEntry({ ...history.state, overlay: kind });
+    entry.pos = pos;
   });
   return () => {
     const i = overlays.indexOf(entry);
     if (i < 0) return; // уже закрыто «назад»
     overlays.splice(i, 1);
-    // Всё ещё на записи окна (или на записи окна поверх него: id растут) —
-    // снять её. Если уже ушли на другую страницу, navigate() эту запись
-    // заменил, и overlay в состоянии нет.
-    if (entry.pushed && history.state?.overlay >= entry.id) popOverlayEntries(1);
+    if (entry.pos && history.state?.overlay && pos >= entry.pos) popOverlayEntries(1);
   };
+}
+
+function closeOverlaysAbove(limit) {
+  const before = overlays.length;
+  while (overlays.length && overlays[overlays.length - 1].pos > limit) overlays.pop().close();
+  return overlays.length < before;
 }
 
 let heldBack = null;
@@ -133,7 +152,7 @@ window.addEventListener('popstate', () => {
     history.replaceState({ pos }, '', replaceAfterBack);
     replaceAfterBack = null;
     cameFromHistory = false;
-    navStore.set(parseRoute(location.pathname, location.search));
+    showPage();
     return;
   }
   if (skipPops) {
@@ -141,18 +160,20 @@ window.addEventListener('popstate', () => {
     runWaiting();
     return;
   }
+  const forward = pos > from;
   if (heldBack) {
     heldBack();
     heldBack = null;
-    if (pos <= from) {
+    if (!forward) {
       returnTo(from);
       return;
     }
   }
-  if (overlays.length) {
-    overlays.pop().close();
+  if (forward && history.state?.overlay && address() === shownAddress) {
+    if (!reopeners.get(history.state.overlay)?.()) returnTo(from);
     return;
   }
+  if (closeOverlaysAbove(pos) && address() === shownAddress) return;
   if (!mayLeave()) {
     returnTo(from);
     return;
@@ -160,7 +181,7 @@ window.addEventListener('popstate', () => {
   // История уже переключилась — отложенная запись позиции ушла бы в чужую запись.
   for (const s of scrollers) s.cancel();
   cameFromHistory = true;
-  navStore.set(parseRoute(location.pathname, location.search));
+  showPage();
 });
 
 // navigate открывает path. replace: true — заменить текущую запись истории
@@ -168,7 +189,7 @@ window.addEventListener('popstate', () => {
 // на каждую букву.
 export function navigate(path, { replace = false } = {}) {
   if (historyBusy()) return settled(() => navigate(path, { replace }));
-  if (path === location.pathname + location.search) return;
+  if (path === address()) return;
   if (!mayLeave()) return;
   for (const s of scrollers) s.flush();
   cameFromHistory = false;
@@ -189,7 +210,7 @@ export function navigate(path, { replace = false } = {}) {
   }
   if (replace) history.replaceState({ scroll: history.state?.scroll || 0, pos }, '', path);
   else pushEntry({}, path);
-  navStore.set(parseRoute(location.pathname, location.search));
+  showPage();
 }
 
 // navigateAfterPaint — переход из меню: сначала меню исчезает с экрана,

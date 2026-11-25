@@ -58,13 +58,15 @@ How it fits together:
   own songs also their release's author).
 - **Windows and "back"** (`src/lib/stores/nav.js`): a window or the
   full-screen player adds a history entry, so "back" closes it instead of
-  leaving the page. The phone menu (`stores/contextMenu.js`) adds none: the
-  entry of a closed menu stays ahead in the history, so an iPhone's forward
-  swipe slid its picture back in, and Chrome's back gesture slid the page
-  away over a copy of itself. Chrome on Android hands "back" over through
-  `CloseWatcher`; on iPhone the sheet takes edge swipes (`sheetDrag.js`) and
-  undoes a "back" from the toolbar (`holdBack`); in other browsers it has an
-  entry like any window.
+  leaving the page; "forward" opens the player and its queue again
+  (`reopensOnForward`) and steps back from any other closed window. The
+  phone menu (`stores/contextMenu.js`) adds no entry: the one of a closed
+  menu stays ahead in the history, so an iPhone's forward swipe slid its
+  picture back in, and Chrome's back gesture slid the page away over a copy
+  of itself. Chrome on Android hands "back" over through `CloseWatcher`; on
+  iPhone the sheet takes edge swipes (`sheetDrag.js`) and undoes a "back"
+  from the toolbar (`holdBack`); in other browsers it has an entry like any
+  window.
 - **Admin mode**: a switch in the account menu (`stores/me.js`) that shows
   edit buttons. Artists and songs are edited in `EditDialog.svelte`; a
   release, own or from Deezer, on one page (`views/ReleaseEditPage.svelte`,

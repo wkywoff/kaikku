@@ -120,6 +120,140 @@ test('a page that must not be left stays on "back" and on "forward"', async () =
   assert.equal(get(nav.navStore).id, '3');
 });
 
+function reopenable(nav, kind) {
+  const window = { open: false, release: null };
+  window.show = () => {
+    window.open = true;
+    window.release = nav.backCloses(() => (window.open = false), kind);
+    return true;
+  };
+  window.hide = () => {
+    window.open = false;
+    window.release();
+  };
+  nav.reopensOnForward(kind, window.show);
+  return window;
+}
+
+test('"forward" reopens the player on its own history entry', async () => {
+  const { browser, nav } = await freshNav();
+  nav.navigate('/album/1');
+  const player = reopenable(nav, 'player');
+  player.show();
+  const entries = browser.length();
+  history.back();
+  await settle();
+  assert.equal(player.open, false);
+  assert.equal(nav.reopening('player'), false);
+  history.forward();
+  await settle();
+  assert.equal(player.open, true);
+  assert.equal(browser.length(), entries);
+  history.back();
+  await settle();
+  assert.equal(player.open, false);
+  assert.equal(browser.url(), '/album/1');
+});
+
+test('a reopened player closed by its own button takes its entry along', async () => {
+  const { browser, nav } = await freshNav();
+  nav.navigate('/album/1');
+  const player = reopenable(nav, 'player');
+  player.show();
+  player.hide();
+  await settle();
+  history.forward();
+  await settle();
+  assert.equal(player.open, true);
+  player.hide();
+  await settle();
+  assert.equal(history.state.overlay, undefined);
+  history.back();
+  await settle();
+  assert.equal(browser.url(), '/');
+});
+
+test('"forward" to a closed queue reopens it and leaves the player open', async () => {
+  const { nav } = await freshNav();
+  const player = reopenable(nav, 'player');
+  const queue = reopenable(nav, 'queue');
+  player.show();
+  queue.show();
+  queue.hide();
+  await settle();
+  history.forward();
+  await settle();
+  assert.equal(player.open, true);
+  assert.equal(queue.open, true);
+  history.back();
+  await settle();
+  assert.equal(player.open, true);
+  assert.equal(queue.open, false);
+});
+
+test('"forward" to a window that cannot reopen steps back', async () => {
+  const { browser, nav } = await freshNav();
+  nav.navigate('/album/1');
+  const player = reopenable(nav, 'player');
+  player.show();
+  const closed = nav.backCloses(() => assert.fail('closed by "forward"'));
+  closed();
+  await settle();
+  history.forward();
+  await settle();
+  assert.equal(player.open, true);
+  assert.equal(history.state.overlay, 'player');
+  history.back();
+  await settle();
+  assert.equal(player.open, false);
+  assert.equal(browser.url(), '/album/1');
+});
+
+test('"forward" to a player with nothing left to play steps back', async () => {
+  const { browser, nav } = await freshNav();
+  nav.navigate('/album/1');
+  const closed = nav.backCloses(() => {}, 'player');
+  nav.reopensOnForward('player', () => false);
+  closed();
+  await settle();
+  history.forward();
+  await settle();
+  assert.equal(history.state.overlay, undefined);
+  assert.equal(browser.url(), '/album/1');
+});
+
+test('several steps back close every window on the way', async () => {
+  const { browser, nav } = await freshNav();
+  nav.navigate('/album/1');
+  nav.navigate('/album/2');
+  const player = reopenable(nav, 'player');
+  const queue = reopenable(nav, 'queue');
+  player.show();
+  queue.show();
+  history.go(-3);
+  await settle();
+  assert.equal(player.open, false);
+  assert.equal(queue.open, false);
+  assert.equal(browser.url(), '/album/1');
+  assert.equal(get(nav.navStore).id, '1');
+});
+
+test('"forward" past pages opens the page, not the window that was on it', async () => {
+  const { browser, nav } = await freshNav();
+  nav.navigate('/album/1');
+  nav.navigate('/album/2');
+  const player = reopenable(nav, 'player');
+  player.show();
+  history.go(-2);
+  await settle();
+  assert.equal(get(nav.navStore).id, '1');
+  history.go(2);
+  await settle();
+  assert.equal(browser.url(), '/album/2');
+  assert.equal(get(nav.navStore).id, '2');
+  assert.equal(player.open, false);
+});
+
 onIphone('a menu opened and closed leaves nothing to swipe forward to', async (nav) => {
   nav.navigate('/album/1');
   const entries = iphone.length();
