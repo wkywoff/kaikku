@@ -376,16 +376,19 @@
 <style>
   .np-shell {
     position: fixed;
-    inset: 0;
+    inset: 0 0 calc(-1 * var(--bottom-overhang));
     z-index: 50;
     background: var(--player-dark);
     transition: background-color 1.2s;
     isolation: isolate;
     will-change: transform;
   }
+  :global(:root:has(.np-shell)) {
+    background: var(--player-dark);
+  }
   .now-playing {
     position: absolute;
-    inset: 0;
+    inset: 0 0 var(--bottom-overhang);
     display: flex;
     flex-direction: column;
     padding: 16px 24px max(24px, env(safe-area-inset-bottom));

@@ -44,6 +44,15 @@
       padding-bottom: env(safe-area-inset-bottom);
       background: linear-gradient(180deg, rgba(0, 0, 0, 0.88) 0%, #000 35%);
     }
+    .bottom-nav::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: var(--bottom-overhang);
+      background: #000;
+    }
     .bottom-nav::before {
       content: '';
       position: absolute;

@@ -164,7 +164,7 @@
   }
   .backdrop {
     position: absolute;
-    inset: 0;
+    inset: 0 0 calc(-1 * var(--bottom-overhang));
     background: rgba(0, 0, 0, 0.6);
     touch-action: none; /* страница под шторкой не листается */
   }
@@ -185,6 +185,15 @@
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
+  }
+  .sheet::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: var(--bottom-overhang);
+    background: inherit;
   }
   .grip {
     flex-shrink: 0;

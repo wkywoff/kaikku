@@ -36,8 +36,14 @@
   --topbar-h: 64px;
   --player-h: 88px;
   --tabbar-h: 56px; /* нижняя панель на телефоне (BottomNav) */
+  --bottom-overhang: 0px;
 
   color-scheme: dark;
+}
+@media (max-width: 900px) {
+  :root {
+    --bottom-overhang: 120px;
+  }
 }
 
 /* Цвета страницы (--page-*, App.svelte) зарегистрированы как цвета, чтобы
