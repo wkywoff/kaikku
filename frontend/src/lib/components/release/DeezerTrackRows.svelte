@@ -163,7 +163,7 @@
         <span class="n num">{i + 1}</span>
         <div class="main">
           <span class="title">{row.title}</span>
-          <span class="who">{row.artist}{#if row.other}{' · '}<em>{$t('edit.otherRelease')}</em>{/if}</span>
+          <span class="who">{row.artist}{#if row.other}{' • '}<em>{$t('edit.otherRelease')}</em>{/if}</span>
         </div>
         <span class="e" class:ghost={!row.explicit} title={row.explicit ? $t('upload.explicitHint') : null}>E</span>
         <span class="dur num">{formatTime(row.durationMs / 1000)}</span>

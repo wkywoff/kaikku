@@ -132,7 +132,7 @@
             {#if topArtist.picture_url}<img src={sized(topArtist.picture_url, 320)} alt="" />{:else}<span class="ph"><UserRound size={64} /></span>{/if}
             <span class="huge name">{topArtist.name}</span>
           </a>
-          <p>{count(topArtist.plays, 'plays', $lang)} · {count(topArtist.minutes, 'minutes', $lang)}</p>
+          <p>{count(topArtist.plays, 'plays', $lang)} • {count(topArtist.minutes, 'minutes', $lang)}</p>
           {#if data.top_artist_listeners?.listeners > 1}
             <p class="badge">
               {data.top_artist_listeners.rank === 1

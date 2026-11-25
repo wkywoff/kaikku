@@ -202,7 +202,7 @@
           <div class="main">
             {#if row.other}
               <span class="title fixed">{row.title}</span>
-              <span class="who">{artistNames(row)}{' · '}<em>{$t('edit.otherRelease')}</em></span>
+              <span class="who">{artistNames(row)}{' • '}<em>{$t('edit.otherRelease')}</em></span>
             {:else}
               <input
                 class="title"

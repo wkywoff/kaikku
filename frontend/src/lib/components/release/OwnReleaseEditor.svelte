@@ -373,7 +373,7 @@
   });
 
   $: totalSec = trackRows.reduce((sum, r) => sum + (r.id ? r.durationMs || 0 : 0), 0) / 1000;
-  $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' · ');
+  $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' • ');
 
   const missingText = (codes) => codes.map((c) => $t(`upload.missing.${c}`)).join(', ');
   $: bad = (code) => shownMissing.includes(code);

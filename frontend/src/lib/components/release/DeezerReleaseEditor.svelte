@@ -221,7 +221,7 @@
   });
 
   $: totalSec = (rows || []).reduce((sum, r) => sum + r.durationMs, 0) / 1000;
-  $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' · ');
+  $: kindLine = [recordTypeLabel(recordType, $lang), year(releaseDate)].filter(Boolean).join(' • ');
   $: coverUrl = newImageUrl || item?.image_url || '';
 </script>
 

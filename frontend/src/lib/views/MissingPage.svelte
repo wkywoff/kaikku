@@ -120,7 +120,7 @@
         cookies.signed_in && cookies.expires && $t('missing.cookiesExpire', { date: day(cookies.expires) }),
       ]
         .filter(Boolean)
-        .join(' · ')
+        .join(' • ')
     : $t('missing.cookiesNone');
 </script>
 
@@ -194,10 +194,10 @@
             <div class="title">{m.title}</div>
             <div class="sub">
               {m.artist}
-              {#if m.album}·
+              {#if m.album}•
                 {#if m.album_id}<a href={paths.album(m.album_id)} use:link>{m.album}</a>{:else}{m.album}{/if}
               {/if}
-              · {formatTime(m.duration_ms / 1000)}
+              • {formatTime(m.duration_ms / 1000)}
             </div>
             <div class="meta">
               <span class="chip">{$t(KINDS[m.kind] || 'missing.other')}</span>
