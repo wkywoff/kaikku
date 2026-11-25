@@ -21,6 +21,7 @@
   import Slider from './Slider.svelte';
   import LikeButton from './LikeButton.svelte';
   import QueueView from './QueueView.svelte';
+  import FollowButton from './FollowButton.svelte';
   import Shuffle from '@lucide/svelte/icons/shuffle';
   import Repeat from '@lucide/svelte/icons/repeat';
   import Repeat1 from '@lucide/svelte/icons/repeat-1';
@@ -292,9 +293,7 @@
                   <div class="artist-head" class:no-fans={!shownArtist.fans}>
                     <a class="artist-name" href={paths.artist(shownArtist.id)} use:link>{shownArtist.name}</a>
                     {#if shownArtist.fans}<span class="fans">{fansLabel(shownArtist.fans, $lang)}</span>{/if}
-                    <button class="pill outline follow" aria-pressed={$followedIds.has(shownArtist.id)} on:click={() => toggleFollow(shownArtist.id)}>
-                      {$followedIds.has(shownArtist.id) ? $t('artist.following') : $t('artist.follow')}
-                    </button>
+                    <FollowButton following={$followedIds.has(shownArtist.id)} label={$followedIds.has(shownArtist.id) ? $t('artist.following') : $t('artist.follow')} on:click={() => toggleFollow(shownArtist.id)} />
                   </div>
                   {#if bioText}
                     <a class="bio" href={paths.artist(shownArtist.id)} use:link>{bioText}</a>
@@ -674,9 +673,8 @@
     font-size: 14px;
     color: var(--text-dim);
   }
-  .follow {
+  .artist-head :global(.follow) {
     grid-column: 2;
-    font-weight: 700;
   }
   .bio {
     display: -webkit-box;

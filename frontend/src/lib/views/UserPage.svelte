@@ -18,6 +18,7 @@
   import Artwork from '../components/Artwork.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import Shelf from '../components/Shelf.svelte';
+  import FollowButton from '../components/FollowButton.svelte';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
 
   const name = $navStore.id;
@@ -87,7 +88,7 @@
 
   <div class="actions page-pad">
     {#if !page.me}
-      <button class="pill follow" class:outline={user.i_follow} disabled={busy} aria-pressed={user.i_follow} on:click={() => toggle(user)}>{$t(followLabel(user))}</button>
+      <FollowButton following={user.i_follow} label={$t(followLabel(user))} disabled={busy} on:click={() => toggle(user)} />
     {/if}
     <button class="icon-btn" title={$t('menu.more')} aria-label={$t('menu.moreFor', { title: user.username })} on:click={menu}><Ellipsis size={24} /></button>
   </div>
@@ -104,7 +105,7 @@
                   <span class="dot" style="--hue: {mixHue(`user-${p.username.toLowerCase()}`)}">{p.username.slice(0, 1).toUpperCase()}</span>
                   <span class="pname">{p.username}</span>
                 </a>
-                <button class="pill small" class:outline={p.i_follow} disabled={busy} on:click={() => toggle(p)}>{$t(followLabel(p))}</button>
+                <FollowButton following={p.i_follow} label={$t(followLabel(p))} disabled={busy} on:click={() => toggle(p)} />
               </li>
             {/each}
           </ul>
@@ -159,10 +160,6 @@
     padding-top: 20px;
     padding-bottom: 24px;
   }
-  .follow {
-    padding: 0 16px;
-    font-weight: 700;
-  }
   section {
     margin-bottom: 32px;
   }
@@ -215,12 +212,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 600;
-  }
-  .pill.small {
-    height: 32px;
-    padding: 0 12px;
-    font-size: 13px;
-    flex-shrink: 0;
   }
   .hint {
     max-width: 560px;

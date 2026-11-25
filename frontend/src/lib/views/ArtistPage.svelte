@@ -24,6 +24,7 @@
   import { countLiked, latestRelease } from '../artistHighlights.js';
   import Hero from '../components/Hero.svelte';
   import PlayButton from '../components/PlayButton.svelte';
+  import FollowButton from '../components/FollowButton.svelte';
   import TrackList from '../components/TrackList.svelte';
   import { albumMenuItems, artistMenuItems } from '../cardMenu.js';
   import MediaCard from '../components/MediaCard.svelte';
@@ -166,9 +167,7 @@
     <button class="icon-btn big" class:on={$shuffleOn} title={$t('player.shuffle')} aria-pressed={$shuffleOn} on:click={() => player.toggleShuffle()}>
       <Shuffle size={28} />
     </button>
-    <button class="pill outline follow" aria-pressed={following} on:click={() => toggleFollow(artist.id)}>
-      <span class="label">{following ? $t('artist.following') : $t('artist.follow')}</span>
-    </button>
+    <FollowButton {following} label={following ? $t('artist.following') : $t('artist.follow')} on:click={() => toggleFollow(artist.id)} />
     <button class="icon-btn" title={$t('artist.radio')} aria-label={$t('artist.radio')} on:click={onRadio}>
       <Radio size={24} />
     </button>
@@ -311,10 +310,6 @@
     width: 44px;
     height: 44px;
   }
-  .follow {
-    padding: 0 16px;
-    font-weight: 700;
-  }
   @media (max-width: 768px) {
     .actions {
       gap: 0;
@@ -331,16 +326,11 @@
       flex-basis: 56px;
       min-width: 36px;
     }
-    .follow {
+    .actions > :global(.follow) {
       flex: 0 1 auto;
-      min-width: 0;
       margin: 0 6px;
       padding: 0 12px;
       font-size: 13px;
-    }
-    .follow .label {
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
   }
   section,
