@@ -207,7 +207,7 @@
     try {
       if (editCredits) [artists] = await createNewArtists([artists], api.createArtist);
       if (kind === 'artist') {
-        await api.updateArtist(id, { name });
+        if (name.trim() !== initial.name.trim()) await api.updateArtist(id, { name });
         if (newImage) await api.uploadArtistPicture(id, newImage);
       } else if (own) {
         await api.saveOwnTrack(deezerId, { title: name, explicit, artists: ownArtists ? artists.map((a) => a.id) : null });
