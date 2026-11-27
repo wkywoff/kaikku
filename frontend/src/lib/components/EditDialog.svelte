@@ -38,7 +38,7 @@
   let discNo = '';
   let explicit = false;
   let artists = [];
-  let initial = { explicit: false, artists: '' };
+  let initial = { name: '', trackNo: null, discNo: null, explicit: false, artists: '' };
   let toolBusy = '';
   let newImage = null;
   let newImageUrl = null;
@@ -87,10 +87,11 @@
     explicit = !!it.explicit;
     artists = (it.artists || (own && it.release_artists) || []).map((a) => ({ id: String(a.id), name: a.name, picture_url: a.picture_url || null }));
     ownArtists = own && !!it.artists;
-    initial = { explicit, artists: ids(artists) };
+    initial = { name, trackNo: numberOrNull(trackNo), discNo: numberOrNull(discNo), explicit, artists: ids(artists) };
   }
 
   const ids = (list) => list.map((a) => a.id).join(',');
+  const numberOrNull = (value) => (value === '' || value == null ? null : Number(value));
   $: editCredits = kind !== 'artist' && (own ? ownArtists : !!item?.artists?.length);
 
   let videoLink = '';
@@ -212,11 +213,10 @@
         await api.saveOwnTrack(deezerId, { title: name, explicit, artists: ownArtists ? artists.map((a) => a.id) : null });
         if (lyrics !== undefined && lyrics !== lyricsInitial) await api.saveTrackLyrics(deezerId, lyrics);
       } else {
-        const fields = {
-          title: name,
-          track_no: trackNo === '' ? null : Number(trackNo),
-          disc_no: discNo === '' ? null : Number(discNo),
-        };
+        const numbers = { track_no: numberOrNull(trackNo), disc_no: numberOrNull(discNo) };
+        const renamed = name.trim() !== initial.name.trim();
+        const renumbered = numbers.track_no !== initial.trackNo || numbers.disc_no !== initial.discNo;
+        const fields = renamed || renumbered ? { title: name, ...numbers } : {};
         if (editCredits && ids(artists) !== initial.artists) fields.artists = artists.map((a) => a.id);
         if (explicit !== initial.explicit) fields.explicit = explicit;
         await api.updateDeezerTrack(deezerId, fields);

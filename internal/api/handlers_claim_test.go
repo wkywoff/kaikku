@@ -121,6 +121,49 @@ func TestEditTrackByDeezerID(t *testing.T) {
 	call(t, router, "PUT", "/api/tracks/deezer/501", user, `{"title":"x"}`, http.StatusForbidden)
 }
 
+func TestEditTrackByDeezerID_CreditsAloneKeepDeezerTitle(t *testing.T) {
+	db, router, token := newTestRouter(t)
+	var artistID, albumID, trackID string
+	db.QueryRow(`INSERT INTO artists (name, deezer_id) VALUES ('Test Artist', '1') RETURNING id`).Scan(&artistID)
+	db.QueryRow(`INSERT INTO albums (artist_id, title, deezer_id) VALUES ($1, 'Test Album', '9') RETURNING id`, artistID).Scan(&albumID)
+	db.QueryRow(`INSERT INTO tracks (album_id, title, duration_ms, storage_key, deezer_id) VALUES ($1, 'Old Song', 200000, 't.m4a', '12345') RETURNING id`, albumID).Scan(&trackID)
+
+	call(t, router, "PUT", "/api/tracks/deezer/501", token, `{"explicit":true}`, http.StatusOK)
+	call(t, router, "PUT", "/api/tracks/deezer/12345", token, `{"artists":["2"]}`, http.StatusOK)
+	var titleEdits, creditEdits int
+	var edited bool
+	db.QueryRow(`SELECT count(*) FROM track_edits`).Scan(&titleEdits)
+	db.QueryRow(`SELECT count(*) FROM track_overrides`).Scan(&creditEdits)
+	db.QueryRow(`SELECT edited FROM tracks WHERE id = $1`, trackID).Scan(&edited)
+	if titleEdits != 0 || edited || creditEdits != 2 {
+		t.Errorf("credits alone: %d title edits, library row edited=%v, %d credit edits", titleEdits, edited, creditEdits)
+	}
+	var tr pageTrack
+	getJSON(t, router, "/api/discover/tracks/12345", token, false, &tr)
+	if tr.Title != "Test Song" || tr.ArtistID != "2" {
+		t.Errorf("a credit edit must leave Deezer's title: %+v", tr)
+	}
+	var edit struct {
+		Title    string
+		Explicit bool
+		Edited   bool
+	}
+	json.Unmarshal(call(t, router, "GET", "/api/tracks/deezer/501/edit", token, "", http.StatusOK), &edit)
+	if edit.Title != "Album Track One" || !edit.Explicit || !edit.Edited {
+		t.Errorf("edit form after an explicit-only edit: %+v", edit)
+	}
+
+	call(t, router, "PUT", "/api/tracks/deezer/501", token, `{"track_no":7}`, http.StatusBadRequest)
+	call(t, router, "PUT", "/api/tracks/deezer/501", token, `{"title":" ","explicit":false}`, http.StatusBadRequest)
+	call(t, router, "PUT", "/api/tracks/deezer/501", token, `{"title":"Edited One","track_no":7,"explicit":true}`, http.StatusOK)
+	var title string
+	var trackNo int
+	db.QueryRow(`SELECT title, track_no FROM track_edits WHERE deezer_id = '501'`).Scan(&title, &trackNo)
+	if title != "Edited One" || trackNo != 7 {
+		t.Errorf("a changed title must still be saved: %q %d", title, trackNo)
+	}
+}
+
 func TestEditImageURL(t *testing.T) {
 	db, router, token := newTestRouter(t)
 	albumID := claimID(t, router, "/api/albums/deezer/9/claim", token)

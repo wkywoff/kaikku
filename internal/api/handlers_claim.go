@@ -148,35 +148,40 @@ func (s *Server) handleUpdateDeezerTrack(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "numeric deezer id is required")
 		return
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || !validName(req.Title) {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || !req.validTitle() {
 		writeError(w, http.StatusBadRequest, "title is required (up to 300 characters)")
 		return
 	}
-	libID, err := s.libraryTrackByDeezer(dz)
-	if err != nil {
-		serverError(w, r, "query failed", err)
-		return
-	}
-	if libID != "" {
-		_, err = s.DB.Exec(
-			`UPDATE tracks SET title = $1, track_no = COALESCE($2, track_no), disc_no = COALESCE($3, disc_no), edited = true WHERE id = $4`,
-			strings.TrimSpace(req.Title), req.TrackNo, req.DiscNo, libID)
-	} else {
-		_, err = s.DB.Exec(
-			`INSERT INTO track_edits (deezer_id, title, track_no, disc_no) VALUES ($1, $2, $3, $4)
-			 ON CONFLICT (deezer_id) DO UPDATE SET title = EXCLUDED.title, track_no = EXCLUDED.track_no,
-			        disc_no = EXCLUDED.disc_no, updated_at = now()`,
-			dz, strings.TrimSpace(req.Title), req.TrackNo, req.DiscNo)
-	}
-	if err != nil {
-		serverError(w, r, "update failed", err)
-		return
+	if req.Title != nil {
+		if err := s.saveTrackTitle(dz, strings.TrimSpace(*req.Title), req.TrackNo, req.DiscNo); err != nil {
+			serverError(w, r, "update failed", err)
+			return
+		}
 	}
 	if err := s.saveTrackCredits(dz, req.Explicit, req.Artists); err != nil {
 		writeSaveError(w, r, err)
 		return
 	}
 	s.handleGetDeezerTrackEdit(w, r)
+}
+
+func (s *Server) saveTrackTitle(dz, title string, trackNo, discNo *int) error {
+	libID, err := s.libraryTrackByDeezer(dz)
+	if err != nil {
+		return err
+	}
+	if libID != "" {
+		_, err = s.DB.Exec(
+			`UPDATE tracks SET title = $1, track_no = COALESCE($2, track_no), disc_no = COALESCE($3, disc_no), edited = true WHERE id = $4`,
+			title, trackNo, discNo, libID)
+		return err
+	}
+	_, err = s.DB.Exec(
+		`INSERT INTO track_edits (deezer_id, title, track_no, disc_no) VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (deezer_id) DO UPDATE SET title = EXCLUDED.title, track_no = EXCLUDED.track_no,
+		        disc_no = EXCLUDED.disc_no, updated_at = now()`,
+		dz, title, trackNo, discNo)
+	return err
 }
 
 func (s *Server) handleResetDeezerTrack(w http.ResponseWriter, r *http.Request) {

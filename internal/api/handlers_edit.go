@@ -119,11 +119,18 @@ func (s *Server) handleUpdateAlbum(w http.ResponseWriter, r *http.Request) {
 }
 
 type trackEdit struct {
-	Title    string   `json:"title"`
+	Title    *string  `json:"title"`
 	TrackNo  *int     `json:"track_no,omitempty"`
 	DiscNo   *int     `json:"disc_no,omitempty"`
 	Explicit *bool    `json:"explicit,omitempty"`
 	Artists  []string `json:"artists,omitempty"`
+}
+
+func (e trackEdit) validTitle() bool {
+	if e.Title == nil {
+		return e.TrackNo == nil && e.DiscNo == nil
+	}
+	return validName(*e.Title)
 }
 
 func (s *Server) handleResetArtist(w http.ResponseWriter, r *http.Request) {
