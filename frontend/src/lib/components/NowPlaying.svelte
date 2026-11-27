@@ -377,7 +377,7 @@
     aspect-ratio: 1;
     flex-shrink: 0;
     border-radius: 8px;
-    --art-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    --art-shadow: 0 44px 52px -18px rgba(0, 0, 0, 0.36);
   }
   .art-slide {
     position: relative;
