@@ -198,6 +198,41 @@
     e.preventDefault();
   }
 
+  const IDLE_AFTER = 3500;
+  const IDLE_EDGE = 48;
+  const mouseDesktop = matchMedia('(hover: hover) and (pointer: fine) and (min-width: 901px)');
+  let npEl;
+  let artEl;
+  let metaEl;
+  let idle = false;
+  let idleTimer = 0;
+  let artShift = { x: 0, y: 0 };
+  let metaShift = { x: 0, y: 0 };
+  $: canIdle = !!track && !side && !$contextMenu;
+  $: (canIdle, restartIdle());
+
+  function restartIdle() {
+    idle = false;
+    clearTimeout(idleTimer);
+    if (canIdle && mouseDesktop.matches) idleTimer = setTimeout(enterIdle, IDLE_AFTER);
+  }
+  function enterIdle() {
+    if (!npEl || !artEl || !metaEl) return;
+    const box = npEl.getBoundingClientRect();
+    const art = artEl.getBoundingClientRect();
+    const meta = metaEl.getBoundingClientRect();
+    artShift = {
+      x: box.left + box.width / 2 - (art.left + art.width / 2),
+      y: box.top + box.height / 2 - (art.top + art.height / 2),
+    };
+    metaShift = { x: box.left + IDLE_EDGE - meta.left, y: box.bottom - IDLE_EDGE - meta.bottom };
+    idle = true;
+  }
+  function onActivity(e) {
+    if (e.type === 'pointermove' && (e.pointerType !== 'mouse' || (!e.movementX && !e.movementY))) return;
+    restartIdle();
+  }
+
   onMount(() => {
     const closedByOther = backCloses(() => {
       closedByBack = true;
@@ -207,6 +242,8 @@
     window.addEventListener('pointerdown', wake, true);
     window.addEventListener('keydown', wake, true);
     window.addEventListener('click', onClickCapture, true);
+    const activity = ['pointermove', 'pointerdown', 'keydown', 'wheel', 'resize'];
+    for (const type of activity) window.addEventListener(type, onActivity, { capture: true, passive: true });
     if (browserFullscreen && document.fullscreenEnabled) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
@@ -226,6 +263,8 @@
       window.removeEventListener('pointerdown', wake, true);
       window.removeEventListener('keydown', wake, true);
       window.removeEventListener('click', onClickCapture, true);
+      clearTimeout(idleTimer);
+      for (const type of activity) window.removeEventListener(type, onActivity, { capture: true });
       document.removeEventListener('fullscreenchange', onFsChange);
       window.removeEventListener('keydown', onKey, true);
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -234,9 +273,9 @@
   });
 </script>
 
-<div class="np-shell" use:swipeDown use:focusTrap in:flyIn out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
+<div class="np-shell" class:idle use:swipeDown use:focusTrap in:flyIn out:flyOut role="dialog" aria-label={$t('player.nowPlaying')}>
   <MeshBackground cover={track?.coverUrl || null} animated={$settings.animatedBg && !dragging && s.isPlaying} />
-  <div class="now-playing" class:dock-hidden={dockHidden}>
+  <div class="now-playing" class:dock-hidden={dockHidden} bind:this={npEl}>
     <div class="top">
       <button class="icon-btn close" on:click={close} aria-label={$t('player.minimize')} title={$t('player.minimize')}>
         <span class="chev">{#if browserFullscreen}<Minimize2 size={22} />{:else}<ChevronDown size={26} />{/if}</span>
@@ -246,7 +285,7 @@
 
     {#if track}
       <div class="body" class:with-side={side} class:queue-mode={showQueue} style="--dock-h: {dockH}px">
-        <div class="art">
+        <div class="art" bind:this={artEl} style="--idle-x: {artShift.x}px; --idle-y: {artShift.y}px">
           <div
             class="art-slide"
             use:swipeTrack={{
@@ -274,7 +313,7 @@
 
         <div class="panel">
           <div class="title-row">
-            <div class="meta">
+            <div class="meta" bind:this={metaEl} style="--idle-x: {metaShift.x}px; --idle-y: {metaShift.y}px">
               {#if track.albumHref}
                 <a class="title" href={track.albumHref} use:link use:marquee={track.title} on:click={close} title={track.title}><span>{track.title}</span></a>
               {:else}
@@ -617,6 +656,49 @@
     grid-row: 1 / 3;
     height: min(80vh, 820px);
     min-width: 0;
+  }
+
+  @media (min-width: 901px) {
+    .art,
+    .meta {
+      --idle-ease: cubic-bezier(0.22, 1, 0.36, 1);
+      transition: transform 0.9s var(--idle-ease);
+    }
+    .top,
+    .dock,
+    .title-row :global(.like),
+    .title-row .more {
+      transition:
+        opacity 0.5s ease,
+        visibility 0s;
+    }
+    .idle .art,
+    .idle .meta {
+      transform: translate(var(--idle-x), var(--idle-y));
+      transition-duration: 1.4s;
+    }
+    .idle .top,
+    .idle .dock,
+    .idle .title-row :global(.like),
+    .idle .title-row .more {
+      opacity: 0;
+      visibility: hidden;
+      transition:
+        opacity 0.6s ease,
+        visibility 0s 0.6s;
+    }
+    .np-shell.idle,
+    .np-shell.idle :global(*) {
+      cursor: none;
+    }
+  }
+  @media (min-width: 901px) and (prefers-reduced-motion: reduce) {
+    .art,
+    .meta,
+    .idle .art,
+    .idle .meta {
+      transition-duration: 0s;
+    }
   }
 
   @media (max-width: 900px) {
