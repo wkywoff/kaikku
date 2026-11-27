@@ -2,12 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"kaikku/internal/deezer"
 )
 
 func TestPlayHistoryAndRecent(t *testing.T) {
@@ -124,6 +128,58 @@ func TestFollowsSuggestionsAndReleases(t *testing.T) {
 	json.Unmarshal(call(t, router, "GET", "/api/me/releases", token, "", http.StatusOK), &rel)
 	if len(rel.Albums) != 0 {
 		t.Errorf("releases after unfollow: %+v", rel.Albums)
+	}
+}
+
+func TestSuggestionsLookPastArtistsWithoutRelated(t *testing.T) {
+	db, router, token, srv := newTestServer(t)
+	related := map[string]string{
+		"101": `[]`,
+		"102": `[]`,
+		"103": `[]`,
+		"104": `[{"id":201,"name":"New One"},{"id":105,"name":"Followed"},{"id":202,"name":"New Two"},{"id":101,"name":"Most Played"}]`,
+		"105": `[{"id":203,"name":"New Three"},{"id":202,"name":"New Two"}]`,
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/artist/{id}/related", func(w http.ResponseWriter, r *http.Request) {
+		data, ok := related[r.PathValue("id")]
+		if !ok {
+			w.Write([]byte(`{"error":{"type":"DataException","message":"no data","code":800}}`))
+			return
+		}
+		w.Write([]byte(`{"data":` + data + `}`))
+	})
+	dz := httptest.NewServer(mux)
+	t.Cleanup(dz.Close)
+	srv.Deezer = deezer.NewClientWithBaseURL(dz.URL)
+
+	userID := userIDOf(t, router, token)
+	for _, p := range []struct {
+		id, name string
+		plays    int
+	}{{"101", "A", 5}, {"102", "B", 4}, {"103", "C", 3}, {"104", "D", 2}, {"106", "F", 1}} {
+		for range p.plays {
+			if _, err := db.Exec(`INSERT INTO plays (user_id, deezer_id, meta, context_kind, context_id) VALUES ($1, '12345', $2, 'album', '9')`,
+				userID, fmt.Sprintf(`{"artist_id":%q,"artist":%q}`, p.id, p.name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO followed_artists (user_id, deezer_id, meta) VALUES ($1, '105', '{"id":"105","name":"E"}')`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	var sug struct {
+		Artists []struct{ ID string }
+		BasedOn []string `json:"based_on"`
+	}
+	getJSON(t, router, "/api/me/suggestions", token, false, &sug)
+	var ids []string
+	for _, a := range sug.Artists {
+		ids = append(ids, a.ID)
+	}
+	if !slices.Equal(ids, []string{"201", "203", "202"}) || !slices.Equal(sug.BasedOn, []string{"D", "E"}) {
+		t.Errorf("suggestions = %v based on %v, want [201 203 202] based on [D E]", ids, sug.BasedOn)
 	}
 }
 

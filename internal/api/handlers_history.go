@@ -249,83 +249,132 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+const (
+	suggestionLimit     = 12
+	suggestionSeedLimit = 3
+	suggestionSeedTries = 12
+)
+
 func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r)
+	played, err := s.recentlyPlayedArtists(userID)
+	if err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
+	followed, err := s.followedArtists(userID)
+	if err != nil {
+		serverError(w, r, "query failed", err)
+		return
+	}
+	known := map[string]bool{}
+	for _, a := range slices.Concat(played, followed) {
+		known[a.ID] = true
+	}
+	seeds, lists := s.suggestionSeeds(seedCandidates(played, followed), known)
+	artists, used := interleaveSuggestions(seeds, lists)
+	s.overlayFor(append(artistPtrs(artists), artistPtrs(used)...), nil, nil)
+	basedOn := make([]string, len(used))
+	for i, a := range used {
+		basedOn[i] = a.Name
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "based_on": basedOn})
+}
+
+func (s *Server) recentlyPlayedArtists(userID string) ([]deezer.Artist, error) {
 	rows, err := s.DB.Query(`
-		SELECT meta->>'artist_id', max(meta->>'artist'), count(*)
+		SELECT meta->>'artist_id', COALESCE(max(meta->>'artist'), '')
 		  FROM plays
 		 WHERE user_id = $1 AND played_at > now() - interval '30 days' AND COALESCE(meta->>'artist_id', '') NOT IN ('', '0')
-		 GROUP BY 1 ORDER BY 3 DESC, 2 LIMIT 3`, userID)
+		 GROUP BY 1 ORDER BY count(*) DESC, 2, 1`, userID)
 	if err != nil {
-		serverError(w, r, "query failed", err)
-		return
+		return nil, err
 	}
-	var topIDs, basedOn []string
+	defer rows.Close()
+	var artists []deezer.Artist
 	for rows.Next() {
-		var id, name string
-		var n int
-		if rows.Scan(&id, &name, &n) == nil {
-			topIDs = append(topIDs, id)
-			basedOn = append(basedOn, name)
+		var a deezer.Artist
+		if err := rows.Scan(&a.ID, &a.Name); err != nil {
+			return nil, err
 		}
+		artists = append(artists, a)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		serverError(w, r, "query failed", err)
-		return
-	}
+	return artists, rows.Err()
+}
 
-	skip := map[string]bool{}
-	followed, err := s.idList(`SELECT deezer_id FROM followed_artists WHERE user_id = $1`, userID)
-	if err != nil {
-		serverError(w, r, "query failed", err)
-		return
+func seedCandidates(played, followed []deezer.Artist) []deezer.Artist {
+	var out []deezer.Artist
+	seen := map[string]bool{}
+	for _, a := range slices.Concat(played, followed) {
+		if len(out) == suggestionSeedTries {
+			break
+		}
+		if validDeezerID(a.ID) && !seen[a.ID] {
+			seen[a.ID] = true
+			out = append(out, a)
+		}
 	}
-	for _, id := range append(followed, topIDs...) {
-		skip[id] = true
-	}
+	return out
+}
 
-	var lists [][]deezer.Artist
-	for _, id := range topIDs {
-		if isLocalID(id) {
-			continue
+func (s *Server) suggestionSeeds(candidates []deezer.Artist, known map[string]bool) (seeds []deezer.Artist, lists [][]deezer.Artist) {
+	for start := 0; start < len(candidates) && len(seeds) < suggestionSeedLimit; start += suggestionSeedLimit {
+		batch := candidates[start:min(start+suggestionSeedLimit, len(candidates))]
+		for i, related := range s.relatedOfEach(batch) {
+			fresh := slices.DeleteFunc(slices.Clone(related), func(a deezer.Artist) bool { return known[a.ID] })
+			if len(fresh) > 0 && len(seeds) < suggestionSeedLimit {
+				seeds = append(seeds, batch[i])
+				lists = append(lists, fresh)
+			}
 		}
-		related, err := s.relatedArtists(id)
-		if err != nil {
-			log.Printf("suggestions: related to %s: %v", id, err)
-			continue
-		}
-		lists = append(lists, related)
 	}
-	artists := []deezer.Artist{}
-	for i := 0; len(artists) < 12; i++ {
+	return seeds, lists
+}
+
+func (s *Server) relatedOfEach(artists []deezer.Artist) [][]deezer.Artist {
+	lists := make([][]deezer.Artist, len(artists))
+	var wg sync.WaitGroup
+	for i, a := range artists {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := guard("suggestions related", func() (err error) { lists[i], err = s.relatedArtists(a.ID); return })
+			if err != nil {
+				log.Printf("suggestions: related to %s: %v", a.ID, err)
+			}
+		}()
+	}
+	wg.Wait()
+	return lists
+}
+
+func interleaveSuggestions(seeds []deezer.Artist, lists [][]deezer.Artist) (artists, used []deezer.Artist) {
+	artists = []deezer.Artist{}
+	taken := map[string]bool{}
+	gave := make([]bool, len(lists))
+	for round := 0; len(artists) < suggestionLimit; round++ {
 		more := false
-		for _, l := range lists {
-			if i >= len(l) {
+		for i, l := range lists {
+			if round >= len(l) {
 				continue
 			}
 			more = true
-			if a := l[i]; !skip[a.ID] && len(artists) < 12 {
-				skip[a.ID] = true
+			if a := l[round]; !taken[a.ID] && len(artists) < suggestionLimit {
+				taken[a.ID] = true
 				artists = append(artists, a)
+				gave[i] = true
 			}
 		}
 		if !more {
 			break
 		}
 	}
-	based := make([]deezer.Artist, len(topIDs))
-	for i := range topIDs {
-		based[i] = deezer.Artist{ID: topIDs[i], Name: basedOn[i]}
+	for i, seed := range seeds {
+		if gave[i] {
+			used = append(used, seed)
+		}
 	}
-	s.overlayFor(append(artistPtrs(artists), artistPtrs(based)...), nil, nil)
-	for i := range based {
-		basedOn[i] = based[i].Name
-	}
-	if basedOn == nil {
-		basedOn = []string{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"artists": artists, "based_on": basedOn})
+	return artists, used
 }
 
 func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
